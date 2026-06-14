@@ -290,6 +290,26 @@ HERST = {
         "grund": ("Ausloeseschwelle Laeufererdschluss (64R). Unter 2 kOhm wird ein "
                   "Erdschluss der Erregerwicklung angenommen (7UM62 Hdb. 2.30, Adr.6003)."),
     },
+    "U_klein": {
+    "range": "10,0 ... 125,0 V (Voreinst. 75,0 V)",
+    "grund": ("Unterspannungs-Schwelle (ANSI 27). Schutz vor Netzausfaellen und "
+              "Spannungsabsenkungen. Typisch 0,9 × UN (7UM62 Hdb. 2.17, Adr.4002)."),
+},
+"U_kleinklein": {
+    "range": "10,0 ... 125,0 V (Voreinst. 65,0 V)",
+    "grund": ("Zweite Unterspannungsstufe (tiefere Auslösesch., schneller). Typically "
+              "0,8 × UN oder als independent verzoegerte Stufe (7UM62 Hdb. 2.17, Adr.4004)."),
+},
+"U_gross": {
+    "range": "30,0 ... 170,0 V (Voreinst. 115,0 V)",
+    "grund": ("Ueberspannungs-Schwelle (ANSI 59). Schutz vor Netzhochfahren und "
+              "Fehlerloeschung. Typisch 1,1 × UN (7UM62 Hdb. 2.18, Adr.4102)."),
+},
+"U_grossgross": {
+    "range": "30,0 ... 170,0 V (Voreinst. 130,0 V)",
+    "grund": ("Zweite Ueberspannungsstufe (schneller Schutz bei kritischen "
+              "Ueberspaennungen). Typically 1,2 × UN (7UM62 Hdb. 2.18, Adr.4104)."),
+},
 }
 
 
@@ -303,7 +323,8 @@ _HERST_ADR = {
     "U_AMZ": "Adr.1408", "k_Faktor": "Adr.1602", "tau_s": "Adr.1603",
     "I2_zul": "Adr.1702", "I2_HH": "Adr.1706", "Winkel_1": "Adr.3003",
     "xd_KL3": "Adr.3008", "Prueck": "Adr.3102", "Uf_Warn": "Adr.4302",
-    "Uf_Aus": "Adr.4304", "U0": "Adr.5002", "RE_Aus": "Adr.6003",
+    "Uf_Aus": "Adr.4304", "U0": "Adr.5002", "RE_Aus": "Adr.6003","U_klein": "Adr.4002", "U_kleinklein": "Adr.4004",
+"U_gross": "Adr.4102", "U_grossgross": "Adr.4104",
 }
 for _k, _a in _HERST_ADR.items():
     if _k in HERST:
