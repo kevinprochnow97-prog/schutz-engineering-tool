@@ -2,7 +2,8 @@
 konstanten_motor.py — Voreinstellungen und Plausibilitaets-Schwellwerte (Motor)
 Herstellerneutrales Schutz-Engineering-Tool | HSU Hamburg
 
-Single Source of Truth fuer alle SIPROTEC-7SJ66-Werksvoreinstellungen,
+Single Source of Truth fuer die SIPROTEC-7SJ66-Voreinstellungen des Tools
+(Werksvoreinstellungen, abweichende Tool-Vorgaben sind gekennzeichnet),
 Engineering-Margen und Plausibilitaetsgrenzen des Motor-Tabs.
 Alle Werte sind frei aenderbar.
 
@@ -30,8 +31,8 @@ Temp_Rise_def     = 100.0  # Adr.4209  Uebertemperatur bei IN             [Grad 
 
 # ── 48 Motoranlaufueberwachung (Adr. 41xx) ───────────────────────────────────
 Startup_Current_def = 5.00 # Adr.4102  STARTUP CURRENT (sek.)             [A]
-Startup_Time_def    = 10.0 # Adr.4103  STARTUP TIME (Anlaufzeit-Schwelle) [s]
-Lock_Rotor_Time_def = 2.0  # Adr.4104  LOCK ROTOR TIME (zul. Blockierzeit)[s]
+Startup_Time_def    = 9.0  # Adr.4103  STARTUP TIME (Anlaufzeit-Schwelle) [s]
+Lock_Rotor_Time_def = 2.0  # Adr.4104  LOCK ROTOR TIME (Ausloesezeit bei erkanntem Stillstand) [s]
 Startup_T_Warm_def  = 10.0 # Adr.4105  STARTUP T WARM (warmer Motor)      [s]
 Temp_Cold_Motor_def = 0    # Adr.4106  TEMP.COLD MOTOR                    [%]
 
@@ -189,18 +190,18 @@ HERST = {
     "k_Faktor": {
         "range": "0,10 ... 4,00 x IN (Voreinst. 1,10)",
         "grund": ("Thermischer k-Faktor (ANSI 49) = dauernd zul. Strom I_max/IN. "
-                  "Bei Motoren ueblich 1,05 ... 1,15 (7SJ66 Hdb. 2.11, Adr.4202)."),
+                  "Bei Motoren üblich 1,05 ... 1,15 (7SJ66 Hdb. 2.11, Adr.4202)."),
     },
     "tau_min": {
         "range": "1,0 ... 999,9 min, Maschine typ. 100 min (Voreinst. 100)",
         "grund": ("Thermische Zeitkonstante. ACHTUNG: beim 7SJ66 in MINUTEN "
-                  "(wie 7UT613, aber NICHT wie 7UM62 = Sekunden!). Gilt fuer den "
+                  "(wie 7UT613, aber NICHT wie 7UM62 = Sekunden!). Gilt für den "
                   "laufenden Motor (7SJ66 Hdb. 2.11, Adr.4203)."),
     },
     "Ktau_Stop": {
         "range": "1,0 ... 10,0 (Voreinst. 1,0)",
-        "grund": ("Verlaengerung der Zeitkonstante bei Motorstillstand. Eigenbelueftete "
-                  "Motoren kuehlen ohne Luefter langsamer ab -> Ktau > 1 (7SJ66 Hdb. 2.11, Adr.4207A)."),
+        "grund": ("Verlängerung der Zeitkonstante bei Motorstillstand. Eigenbelüftete "
+                  "Motoren kühlen ohne Lüfter langsamer ab -> Ktau > 1 (7SJ66 Hdb. 2.11, Adr.4207A)."),
     },
     "I_Warn": {
         "range": "0,10 ... 4,00 A (1 A) (Voreinst. 1,00 A)",
@@ -208,30 +209,30 @@ HERST = {
                   "Strom k x IN liegen (7SJ66 Hdb. 2.11, Adr.4205)."),
     },
     "f_50_2": {
-        "range": "0,10 ... 35,00 A; typ. 1,6 x I_Anlauf < 50-2 < Ik,2pol,min",
+        "range": "0,10 ... 35,00 A · typ. 1,6 x I_Anlauf < 50-2 < Ik,2pol,min",
         "grund": ("Hochstromstufe 50-2 als Kurzschlussschutz. Motorseitig: oberhalb des "
                   "1,6-fachen Anlaufstroms, unterhalb des kleinsten 2-poligen Fehlerstroms. "
-                  "Da im Motor keine Stossspannungs-Saettigung wie im Trafo auftritt, "
-                  "darf 50-2 unverzoegert auslosen (7SJ66 Hdb. 2.2, Adr.1202)."),
+                  "Da im Motor keine Stoßspannungs-Sättigung wie im Trafo auftritt, "
+                  "darf 50-2 unverzögert auslosen (7SJ66 Hdb. 2.2, Adr.1202)."),
     },
     "t_50_2": {
         "range": "0,00 ... 60,00 s (motorseitig 0,00 s)",
-        "grund": ("Verzoegerung 50-2. Beim Motor in der Regel 0 s, da keine Inrush-"
+        "grund": ("Verzögerung 50-2. Beim Motor in der Regel 0 s, da keine Inrush-"
                   "Stabilisierung wie beim Trafo notwendig (7SJ66 Hdb. 2.2, Adr.1203)."),
     },
     "f_50_1": {
         "range": "0,10 ... 35,00 A (Voreinst. ~2,5 x IN)",
         "grund": ("Reservestufe 50-1 (UMZ). Oberhalb der maximalen Betriebslast, "
-                  "verzoegert als Backup zur 50-2 (7SJ66 Hdb. 2.2, Adr.1204)."),
+                  "verzögert als Backup zur 50-2 (7SJ66 Hdb. 2.2, Adr.1204)."),
     },
     "f_51": {
         "range": "0,10 ... 4,00 A (Voreinst. ~1,2 x IN)",
-        "grund": ("AMZ-Stufe 51. Anregewert ueber max. Betriebsstrom; inverse Kennlinie "
-                  "ueberstaffelt nachgelagerte Abgaenge (7SJ66 Hdb. 2.2, Adr.1207)."),
+        "grund": ("AMZ-Stufe 51. Anregewert über max. Betriebsstrom. Die inverse Kennlinie "
+                  "überstaffelt nachgelagerte Abgänge (7SJ66 Hdb. 2.2, Adr.1207)."),
     },
     "I2_dauer": {
         "range": "5 ... 15 % (Voreinst. 11 %)",
-        "grund": ("46-1: dauernd zul. Gegensystemstrom. Fuer Asynchronmaschinen nach "
+        "grund": ("46-1: dauernd zul. Gegensystemstrom. Für Asynchronmaschinen nach "
                   "IEC 60034-1 typ. ~11 % (7SJ66 Hdb. 2.7, Adr.4002)."),
     },
     "I2_kurz": {
@@ -241,34 +242,34 @@ HERST = {
     },
     "Startup_Time": {
         "range": "1,0 ... 180,0 s (Voreinst. 10,0 s)",
-        "grund": ("Anlaufzeit-Schwelle der Anlaufueberwachung 48. Knapp oberhalb der "
-                  "tatsaechlichen Hochlaufzeit, unterhalb der zul. Blockierzeit "
+        "grund": ("Anlaufzeit-Schwelle der Anlaufüberwachung 48. Knapp oberhalb der "
+                  "tatsächlichen Hochlaufzeit, unterhalb der zul. Blockierzeit "
                   "(7SJ66 Hdb. 2.8, Adr.4103)."),
     },
     "Lock_Rotor_Time": {
         "range": "0,5 ... 180,0 s; unendlich (Voreinst. 2,0 s)",
-        "grund": ("Zulaessige Blockierzeit (locked rotor). Bei blockiertem Laeufer loest "
-                  "48 nach dieser Zeit aus, sofern Binaereingang gesetzt (7SJ66 Hdb. 2.8, Adr.4104)."),
+        "grund": ("Zulässige Blockierzeit (locked rotor). Bei blockiertem Läufer löst "
+                  "48 nach dieser Zeit aus, sofern Binäreingang gesetzt (7SJ66 Hdb. 2.8, Adr.4104)."),
     },
     "IStart_IMOTnom": {
         "range": "1,10 ... 10,00 (Voreinst. 4,90)",
-        "grund": ("Anlaufstromverhaeltnis fuer die Wiedereinschaltsperre 66. Aus dem "
+        "grund": ("Anlaufstromverhältnis für die Wiedereinschaltsperre 66. Aus dem "
                   "Motordatenblatt I_A/IN (7SJ66 Hdb. 2.8, Adr.4302)."),
     },
     "T_Start_Max": {
         "range": "1 ... 320 s (Voreinst. 10 s)",
-        "grund": ("Max. zul. Anlaufzeit fuer das thermische Laeuferabbild der "
+        "grund": ("Max. zul. Anlaufzeit für das thermische Läuferabbild der "
                   "Wiedereinschaltsperre 66 (7SJ66 Hdb. 2.8, Adr.4303)."),
     },
     "Max_Warm_Starts": {
         "range": "1 ... 4 (Voreinst. 2)",
-        "grund": ("Maximal zulaessige Warmstarts. Steuert die Wiedereinschaltsperre 66 "
+        "grund": ("Maximal zulässige Warmstarts. Steuert die Wiedereinschaltsperre 66 "
                   "(7SJ66 Hdb. 2.8, Adr.4306)."),
     },
     "LoadJam_I": {
-        "range": "0,50 ... 12,00 A; typ. 2 x IN_Motor (Voreinst. 2,00 A)",
-        "grund": ("Ausloeseschwelle Lastsprung-/Load-Jam-Schutz. Unterhalb Anlaufstrom, "
-                  "bei ~2 x Motornennstrom; waehrend des Anlaufs blockiert "
+        "range": "0,50 ... 12,00 A · typ. 2 x IN_Motor (Voreinst. 2,00 A)",
+        "grund": ("Auslöseschwelle Lastsprung-/Load-Jam-Schutz. Unterhalb Anlaufstrom, "
+                  "bei ~2 x Motornennstrom, während des Anlaufs blockiert "
                   "(7SJ66 Hdb. 2.8, Adr.4402)."),
     },
     "I_unter": {
@@ -280,13 +281,13 @@ HERST = {
     "f_50N2": {
         "range": "0,05 ... 35,00 A; 1 A: 0,50 A / 5 A: 2,50 A (Voreinst. 0,50 A)",
         "grund": ("50N-2 Erd-Hochstromstufe (Stromkriterium). Sinnvoll nur im NIEDEROHMIG "
-                  "geerdeten Netz mit definiertem Erdfehlerstrom; oberhalb des betrieblichen "
+                  "geerdeten Netz mit definiertem Erdfehlerstrom, oberhalb des betrieblichen "
                   "Unsymmetrie-Reststroms (7SJ66 Hdb. 2.2, Adr.1302)."),
     },
     "f_50N1": {
         "range": "0,05 ... 35,00 A; 1 A: 0,20 A / 5 A: 1,00 A (Voreinst. 0,20 A)",
-        "grund": ("50N-1 Erdstrom-Reservestufe (UMZ), verzoegert. Anregung oberhalb des "
-                  "natuerlichen Erd-Reststroms im Normalbetrieb (7SJ66 Hdb. 2.2, Adr.1304)."),
+        "grund": ("50N-1 Erdstrom-Reservestufe (UMZ), verzögert. Anregung oberhalb des "
+                  "natürlichen Erd-Reststroms im Normalbetrieb (7SJ66 Hdb. 2.2, Adr.1304)."),
     },
     "f_51N": {
         "range": "0,05 ... 4,00 A; 1 A: 0,20 A / 5 A: 1,00 A (Voreinst. 0,20 A)",
@@ -295,59 +296,59 @@ HERST = {
     },
     "VN_50Ns": {
         "range": "1,8 ... 170,0 V (Voreinst. 40,0 V), Vollausschlag ~100 V",
-        "grund": ("Ansprechschwelle der Verlagerungsspannung U0 (64-1) fuer die empfindliche "
+        "grund": ("Ansprechschwelle der Verlagerungsspannung U0 (64-1) für die empfindliche "
                   "Erdschlusserfassung im ISOLIERTEN/KOMPENSIERTEN Netz; ~40 % der vollen "
-                  "Verlagerungsspannung bei satter Erdberuehrung (7SJ66 Hdb. 2.16, Adr.3109)."),
+                  "Verlagerungsspannung bei satter Erdberührung (7SJ66 Hdb. 2.16, Adr.3109)."),
     },
     "f_50Ns2": {
         "range": "0,001 ... 1,500 A (empfindl. INs) (Voreinst. 0,300 A)",
-        "grund": ("50Ns-2 empfindliche Erdstromstufe ueber den INs-Eingang (Kabelumbau-/"
+        "grund": ("50Ns-2 empfindliche Erdstromstufe über den INs-Eingang (Kabelumbau-/"
                   "Summenstromwandler). Erfasst den kleinen kapazitiven bzw. Wirk-Reststrom im "
                   "isolierten/kompensierten Netz (7SJ66 Hdb. 2.16, Adr.3113)."),
     },
     "f_50Ns1": {
         "range": "0,001 ... 1,500 A (empfindl. INs) (Voreinst. 0,100 A)",
-        "grund": ("50Ns-1 empfindliche Erdstrom-Grundstufe, hochempfindlich; ueblicherweise "
+        "grund": ("50Ns-1 empfindliche Erdstrom-Grundstufe, hochempfindlich, üblicherweise "
                   "richtungsbehaftet (67Ns, Adr.3115) ausgewertet (7SJ66 Hdb. 2.16, Adr.3117)."),
     },
     "U59_1": {
         "range": "40 ... 260 V (Voreinst. 110 V = 110 % UnS)",
-        "grund": ("59-1 Ueberspannung-Warnstufe, verzoegert. Typ. 110 ... 115 % der "
+        "grund": ("59-1 Überspannung-Warnstufe, verzögert. Typ. 110 ... 115 % der "
                   "Bemessungsspannung (7SJ66 Hdb. 2.6, Adr.5002)."),
     },
     "U59_2": {
         "range": "40 ... 260 V (Voreinst. 120 V = 120 % UnS)",
-        "grund": ("59-2 Ueberspannung-Schnellstufe, kurz verzoegert. Typ. ~130 % der "
+        "grund": ("59-2 Überspannung-Schnellstufe, kurz verzögert. Typ. ~130 % der "
                   "Bemessungsspannung (7SJ66 Hdb. 2.6, Adr.5005)."),
     },
     "U27_1": {
         "range": "10 ... 210 V (Voreinst. 75 V = 75 % UnS)",
-        "grund": ("27-1 Unterspannung oberes Element (Warnstufe), laenger verzoegert. "
+        "grund": ("27-1 Unterspannung oberes Element (Warnstufe), länger verzögert. "
                   "Motoren typ. 70 ... 80 % UN (7SJ66 Hdb. 2.6, Adr.5102). Wird mit Strom"
                   "kriterium freigegeben (Adr.5120), um Auslosung bei Trennung zu vermeiden."),
     },
     "U27_2": {
         "range": "10 ... 210 V (Voreinst. 70 V = 70 % UnS)",
-        "grund": ("27-2 Unterspannung unteres Element (Aus), kurz verzoegert. Schuetzt vor "
-                  "Wiederanlauf-Stromstoss und Kippen bei tiefem Spannungseinbruch "
+        "grund": ("27-2 Unterspannung unteres Element (Aus), kurz verzögert. Schützt vor "
+                  "Wiederanlauf-Stromstoß und Kippen bei tiefem Spannungseinbruch "
                   "(7SJ66 Hdb. 2.6, Adr.5110)."),
     },
     "U59_V2_1": {
         "range": "2 ... 150 V (Voreinst. 30 V)",
-        "grund": ("59-1-V2: Ueberspannung im Gegensystem als Spannungsunsymmetrie-/Phasen"
+        "grund": ("59-1-V2: Überspannung im Gegensystem als Spannungsunsymmetrie-/Phasen"
                   "ausfallkriterium (OP.QUANTITY 59 = V2). Erfasst verdrehte/fehlende Phasen "
                   "spannungsseitig (7SJ66 Hdb. 2.6, Adr.5015)."),
     },
     "U59_V2_2": {
         "range": "2 ... 150 V (Voreinst. 50 V)",
-        "grund": ("59-2-V2: hoehere Gegensystem-Ueberspannungsstufe, schneller. Trennt "
-                  "ausgepraegte Spannungsunsymmetrie (7SJ66 Hdb. 2.6, Adr.5016)."),
+        "grund": ("59-2-V2: höhere Gegensystem-Überspannungsstufe, schneller. Trennt "
+                  "ausgeprägte Spannungsunsymmetrie (7SJ66 Hdb. 2.6, Adr.5016)."),
     },
     "phase_seq": {
         "range": "A B C (Rechtsdrehfeld) / A C B (Linksdrehfeld) (Voreinst. A B C)",
-        "grund": ("Erwartete Phasenfolge (47). Die Ueberwachung meldet 'Fail Ph. Seq.', wenn die "
+        "grund": ("Erwartete Phasenfolge (47). Die Überwachung meldet 'Fail Ph. Seq.', wenn die "
                   "gemessene Drehfeldrichtung abweicht (Schutz vor Drehrichtungsumkehr des "
-                  "Motors). Pruefung ab |U| > 40 V bzw. |I| > 0,5 IN (7SJ66 Hdb. 2.12, Adr.209)."),
+                  "Motors). Prüfung ab |U| > 40 V bzw. |I| > 0,5 IN (7SJ66 Hdb. 2.12, Adr.209)."),
     },
 }
 

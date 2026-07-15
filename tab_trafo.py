@@ -6,120 +6,41 @@ Herstellerneutrales Schutz-Engineering-Tool | HSU Hamburg
 import pandas as pd
 import streamlit as st
 
-import konstanten as K
+import konstanten_trafo as K
 from calc_trafo import berechne_alle, empfehlung_IHH_OS
 
-
-# ── Farbkodierung (explizite Textfarben -> auch im Dark-Theme lesbar) ─────────
-_CSS = """
-<style>
-/* Einklappbare Sektionen (st.expander) durchgehend HSU-blau */
-[data-testid="stExpander"] summary {
-    background: #2E5A87 !important;
-    border-radius: 6px !important;
-    padding: 5px 12px !important;
-}
-[data-testid="stExpander"] summary:hover { background: #27496e !important; }
-[data-testid="stExpander"] summary,
-[data-testid="stExpander"] summary p,
-[data-testid="stExpander"] summary span {
-    color: #ffffff !important; font-weight: 600 !important; font-size: 0.92rem !important;
-}
-[data-testid="stExpander"] summary svg { fill: #ffffff !important; color: #ffffff !important; }
-[data-testid="stExpander"] details { border: none !important; }
-
-.result-box {
-    background: #eef3f8; color: #14203a;
-    border-left: 4px solid #2E5A87; border-radius: 6px;
-    padding: 10px 14px; margin-bottom: 8px;
-}
-.result-box .val { font-size: 1.2rem; font-weight: 700; color: #14203a; font-family: monospace; }
-.result-box .lbl { font-size: 0.76rem; color: #43526b; }
-.result-box .sub { font-size: 0.74rem; color: #5d6b82; margin-top: 2px; }
-.warn-box {
-    background: #fff4d6; color: #5b4a00;
-    border-left: 4px solid #f4a800; border-radius: 6px;
-    padding: 10px 14px; font-size: 0.86rem; margin-bottom: 8px;
-}
-.off-box {
-    background: #fbe3ea; color: #7a0024;
-    border-left: 4px solid #A50034; border-radius: 6px;
-    padding: 10px 14px; font-size: 0.86rem; margin-bottom: 8px;
-}
-.off-box b { color: #A50034; }
-.info-box {
-    background: #e7f3ec; color: #14502b;
-    border-left: 4px solid #2e7d32; border-radius: 6px;
-    padding: 10px 14px; font-size: 0.86rem; margin-bottom: 8px;
-}
-.pill { display:inline-block; padding:2px 9px; border-radius:11px;
-        font-size:0.75rem; font-weight:700; }
-.pill-ok   { background:#d6f0dc; color:#1d6b32; }
-.pill-warn { background:#fdeccb; color:#8a5b00; }
-.pill-bad  { background:#fad3dc; color:#a3002b; }
-.pill-na   { background:#e6e9ee; color:#5d6b82; }
-</style>
-"""
-
-_AMPEL_EMOJI = {"OK": "🟢", "Hinweis": "🟡", "Prüfen!": "🔴", "Fehlt": "⚫", "—": "▫️"}
-_PILL_CLASS  = {"OK": "pill-ok", "Hinweis": "pill-warn", "Prüfen!": "pill-bad",
-                "Fehlt": "pill-na", "—": "pill-na"}
-
-
-def _metric(label, value, sub=""):
-    st.markdown(
-        f'<div class="result-box"><div class="lbl">{label}</div>'
-        f'<div class="val">{value}</div>'
-        + (f'<div class="sub">{sub}</div>' if sub else "") + "</div>",
-        unsafe_allow_html=True,
-    )
-
-
-def _section(title, expanded=True):
-    """Einklappbare, blau gestylte Sektion. Verwendung: with _section('...'):"""
-    return st.expander(title, expanded=expanded)
-
-
-def _pill(status):
-    return f'<span class="pill {_PILL_CLASS.get(status,"pill-na")}">{status}</span>'
+from utils import AMPEL_EMOJI as _AMPEL_EMOJI, de, deg
+from ui import inject_css, metric as _metric, section as _section, pill as _pill, hreg
+from ui import grphead as _grphead, pin as _pin
 
 
 def _hreg(key):
-    """Hersteller-Hinweis (Range + Begründung + Eintrag-Adresse) unter einem Regler."""
-    h = K.HERST.get(key)
-    if not h:
-        return
-    adr = h.get("adr")
-    pin = (f'<br>📍 <b>Eintragen unter:</b> {adr}' if adr
-           else '<br>📍 <b>Rechengröße</b> (kein direkter DIGSI-Parameter, fließt in die Sollwerte ein)')
-    st.markdown(
-        f'<div style="font-size:0.72rem;color:#5d6b82;margin:-6px 0 10px;line-height:1.25;">'
-        f'<b>Hersteller:</b> {h["range"]}<br>{h["grund"]}{pin}</div>',
-        unsafe_allow_html=True)
+    """Hersteller-Hinweis unter einem Regler (nutzt das modul-lokale HERST-Dict)."""
+    hreg(K.HERST, key)
 
 
 # ── Hauptfunktion ─────────────────────────────────────────────────────────────
 
 def show():
-    st.markdown(_CSS, unsafe_allow_html=True)
+    inject_css()
 
     # ══════════════════════ EINGABEN (einklappbar) ══════════════════════
     with _section("Eingaben — Grunddaten, Stromwandler, Netzparameter"):
         ci1, ci2, ci3 = st.columns(3, gap="medium")
         with ci1:
             st.caption("**Transformator-Grunddaten**")
-            Sn    = st.number_input("Sn — Bemessungsleistung [MVA]", 0.1, value=16.0, step=0.5, format="%.1f")
-            UN_OS = st.number_input("UN OS — Oberspannung [kV]", 1.0, value=110.0, step=1.0, format="%.1f")
-            UN_US = st.number_input("UN US — Unterspannung [kV]", 0.4, value=10.0, step=0.1, format="%.1f")
-            uk    = st.number_input("uk — Kurzschlussspannung [%]", 1.0, 25.0, value=11.5, step=0.1, format="%.1f")
+            Sn    = st.number_input("Sn — Bemessungsleistung [MVA]", 0.1, value=None, step=0.5, format="%.1f", placeholder="z. B. 16,0")
+            UN_OS = st.number_input("UN OS — Oberspannung [kV]", 1.0, value=None, step=1.0, format="%.1f", placeholder="z. B. 110")
+            UN_US = st.number_input("UN US — Unterspannung [kV]", 0.4, value=None, step=0.1, format="%.1f", placeholder="z. B. 10")
+            uk    = st.number_input("uk — Kurzschlussspannung [%]", 1.0, 25.0, value=None, step=0.1, format="%.1f", placeholder="z. B. 11,5")
             vg    = st.selectbox("Schaltgruppe", K.SCHALTGRUPPEN, index=0)
-            stp_pm = st.number_input("Stufensteller +/- [%]", 0, 40, value=10, step=1)
+            stp_pm = st.number_input("Stufensteller +/- [%]", 0, 40, value=None, step=1, placeholder="z. B. 10")
         with ci2:
             st.caption("**Stromwandler (primär / sekundär)**")
             c1, c2 = st.columns(2)
             with c1:
-                CT_OS_P = st.number_input("CT OS prim. [A]", 1, value=100, step=1)
-                CT_US_P = st.number_input("CT US prim. [A]", 1, value=1000, step=1)
+                CT_OS_P = st.number_input("CT OS prim. [A]", 1, value=None, step=1, placeholder="z. B. 100")
+                CT_US_P = st.number_input("CT US prim. [A]", 1, value=None, step=1, placeholder="z. B. 1000")
             with c2:
                 CT_OS_S = st.selectbox("CT OS sek. [A]", [1, 5], index=0)
                 CT_US_S = st.selectbox("CT US sek. [A]", [1, 5], index=0)
@@ -128,7 +49,7 @@ def show():
             if ie_wdl:
                 ce1, ce2 = st.columns(2)
                 with ce1:
-                    CT_E_P = st.number_input("CT Erder prim. [A]", 1, value=400, step=1)
+                    CT_E_P = st.number_input("CT Erder prim. [A]", 1, value=None, step=1, placeholder="z. B. 400")
                 with ce2:
                     CT_E_S = st.selectbox("CT Erder sek. [A]", [1, 5], index=0)
             else:
@@ -141,8 +62,8 @@ def show():
             if vt_vorhanden:
                 cv1, cv2 = st.columns(2)
                 with cv1:
-                    VT_P = st.number_input("VT prim. [kV]", 0.0, value=float(UN_US),
-                                           step=0.1, format="%.2f")
+                    VT_P = st.number_input("VT prim. [kV]", 0.0, value=None,
+                                           step=0.1, format="%.2f", placeholder="meist = UN US")
                 with cv2:
                     VT_S = st.selectbox("VT sek. [V]", K.VT_Sek_Optionen, index=1)
             else:
@@ -151,12 +72,13 @@ def show():
             st.caption("**Netzparameter**")
             stp_OS = st.selectbox("Sternpunktbehandlung OS", K.STERNPUNKT_OPTIONEN, index=2)
             stp_US = st.selectbox("Sternpunktbehandlung US", K.STERNPUNKT_OPTIONEN, index=1)
-            Ik_OS  = st.number_input("Ik″ max OS [kA]", 0.0, value=10.0, step=0.5, format="%.1f")
-            Ik_US  = st.number_input("Ik″ max US [kA]", 0.0, value=8.0, step=0.5, format="%.1f")
+            Ik_OS  = st.number_input("Ik″ max OS [kA]", 0.0, value=None, step=0.5, format="%.1f", placeholder="z. B. 10")
+            Ik_US  = st.number_input("Ik″ max US [kA]", 0.0, value=None, step=0.5, format="%.1f", placeholder="z. B. 8")
             Ik_min_OS = st.number_input(
-                "Ik min OS (Schutzgebiet-Ende) [kA]", 0.0, value=0.0, step=0.1, format="%.2f",
+                "Ik min OS (Schutzgebiet-Ende) [kA]", 0.0, value=None, step=0.1, format="%.2f",
+                placeholder="optional",
                 help="Minimaler Kurzschlussstrom nach DIN EN 60909-0 (c=0,95). "
-                     "0 = nicht vorhanden, dann Näherung 0,3·Ik″max OS.")
+                     "Leer = nicht vorhanden, dann Näherung 0,3·Ik″max OS.")
             bf_aktiv = st.checkbox(
                 "Leistungsschalterversagerschutz (50BF) projektiert", value=True,
                 help="Adr.170 SCHALTERVERSAG. Stromflussbasiert, benötigt keine Spannung.")
@@ -165,13 +87,33 @@ def show():
                 help="Aus = einstufig, nur T2 (Adr.7016). Ein = zusätzlich T1 (Adr.7015).",
                 disabled=not bf_aktiv)
 
+    # ── Vollständigkeitsprüfung der Grunddaten ────────────────────────────────
+    # Ohne ausgefüllte Grunddaten wird nicht gerechnet (kein Handlungsbedarf,
+    # nur ein neutraler Hinweis). Erst wenn alles vorhanden ist, erscheinen
+    # Erweiterte Parameter, Ergebnisse und Plausibilitätsprüfung.
+    _pflicht = {"Sn": Sn, "UN OS": UN_OS, "UN US": UN_US, "uk": uk,
+                "Stufensteller": stp_pm, "CT OS prim.": CT_OS_P, "CT US prim.": CT_US_P,
+                "Ik\u2033 max OS": Ik_OS, "Ik\u2033 max US": Ik_US}
+    if ie_wdl:
+        _pflicht["CT Erder prim."] = CT_E_P
+    if vt_vorhanden:
+        _pflicht["VT prim."] = VT_P
+    _fehlt = [k for k, v in _pflicht.items() if v is None]
+    if _fehlt:
+        st.info("\u25ab\ufe0f **Bitte zun\u00e4chst die Grunddaten ausf\u00fcllen.** Sobald die "
+                "Pflichtfelder gef\u00fcllt sind, erscheinen automatisch die erweiterten "
+                "Parameter, die Sollwerte und die Plausibilit\u00e4tspr\u00fcfung.\n\nNoch offen: "
+                + ", ".join(_fehlt) + ".")
+        return
+    Ik_min_OS = Ik_min_OS or 0.0
+
     # Erweiterte Parameter — eigenständige (NICHT verschachtelte) Sektion
     with _section("Erweiterte Parameter (Voreinstellungen nach SIPROTEC 7UT6xx — frei änderbar)", expanded=False):
         st.caption("ℹ️ Unter jedem Regler steht der vom Hersteller empfohlene Wert/Range "
                    "und die Begründung. So ist nachvollziehbar, was die Voreinstellung bezweckt.")
         e1, e2, e3 = st.columns(3)
         with e1:
-            st.markdown("**87T Differential**")
+            _grphead("87T Differential")
             k_DIFF  = st.slider("I-DIFF> [I/InO]", 0.10, 0.40, K.I_DIFF_def, 0.05)
             _hreg("I_DIFF")
             k_DIFFH = st.slider("I-DIFF>> [I/InO]", 5.0, 15.0, K.I_DIFF_HH_def, 0.1)
@@ -185,7 +127,7 @@ def show():
             harm2   = st.slider("2. Harmonische [%]", 10, 30, int(K.Harm_2_def*100), 1) / 100
             _hreg("Harm_2")
         with e2:
-            st.markdown("**50/51 + 49 + 46**")
+            _grphead("50/51 + 49 + 46")
             f_I    = st.slider("I> Phase [I/InS]", 1.0, 3.0, K.f_I_Ph_def, 0.1)
             _hreg("f_I_Ph")
             t_I    = st.number_input("t I> [s]", 0.05, 2.0, K.t_I_Ph_def, 0.05, format="%.2f")
@@ -196,11 +138,11 @@ def show():
                 dict(nT=(UN_OS/UN_US if UN_US else 0),
                      IN_OS_prim=(Sn*1e6/(1.7320508*UN_OS*1e3) if UN_OS else 0)),
                 dict(k_S_IGG=K.k_S_IGG, Ik_max_US_kA=Ik_US, uk_pct=uk))
-            auto_OS = st.checkbox(f"I>> OS automatisch ({f_IHH_OS_emp:g} ×IN)", value=True,
+            auto_OS = st.checkbox(f"I>> OS automatisch ({deg(f_IHH_OS_emp)} ×IN)", value=True,
                                   help="Speiseseite: Empfehlung 1,2·Ik″ max US (auf OS bezogen).")
             if auto_OS:
                 f_IHH_OS = f_IHH_OS_emp
-                st.caption(f"➜ I>> OS = **{f_IHH_OS_emp:g} ×IN** (auto). "
+                st.caption(f"➜ I>> OS = **{deg(f_IHH_OS_emp)} ×IN** (auto). "
                            f"{K.HERST['f_I_Ph_HH_OS']['grund']}")
             else:
                 f_IHH_OS = st.slider("I>> Phase OS [I/InS]", 4.0, 16.0,
@@ -218,7 +160,7 @@ def show():
             i2zul  = st.slider("46  I2 zul. [I/InS]", 0.08, 0.30, K.I2_zul_def, 0.01)
             _hreg("I2_zul")
         with e3:
-            st.markdown("**Engineering-Margen**")
+            _grphead("Engineering-Margen")
             kSI    = st.slider("k_S (I>)  [-]", 1.1, 1.4, K.k_S_I, 0.05)
             _hreg("k_S_I")
             kSIGG  = st.slider("k_S (I>>) [-]", 1.1, 1.4, K.k_S_IGG, 0.05)
@@ -246,7 +188,7 @@ def show():
                        "Je Stufe Ansprechwert und Verzögerungszeit.")
             v1, v2, v3 = st.columns(3)
             with v1:
-                st.markdown("**27/59 Spannung [× UnS] + t [s]**")
+                _grphead("27/59 Spannung [× UnS] + t [s]")
                 U_lt_v   = st.slider("U<", 0.50, 0.95, K.U_lt_def, 0.01)
                 tU_lt_v  = st.number_input("t U< [s]", 0.0, 100.0, K.t_U_lt_def, 0.1, format="%.2f")
                 _hreg("U_lt")
@@ -261,7 +203,7 @@ def show():
                 rueckf_v = st.number_input("Rückfallverh. (Adr.5217/5317)", 0.90, 1.00,
                                            K.U_Rueckfall_def, 0.01, format="%.2f")
             with v2:
-                st.markdown("**81 Frequenz [Hz] + t [s]**")
+                _grphead("81 Frequenz [Hz] + t [s]")
                 f_lt_v     = st.slider("f<", 47.0, 49.9, K.f_lt_def, 0.1)
                 tf_lt_v    = st.number_input("t f< [s]", 0.0, 100.0, K.t_f_lt_def, 0.1, format="%.2f")
                 _hreg("f_lt")
@@ -272,7 +214,7 @@ def show():
                 f_gt_v     = st.slider("f>", 50.1, 53.0, K.f_gt_def, 0.1)
                 tf_gt_v    = st.number_input("t f> [s]", 0.0, 100.0, K.t_f_gt_def, 0.1, format="%.2f")
             with v3:
-                st.markdown("**24 Übererregung [× (U/f)N] + t [s]**")
+                _grphead("24 Übererregung [× (U/f)N] + t [s]")
                 _uf_off = VT_P <= 0
                 Uf_gt_v   = st.slider("U/f >", 1.00, 1.20, K.Uf_gt_def, 0.01, disabled=_uf_off)
                 tUf_gt_v  = st.number_input("t U/f > [s]", 0.0, 60.0, K.t_Uf_gt_def, 0.5, format="%.1f", disabled=_uf_off)
@@ -287,7 +229,7 @@ def show():
         tLS_v, tRF_v, tSi_v = K.t_LS_aus_def, K.t_RF_strom_def, K.t_sich_BF_def
         if bf_aktiv:
             st.markdown("---")
-            st.caption("Leistungsschalterversagerschutz 50BF — Zeitbilanz für T2 (Adr.7016).")
+            st.caption("Leistungsschalterversagerschutz 50BF: Zeitbilanz für T2 (Adr.7016).")
             b1, b2, b3, b4 = st.columns(4)
             with b1:
                 I_BF_v = st.slider("50BF  I> [x IN]", 0.05, 0.30, K.I_BF_def, 0.01)
@@ -298,8 +240,8 @@ def show():
                 tRF_v = st.number_input("t Rückfall [s]", 0.01, 0.10, K.t_RF_strom_def, 0.005, format="%.3f")
             with b4:
                 tSi_v = st.number_input("t Sicherheit [s]", 0.02, 0.20, K.t_sich_BF_def, 0.005, format="%.3f")
-            st.caption(f"➜ T2 = {tLS_v + tRF_v + tSi_v:.3f} s"
-                       + (f" · T1 = {tLS_v + tRF_v + tSi_v:.3f} s (zweistufig)" if bf_zwei else " (einstufig, T1 = ∞)"))
+            st.caption(f"➜ T2 = {de(tLS_v + tRF_v + tSi_v, 3)} s"
+                       + (f" · T1 = {de(tLS_v + tRF_v + tSi_v, 3)} s (zweistufig)" if bf_zwei else " (einstufig, T1 = ∞)"))
 
     # ══════════════════════ BERECHNUNG ══════════════════════
     p = dict(
@@ -339,8 +281,8 @@ def show():
     n_bad = sum(1 for c in plaus if c["status"] in ("Prüfen!", "Fehlt"))
     st.markdown(
         f'<div style="margin:0.6rem 0;">Plausibilität: '
-        f'{_pill("OK")} {n_ok} &nbsp; {_pill("Hinweis")} {n_hin} &nbsp; '
-        f'{_pill("Prüfen!")} {n_bad}</div>', unsafe_allow_html=True)
+        f'{_pill("OK", n_ok)} &nbsp; {_pill("Hinweis", n_hin)} &nbsp; '
+        f'{_pill("Prüfen!", n_bad)}</div>', unsafe_allow_html=True)
 
     # ══════════════════════ HANDLUNGSEMPFEHLUNGEN (zentral) ══════════════════════
     todo = [c for c in plaus if c["status"] in ("Prüfen!", "Fehlt") and c["korrektur"]]
@@ -392,36 +334,40 @@ def show():
     with _section("Berechnete Grundgrößen"):
         g1, g2, g3 = st.columns(3)
         with g1:
-            _metric("IN OS primär",   f"{g['IN_OS_prim']:.2f} A")
-            _metric("IN OS sekundär", f"{g['IN_OS_sek']:.4f} A", f"÷ kCT_OS = {g['kCT_OS']:.0f}")
-            _metric("STW-Anpassung OS", f"{g['I_an_OS']:.3f}", "I_an = CT_sek / IN_sek  (Soll 0,5–2,0)")
+            _metric("IN OS primär",   f"{de(g['IN_OS_prim'], 2)} A")
+            _metric("IN OS sekundär", f"{de(g['IN_OS_sek'], 4)} A", f"÷ kCT_OS = {de(g['kCT_OS'], 0)}")
+            _metric("STW-Anpassung OS", f"{de(g['I_an_OS'], 3)}", "I_an = CT_sek / IN_sek  (Soll 0,5–2,0)")
         with g2:
-            _metric("IN US primär",   f"{g['IN_US_prim']:.2f} A")
-            _metric("IN US sekundär", f"{g['IN_US_sek']:.4f} A", f"÷ kCT_US = {g['kCT_US']:.0f}")
-            _metric("STW-Anpassung US", f"{g['I_an_US']:.3f}", "I_an = CT_sek / IN_sek  (Soll 0,5–2,0)")
+            _metric("IN US primär",   f"{de(g['IN_US_prim'], 2)} A")
+            _metric("IN US sekundär", f"{de(g['IN_US_sek'], 4)} A", f"÷ kCT_US = {de(g['kCT_US'], 0)}")
+            _metric("STW-Anpassung US", f"{de(g['I_an_US'], 3)}", "I_an = CT_sek / IN_sek  (Soll 0,5–2,0)")
         with g3:
-            _metric("Übersetzung nT",   f"{g['nT']:.3f}", "= UN_OS / UN_US")
-            _metric("kCT Erder",        f"{g['kCT_E']:.0f}")
-            _metric("Bezugsstrom IN_Obj sek.", f"{g['IN_Obj_sek']:.4f} A", "= max(IN_OS_sek, IN_US_sek) → 87T")
+            _metric("Übersetzung nT",   f"{de(g['nT'], 3)}", "= UN_OS / UN_US")
+            _metric("kCT Erder",        f"{de(g['kCT_E'], 0)}")
+            _metric("Bezugsstrom IN_Obj sek.", f"{de(g['IN_Obj_sek'], 4)} A", "= max(IN_OS_sek, IN_US_sek) → 87T")
 
     # ══════════════════════ ANSI 87T — DIFFERENTIALSCHUTZ ══════════════════════
     r = e["87T"]
     with _section("ANSI 87T — Differentialschutz"):
         d1, d2 = st.columns(2)
-        with d1: _metric("I-DIFF> sekundär", f"{r['I_DIFF_Anspr_sek_A']:.4f} A", f"= {p['I_DIFF']*100:.0f}% × IN_Obj")
-        with d2: _metric("I-DIFF> primär OS", f"{r['I_DIFF_Anspr_prim_A']:.2f} A", "= Faktor × IN_OS_prim")
+        with d1: _metric("I-DIFF> sekundär", f"{de(r['I_DIFF_Anspr_sek_A'], 4)} A", f"= {de(p['I_DIFF']*100, 0)}% × IN_Obj")
+        with d2: _metric("I-DIFF> primär OS", f"{de(r['I_DIFF_Anspr_prim_A'], 2)} A", "= Faktor × IN_OS_prim")
         df87 = pd.DataFrame([{
             "Parameter": x["name"],
-            "Eingabe": f"{x['faktor']:g}",
+            "Einstellwert": f"{deg(x['faktor'])}",
             "Einheit": x["einheit"],
-            "A sek.": f"{x['wert_sek']:.4f}" if x["wert_sek"] is not None else "—",
-            "A prim. OS": f"{x['wert_prim']:.2f}" if x["wert_prim"] is not None else "—",
-            "Empfehlung": f"{x['empfehlung']:g}" if x["empfehlung"] is not None else "—",
+            "DIGSI-Adresse": x["adresse"],
+            "Kontrolle A sek.": f"{de(x['wert_sek'], 4)}" if x["wert_sek"] is not None else "—",
+            "Kontrolle A prim. OS": f"{de(x['wert_prim'], 2)}" if x["wert_prim"] is not None else "—",
+            "Empfehlung": f"{deg(x['empfehlung'])}" if x["empfehlung"] is not None else "—",
             "Status": f"{_AMPEL_EMOJI.get(x['status'],'')} {x['status']}",
-            "Adresse": x["adresse"],
         } for x in r["rows"]])
         st.dataframe(df87, width="stretch", hide_index=True)
-        st.caption("Empfehlung (Spalte) dynamisch aus Stufensteller / uk / Sn. "
+        st.caption("In DIGSI wird ausschließlich der bezogene **Einstellwert** (Spalte 2, Einheit "
+                   "I/InO bzw. s / % / dimensionslos) unter der genannten Adresse eingetragen. "
+                   "Die Ampere-Spalten sind reine **Kontrollwerte** (sekundär / primär OS) für die "
+                   "Prüfung vor Ort und werden nirgends eingegeben (7UT613 Hdb. 2.2.2, Adr.1221 ff. "
+                   "in I/InO). Empfehlung dynamisch aus Stufensteller / uk / Sn. "
                    "Status: 🟢 identisch · 🟡 Abweichung < 20 % · 🔴 Abweichung ≥ 20 %. "
                    "Bewusste Abweichung nach Schutzphilosophie zulässig (7UT613 Hdb. 2.2.7).")
 
@@ -431,27 +377,37 @@ def show():
     u0 = e["U0"]
     with _section("Erdschluss- / Erdfehlerschutz (87N · 50N/51N · U0)"):
         if f87n["aktiv"]:
-            c1, c2, c3 = st.columns(3)
-            with c1: _metric("87N I-EDS> sek.", f"{f87n['I_EDS_sek_A']:.4f} A", f"= {f87n['I_EDS_faktor']*100:.0f}% × IN_OS_sek")
-            with c2: _metric("87N I-EDS> prim.", f"{f87n['I_EDS_prim_A']:.2f} A", "Adr.1311")
-            with c3: _metric("T I-EDS>", f"{f87n['T_I_EDS_s']:.2f} s", "Adr.1312A")
+            _grphead("ANSI 87N — Erdfehler-Differentialschutz (EDS)")
+            df87n = pd.DataFrame([
+                ("I-EDS> (Ansprechwert)", f"{de(f87n['I_EDS_faktor'], 2)}", "I/InS",
+                 f"{de(f87n['I_EDS_sek_A'], 4)} A sek. · {de(f87n['I_EDS_prim_A'], 2)} A prim.",
+                 "Adr.1311"),
+                ("T I-EDS> (Verzögerung)", f"{de(f87n['T_I_EDS_s'], 2)}", "s", "—",
+                 "Adr.1312A"),
+                ("Steigung I-EDS> = f(I-SUM)", f"{de(f87n['Steigung_EDS'], 2)}", "—", "—",
+                 "Adr.1313A"),
+            ], columns=["Parameter", "Einstellwert", "Einheit", "Kontrolle (A)", "DIGSI-Adresse"])
+            st.dataframe(df87n, width="stretch", hide_index=True)
+            st.caption("Eingetragen wird der bezogene Einstellwert (I/InS, bezogen auf den "
+                       "Nennstrom der zugeordneten Seite, hier OS) unter Adr.1311; die "
+                       "Ampere-Angaben sind Kontrollwerte (7UT613 Hdb. 2.3.2).")
         else:
             st.markdown(f'<div class="off-box">🔴 <b>87N (EDS) deaktiviert</b><br>{f87n["grund"]}</div>',
                         unsafe_allow_html=True)
 
         if erde["anwendbar"]:
             c1, c2 = st.columns(2)
-            with c1: _metric("50N/51N  IE>",  f"{erde['IE_sek']:.2f} A sek.", f"= {erde['IE_prim']:.1f} A prim · t = {erde['t_IE']:.2f} s")
-            with c2: _metric("50N/51N  IE>>", f"{erde['IEHH_sek']:.2f} A sek.", f"= {erde['IEHH_prim']:.1f} A prim · t = {erde['t_IEHH']:.2f} s")
+            with c1: _metric("50N/51N  IE>",  f"{de(erde['IE_sek'], 2)} A sek.", f"= {de(erde['IE_prim'], 1)} A prim · t = {de(erde['t_IE'], 2)} s")
+            with c2: _metric("50N/51N  IE>>", f"{de(erde['IEHH_sek'], 2)} A sek.", f"= {de(erde['IEHH_prim'], 1)} A prim · t = {de(erde['t_IEHH'], 2)} s")
 
         if u0["aktiv"]:
             net = "kompensiert" if u0["kompensiert"] else "isoliert"
-            cos = (f"<br>cos-φ-Stufe (wattmetrisch): {u0['cos_phi_pct']:.0f}% IE_kap · "
-                   f"t = {u0['t_cos_phi']:.1f} s — nur kompensiert" if u0["kompensiert"] else "")
+            cos = (f"<br>cos-φ-Stufe (wattmetrisch): {de(u0['cos_phi_pct'], 0)}% IE_kap · "
+                   f"t = {de(u0['t_cos_phi'], 1)} s — nur kompensiert" if u0["kompensiert"] else "")
             st.markdown(
                 f'<div class="info-box">🟢 <b>U0-Erdschlusserfassung aktiv ({net}es Netz)</b><br>'
-                f'U0&gt; Meldestufe: {u0["U0_Meld_pu"]*100:.0f}% UN/√3 = {u0["U0_Meld_V"]:.0f} V · t = {u0["t_Meld"]:.0f} s<br>'
-                f'U0&gt;&gt; Abschaltstufe: {u0["U0_Absch_pu"]*100:.0f}% UN/√3 = {u0["U0_Absch_V"]:.0f} V · t = {u0["t_Absch"]:.0f} s'
+                f'U0&gt; Meldestufe: {de(u0["U0_Meld_pu"]*100, 0)}% UN/√3 = {de(u0["U0_Meld_V"], 0)} V · t = {de(u0["t_Meld"], 0)} s<br>'
+                f'U0&gt;&gt; Abschaltstufe: {de(u0["U0_Absch_pu"]*100, 0)}% UN/√3 = {de(u0["U0_Absch_V"], 0)} V · t = {de(u0["t_Absch"], 0)} s'
                 f'{cos}<br><span style="font-size:0.78rem;color:#3a6b48">Hinweis: nicht im 7UT613 enthalten → '
                 f'separates 7SJ64 / zentrale Erdschlusserfassung. Quelle: FNN-Leitfaden.</span></div>',
                 unsafe_allow_html=True)
@@ -460,85 +416,107 @@ def show():
     umz = e["5051"]
     with _section("ANSI 50/51 — Überstromzeitschutz Phasen (OS + US)"):
         dfu = pd.DataFrame([
-            ("I> OS (51)",  f"{umz['f_I']:g}",       "I/InS", f"{umz['OS']['I_sek']:.4f}",   f"{umz['OS']['I_prim']:.1f}",   f"{umz['t_I']:.2f}"),
-            ("I>> OS (50)", f"{umz['f_IHH_OS']:g}",   "I/InS", f"{umz['OS']['IHH_sek']:.4f}", f"{umz['OS']['IHH_prim']:.1f}", f"{umz['t_IHH']:.2f}"),
-            ("I> US (51)",  f"{umz['f_I']:g}",        "I/InS", f"{umz['US']['I_sek']:.4f}",   f"{umz['US']['I_prim']:.1f}",   f"{umz['t_I']:.2f}"),
-            ("I>> US (50)", f"{umz['f_IHH_US']:g}",   "I/InS", f"{umz['US']['IHH_sek']:.4f}", f"{umz['US']['IHH_prim']:.1f}", f"{umz['t_IHH']:.2f}"),
-        ], columns=["Funktion", "Faktor", "Einheit", "I_Soll [A sek.]", "I_Soll [A prim.]", "t [s]"])
+            ("I> OS (51)",  f"{deg(umz['f_I'])}",       "I/InS", f"{de(umz['OS']['I_sek'], 4)}",   f"{de(umz['OS']['I_prim'], 1)}",   f"{de(umz['t_I'], 2)}",   "2015 (I/InS) bzw. 2014 (A) · t 2016"),
+            ("I>> OS (50)", f"{deg(umz['f_IHH_OS'])}",   "I/InS", f"{de(umz['OS']['IHH_sek'], 4)}", f"{de(umz['OS']['IHH_prim'], 1)}", f"{de(umz['t_IHH'], 2)}", "2012 (I/InS) bzw. 2011 (A) · t 2013"),
+            ("I> US (51)",  f"{deg(umz['f_I'])}",        "I/InS", f"{de(umz['US']['I_sek'], 4)}",   f"{de(umz['US']['I_prim'], 1)}",   f"{de(umz['t_I'], 2)}",   "2115 (I/InS) bzw. 2114 (A) · t 2116"),
+            ("I>> US (50)", f"{deg(umz['f_IHH_US'])}",   "I/InS", f"{de(umz['US']['IHH_sek'], 4)}", f"{de(umz['US']['IHH_prim'], 1)}", f"{de(umz['t_IHH'], 2)}", "2112 (I/InS) bzw. 2111 (A) · t 2113"),
+        ], columns=["Funktion", "Faktor", "Einheit", "I_Soll [A sek.]", "I_Soll [A prim.]", "t [s]", "DIGSI-Adresse"])
         st.dataframe(dfu, width="stretch", hide_index=True)
-        st.caption(f"I>> OS automatisch aus 1,2·Ik″ max US (Speiseseite, Empfehlung {umz['f_IHH_OS_emp']:g} ×IN). "
-                   "I>> US wird gegen die nachgelagerte Staffelung bemessen — beide Seiten getrennt einstellbar.")
-        st.caption(f"Rush-Stabilisierung Phasen (2. Harm.): {umz['rush_2H_pct']:.0f}% · "
+        st.caption("Je Stufe genau einen Ansprechwert eintragen: Bei Zuordnung des UMZ zu einer "
+                   "**Seite** des Hauptschutzobjekts (wie hier: UAMZ-PH 1 → OS-Seite, "
+                   "UAMZ-PH 2 → US-Seite) gilt der bezogene **Faktor** unter der I/InS-Adresse; "
+                   "bei Zuordnung zu einer Messstelle der **A-sek.-Wert** unter der A-Adresse "
+                   "(7UT613 Hdb. 2.4.2). Zeit jeweils unter Adr. t.")
+        st.caption(f"I>> OS automatisch aus 1,2·Ik″ max US (Speiseseite, Empfehlung {deg(umz['f_IHH_OS_emp'])} ×IN). "
+                   "I>> US wird gegen die nachgelagerte Staffelung bemessen, beide Seiten sind getrennt einstellbar.")
+        st.caption(f"Rush-Stabilisierung Phasen (2. Harm.): {de(umz['rush_2H_pct'], 0)}% · "
                    "UMZ = definite time (feste Verzögerung). AMZ-Kennlinie nach IEC 60255 als Erweiterung vorgesehen.")
 
     # ══════════════════════ BEMESSUNGS-ENGINEERING ══════════════════════
     b = e["bemessung"]
     with _section("Bemessungs-Engineering — Stufenwahl + Empfindlichkeit"):
-        st.caption("Kein Ersatz für eine vollständige Kurzschlussberechnung — verifiziert die "
+        st.caption("Kein Ersatz für eine vollständige Kurzschlussberechnung: verifiziert die "
                    "Stufenwahl gegen max. Last, Inrush und minimalen Fehlerstrom. Bezugsseite OS.")
         dfb = pd.DataFrame([
-            ("I_max_Last (OS)",            f"{b['I_max_Last_prim']:.1f} A prim.", "—", "Default 1,2 × IN_OS"),
-            ("I_k_min (Schutzgebiet-Ende)",f"{b['I_k_min_prim']:.0f} A prim.", "—", b['I_k_min_quelle']),
-            ("I> Empfehlung = k_S · I_max_Last", f"{b['I_emp_prim']:.1f} A prim.",
+            ("I_max_Last (OS)",            f"{de(b['I_max_Last_prim'], 1)} A prim.", "▫️ Eingangsgröße", "Default 1,2 × IN_OS"),
+            ("I_k_min (Schutzgebiet-Ende)",f"{de(b['I_k_min_prim'], 0)} A prim.", "▫️ Eingangsgröße", b['I_k_min_quelle']),
+            ("I> Empfehlung = k_S · I_max_Last", f"{de(b['I_emp_prim'], 1)} A prim.",
                 f"{_AMPEL_EMOJI[b['I_status']]} {b['I_status']}",
-                b['korr_I'] if b['korr_I'] else f"gewählt {b['I_gewaehlt_prim']:.1f} A ≥ Empfehlung ✓"),
-            ("I>> Empfehlung = max(k_S·Ik″ max US@OS ; Inrush·IN)", f"{b['IHH_emp_prim']:.0f} A prim.",
+                b['korr_I'] if b['korr_I'] else f"gewählt {de(b['I_gewaehlt_prim'], 1)} A ≥ Empfehlung ✓"),
+            ("I>> Empfehlung = max(k_S·Ik″ max US@OS ; Inrush·IN)", f"{de(b['IHH_emp_prim'], 0)} A prim.",
                 f"{_AMPEL_EMOJI[b['IHH_status']]} {b['IHH_status']}",
-                b['korr_IHH'] if b['korr_IHH'] else f"gewählt {b['IHH_gewaehlt_prim']:.0f} A ≥ Empfehlung ✓ · maßgebend: {b['massgebend']}"),
-            ("Empfindlichkeit I_k_min / I> ≥ γ", f"{b['empfind']:.2f}  (γ = {b['gamma']})",
+                b['korr_IHH'] if b['korr_IHH'] else f"gewählt {de(b['IHH_gewaehlt_prim'], 0)} A ≥ Empfehlung ✓ · maßgebend: {b['massgebend']}"),
+            ("Empfindlichkeit I_k_min / I> ≥ γ", f"{de(b['empfind'], 2)}  (γ = {deg(b['gamma'])})",
                 f"{_AMPEL_EMOJI[b['empfind_status']]} {b['empfind_status']}",
                 b['korr_emp'] if b['korr_emp'] else "I_k_min regt I> sicher an ✓"),
         ], columns=["Größe", "Wert", "Status", "Korrektur / Kommentar"])
         st.dataframe(dfb, width="stretch", hide_index=True)
+        st.caption("Die ersten beiden Zeilen sind Eingangs- bzw. Bezugsgrößen ohne "
+                   "Prüfcharakter (▫️). Bewertet werden die daraus abgeleitete Stufenwahl "
+                   "I>, I>> und die Empfindlichkeit (🟢/🟡/🔴).")
 
     # ══════════════════════ ANSI 49 (THERMISCH) + ANSI 46 (SCHIEFLAST) ══════════════════════
     b49, b46 = e["49"], e["46"]
     with _section("ANSI 49 (thermisch) + ANSI 46 (Schieflast)"):
         t1, t2, t3 = st.columns(3)
         with t1:
-            _metric("49  I_max_zul sek.", f"{b49['I_max_zul_sek']:.4f} A", f"= k × IN_OS_sek · k = {b49['k_Faktor']:.2f} {_AMPEL_EMOJI[b49['k_status']]}")
-            _metric("49  I_max_zul prim.", f"{b49['I_max_zul_prim']:.2f} A")
+            _metric("49  I_max_zul sek.", f"{de(b49['I_max_zul_sek'], 4)} A", f"= k × IN_OS_sek · k = {de(b49['k_Faktor'], 2)} {_AMPEL_EMOJI[b49['k_status']]}")
+            _metric("49  I_max_zul prim.", f"{de(b49['I_max_zul_prim'], 2)} A")
         with t2:
-            _metric("49  τ_th", f"{b49['tau_min']:.0f} min", f"= {b49['tau_s']:.0f} s  ← Einheit: MINUTEN!")
-            _metric("49  Θ-Warnstufe", f"{b49['Theta_Warn_pct']:.0f} %", f"I-Warn = {b49['I_Warn_sek']:.4f} A sek.")
+            _metric("49  τ_th", f"{de(b49['tau_min'], 0)} min", f"= {de(b49['tau_s'], 0)} s  ← Einheit: MINUTEN!")
+            _metric("49  Θ-Warnstufe", f"{de(b49['Theta_Warn_pct'], 0)} %", f"I-Warn = {de(b49['I_Warn_sek'], 4)} A sek.")
         with t3:
-            _metric("46  I2 zulässig sek.", f"{b46['I2_zul_sek']:.4f} A", f"= {b46['I2_zul_faktor']:.2f} × IN_OS_sek")
-            _metric("46  T-Warn I2", f"{b46['t_Warn_I2']:.0f} s", f"I2 prim. = {b46['I2_zul_prim']:.2f} A")
+            _metric("46  I2 zulässig sek.", f"{de(b46['I2_zul_sek'], 4)} A", f"= {de(b46['I2_zul_faktor'], 2)} × IN_OS_sek")
+            _metric("46  T-Warn I2", f"{de(b46['t_Warn_I2'], 0)} s", f"I2 prim. = {de(b46['I2_zul_prim'], 2)} A")
+        df4946 = pd.DataFrame([
+            ("49", "k-Faktor",     f"{de(b49['k_Faktor'], 2)}",       "× IN",  "Adr.4202"),
+            ("49", "τ thermisch",  f"{de(b49['tau_min'], 0)}",        "min",   "Adr.4203  ← MINUTEN!"),
+            ("49", "Θ-Warnstufe",  f"{de(b49['Theta_Warn_pct'], 0)}", "%",     "Adr.4204"),
+            ("49", "I-Warnstufe",  f"{de(b49['I_Warn_faktor'], 2)}",  "I/InS", "Adr.4205"),
+            ("46", "I2 zulässig",  f"{de(b46['I2_zul_faktor'], 2)}",  "I/InS", "Adr.4032 (bzw. 4031 in A sek.)"),
+            ("46", "T Warn",       f"{de(b46['t_Warn_I2'], 0)}",      "s",     "Adr.4033"),
+        ], columns=["ANSI", "Parameter", "Einstellwert", "Einheit", "DIGSI-Adresse"])
+        st.dataframe(df4946, width="stretch", hide_index=True)
+        st.caption("Eingetragen werden die bezogenen Einstellwerte der Tabelle; die "
+                   "Ampere-Angaben in den Kacheln sind Kontrollwerte. 46: bei Zuordnung zu "
+                   "einer Seite gilt Adr.4032 (I/InS), sonst Adr.4031 in A sek. "
+                   "(7UT613 Hdb. 2.8.2 und 2.9.2).")
 
     # ══════════════ ANSI 27/59/81/24 — SPANNUNGS- & FREQUENZSCHUTZ ══════════════
     f2759, f81, f24 = e["27_59"], e["81"], e["24"]
     with _section("ANSI 27/59/81/24 — Spannungs- und Frequenzschutz (nur VT-Variante)"):
         if not vt_vorhanden:
-            st.markdown('<div class="off-box">🔴 <b>Keine Spannungsmesseingänge (VT) aktiviert</b><br>'
-                        'Setze oben den Haken „Spannungsmesseingänge (VT) vorhanden". Ohne '
-                        'Spannungseingang sind 27, 59, 81 und 24 gerätetechnisch nicht möglich '
-                        '(7UT613 nur in der Variante mit Spannungseingang).</div>',
+            st.markdown('<div class="info-box">ℹ️ <b>Basisvariante ohne Spannungsmesseingänge (VT)</b><br>'
+                        'Die Funktionen 27, 59, 81 und 24 benötigen den Spannungseingang und sind '
+                        'in dieser Variante nicht aktiv. Falls die 7UT613-Variante mit Spannungseingang '
+                        'eingesetzt wird, oben den Haken „Spannungsmesseingänge (VT) vorhanden" setzen, '
+                        'dann werden diese Stufen berechnet.</div>',
                         unsafe_allow_html=True)
         else:
             if f2759["aktiv"]:
                 st.markdown("**ANSI 27/59 — Unter-/Überspannung** (verkettet, bez. auf UnS)")
                 st.dataframe(pd.DataFrame([{
                     "Stufe": s["name"],
-                    "Ansprechwert": f"{s['faktor']:.2f} × UnS",
-                    "= V sek.": f"{s['U_sek_V']:.1f} V",
+                    "Ansprechwert": f"{de(s['faktor'], 2)} × UnS",
+                    "= V sek.": f"{de(s['U_sek_V'], 1)} V",
                     "Adr. Ansprechwert": f"{s['adr_bez']} (bez.) / {s['adr_volt']} (V)",
-                    "t [s]": f"{s['t_s']:.2f}",
+                    "t [s]": f"{de(s['t_s'], 2)}",
                     "Adr. t": s["adr_t"],
                 } for s in f2759["stufen"]]), width="stretch", hide_index=True)
                 st.caption(f"Pro Stufe genau einen Ansprechwert eintragen: entweder den bezogenen "
                            f"Wert (× UnS) unter der bez.-Adresse ODER den V-sek.-Wert unter der "
                            f"V-Adresse, je nach Zuordnung (Seite → bezogen, Messstelle → Volt). "
-                           f"UnS = {f2759['UnS_V']:.0f} V. Zeit jeweils unter eigener Adr. t. "
-                           f"Rückfallverhältnis {f2759['rueckfall']:.2f} (Adr.5217 bzw. 5317).")
+                           f"UnS = {de(f2759['UnS_V'], 0)} V. Zeit jeweils unter eigener Adr. t. "
+                           f"Rückfallverhältnis {de(f2759['rueckfall'], 2)} (Adr.5217 bzw. 5317).")
             else:
                 st.markdown(f'<div class="off-box">🔴 <b>27/59 deaktiviert</b><br>{f2759["grund"]}</div>',
                             unsafe_allow_html=True)
 
             if f81["aktiv"]:
-                st.markdown(f"**ANSI 81 — Frequenzschutz** (fN = {f81['fN_Hz']:.0f} Hz, 3×f< + 1×f>)")
+                st.markdown(f"**ANSI 81 — Frequenzschutz** (fN = {de(f81['fN_Hz'], 0)} Hz, 3×f< + 1×f>)")
                 st.dataframe(pd.DataFrame([{
-                    "Stufe": s["name"], "f [Hz]": f"{s['f_Hz']:.2f}", "Adr. f": s["adr_f"],
-                    "t [s]": f"{s['t_s']:.2f}", "Adr. t": s["adr_t"],
+                    "Stufe": s["name"], "f [Hz]": f"{de(s['f_Hz'], 2)}", "Adr. f": s["adr_f"],
+                    "t [s]": f"{de(s['t_s'], 2)}", "Adr. t": s["adr_t"],
                 } for s in f81["stufen"]]), width="stretch", hide_index=True)
                 st.caption("Frequenzwert in Hz unter Adr. f, Zeit unter Adr. t. Frequenz aus der "
                            "Messspannung. Unterfrequenzstufe auf 0 = unwirksam, Überfrequenzstufe "
@@ -551,14 +529,14 @@ def show():
                 st.markdown("**ANSI 24 — Übererregungsschutz U/f** (Schutz vor Eisensättigung)")
                 cu1, cu2 = st.columns(2)
                 with cu1:
-                    _metric("U/f > (Warnstufe)", f"{f24['Uf_gt']:.2f}",
-                            f"dimensionslos · Adr.4302 · t = {f24['t_Uf_gt']:.0f} s (Adr.4303)")
+                    _metric("U/f > (Warnstufe)", f"{de(f24['Uf_gt'], 2)}",
+                            f"dimensionslos · Adr.4302 · t = {de(f24['t_Uf_gt'], 0)} s (Adr.4303)")
                 with cu2:
-                    _metric("U/f >> (Schnellstufe)", f"{f24['Uf_gtgt']:.2f}",
-                            f"dimensionslos · Adr.4304 · t = {f24['t_Uf_gtgt']:.1f} s (Adr.4305)")
+                    _metric("U/f >> (Schnellstufe)", f"{de(f24['Uf_gtgt'], 2)}",
+                            f"dimensionslos · Adr.4304 · t = {de(f24['t_Uf_gtgt'], 1)} s (Adr.4305)")
                 st.caption(f"U/f ist das auf den Nennwert bezogene Verhältnis (U/UN)/(f/fN) und ein "
-                           f"direktes Maß für die Eiseninduktion B/BN. Der Wert {f24['Uf_gt']:.2f} "
-                           f"bedeutet Auslösung bei {f24['Uf_gt']*100:.0f} % der Nenninduktion und "
+                           f"direktes Maß für die Eiseninduktion B/BN. Der Wert {de(f24['Uf_gt'], 2)} "
+                           f"bedeutet Auslösung bei {de(f24['Uf_gt']*100, 0)} % der Nenninduktion und "
                            f"wird ohne weitere Umrechnung direkt unter Adr.4302 eingetippt "
                            f"(7UT613 Hdb. 2.11.2). {f24['hinweis_kennlinie']}")
             else:
@@ -576,16 +554,16 @@ def show():
             st.markdown(f"**Stromflussbasiert · {modus}**")
             cb1, cb2, cb3 = st.columns(3)
             with cb1:
-                _metric("Stromschwelle I>", f"{bf['I_BF_faktor']:.2f} × IN",
-                        f"OS {bf['I_BF_OS_prim_A']:.1f} A · US {bf['I_BF_US_prim_A']:.1f} A prim.")
+                _metric("Stromschwelle I>", f"{de(bf['I_BF_faktor'], 2)} × IN",
+                        f"OS {de(bf['I_BF_OS_prim_A'], 1)} A · US {de(bf['I_BF_US_prim_A'], 1)} A prim.")
             with cb2:
-                t1txt = f"{bf['T1_s']:.3f} s" if bf["T1_s"] is not None else "∞ (nicht genutzt)"
+                t1txt = f"{de(bf['T1_s'], 3)} s" if bf["T1_s"] is not None else "∞ (nicht genutzt)"
                 _metric("T1 (AUS-lokal)", t1txt, "Adr.7015")
             with cb3:
-                _metric("T2 (AUS-Sammelschiene)", f"{bf['T2_s']:.3f} s", "Adr.7016")
+                _metric("T2 (AUS-Sammelschiene)", f"{de(bf['T2_s'], 3)} s", "Adr.7016")
             zb = bf["zeitbilanz"]
-            st.caption(f"Zeitbilanz T2: t LS-Aus {zb['t_LS_aus']:.3f} s + t Rückfall "
-                       f"{zb['t_Rueckfall']:.3f} s + t Sicherheit {zb['t_Sicherheit']:.3f} s. "
+            st.caption(f"Zeitbilanz T2: t LS-Aus {de(zb['t_LS_aus'], 3)} s + t Rückfall "
+                       f"{de(zb['t_Rueckfall'], 3)} s + t Sicherheit {de(zb['t_Sicherheit'], 3)} s. "
                        "Stromschwelle sicher über Laststrom-Rückfall (7UT613 Hdb. 2.17).")
 
     # ══════════════════════ PLAUSIBILITÄTSPRÜFUNG (AMPEL) ══════════════════════
@@ -608,7 +586,7 @@ def show():
             "Funktion": x["funktion"], "Ziel-Objekt": x["ziel"],
             "I> [A sek.]": x["I_sek"], "t> [s]": x["t"],
             "I>> [A sek.]": x["IHH_sek"], "t>> [s]": x["tHH"],
-            "Siemens-Adresse": x["adresse"],
+            "DIGSI-Adresse": x["adresse"],
         } for x in rsv])
         st.dataframe(dfr, width="stretch", hide_index=True)
         st.caption("Hinweis: bei 'Überlast 49' ist die Spalte t> die Zeitkonstante τ in MINUTEN (nicht Sekunden).")
@@ -618,68 +596,73 @@ def show():
         eg = e["erdschluss_geraet"]
         st.markdown(f"**Empfohlenes Gerät:** {eg['geraet']}")
         st.markdown(f"**Begründung:** {eg['grund']}")
+        if eg.get("schaltgruppe"):
+            st.markdown(f"**Schaltgruppe:** {eg['schaltgruppe']}")
 
     # ══════════════════════ HERSTELLERNEUTRALE SOLLWERT-TABELLE ══════════════════════
     with _section("📋  Herstellerneutrale Sollwert-Tabelle (DIGSI-Adressen)"):
-        rows = []
+        rows = [("—", "Schaltgruppe (Anlagendatum)", vg, "—",
+                 "SCHALT.ART Adr.314 (S1) / 324 (S2) · SCHALTGRUPPE Adr.325 (S2)")]
         for x in r["rows"]:
-            sek = f"{x['wert_sek']:.4f}" if x["wert_sek"] is not None else f"{x['faktor']:g}"
-            rows.append(("87T", x["name"], sek, x["einheit"], f"7UT613: {x['adresse']}"))
+            kontrolle = f" · = {de(x['wert_sek'], 4)} A sek." if x["wert_sek"] is not None else ""
+            rows.append(("87T", x["name"], f"{deg(x['faktor'])}", x["einheit"],
+                         f"7UT613: {x['adresse']}{kontrolle}"))
         rows += [
-            ("50/51", "I> Phase OS",  f"{umz['OS']['I_sek']:.4f}",  "A sek.", "Adr.2011 / t 2013"),
-            ("50/51", "I>> Phase OS", f"{umz['OS']['IHH_sek']:.4f}", "A sek.", "Adr.2014 / t 2016"),
-            ("50/51", "I> Phase US",  f"{umz['US']['I_sek']:.4f}",  "A sek.", "Adr.2011 / t 2013 (Seite 2)"),
-            ("50/51", "I>> Phase US", f"{umz['US']['IHH_sek']:.4f}", "A sek.", "Adr.2014 / t 2016 (Seite 2)"),
-            ("49", "k-Faktor",  f"{b49['k_Faktor']:.2f}", "x IN", "Adr.4202"),
-            ("49", "τ thermisch", f"{b49['tau_min']:.0f}", "min", "Adr.4203  ← MINUTEN!"),
-            ("49", "Θ-Warnstufe", f"{b49['Theta_Warn_pct']:.0f}", "%", "Adr.4204"),
-            ("46", "I2 zulässig", f"{b46['I2_zul_faktor']:.2f}", "I/InS", "Adr.4032 / t 4033"),
+            ("50/51", "I> Phase OS",  f"{de(umz['OS']['I_sek'], 4)}",  "A sek.", "Adr.2014 (A) bzw. 2015 (I/InS) / t 2016"),
+            ("50/51", "I>> Phase OS", f"{de(umz['OS']['IHH_sek'], 4)}", "A sek.", "Adr.2011 (A) bzw. 2012 (I/InS) / t 2013"),
+            ("50/51", "I> Phase US",  f"{de(umz['US']['I_sek'], 4)}",  "A sek.", "Adr.2114 (A) bzw. 2115 (I/InS) / t 2116 (U/AMZ-Phase 2)"),
+            ("50/51", "I>> Phase US", f"{de(umz['US']['IHH_sek'], 4)}", "A sek.", "Adr.2111 (A) bzw. 2112 (I/InS) / t 2113 (U/AMZ-Phase 2)"),
+            ("49", "k-Faktor",  f"{de(b49['k_Faktor'], 2)}", "x IN", "Adr.4202"),
+            ("49", "τ thermisch", f"{de(b49['tau_min'], 0)}", "min", "Adr.4203  ← MINUTEN!"),
+            ("49", "Θ-Warnstufe", f"{de(b49['Theta_Warn_pct'], 0)}", "%", "Adr.4204"),
+            ("46", "I2 zulässig", f"{de(b46['I2_zul_faktor'], 2)}", "I/InS", "Adr.4032 / t 4033"),
         ]
         if erde["anwendbar"]:
             rows += [
-                ("50N/51N", "IE>",  f"{erde['IE_sek']:.2f}",  "A sek.", "Adr.2413 / t 2414"),
-                ("50N/51N", "IE>>", f"{erde['IEHH_sek']:.2f}", "A sek.", "Adr.2411 / t 2412"),
+                ("50N/51N", "IE>",  f"{de(erde['IE_sek'], 2)}",  "A sek.", "Adr.2413 / t 2414"),
+                ("50N/51N", "IE>>", f"{de(erde['IEHH_sek'], 2)}", "A sek.", "Adr.2411 / t 2412"),
             ]
         if f87n["aktiv"]:
-            rows.append(("87N", "I-EDS>", f"{f87n['I_EDS_sek_A']:.4f}", "A sek.", "Adr.1311"))
+            rows.append(("87N", "I-EDS>", f"{de(f87n['I_EDS_faktor'], 2)}", "I/InS",
+                         f"Adr.1311 · = {de(f87n['I_EDS_sek_A'], 4)} A sek."))
         else:
             rows.append(("87N", "EDS", "— DEAKTIVIERT —", "–", "isoliert/kompensiert → U0-Verfahren"))
         if u0["aktiv"]:
             rows += [
-                ("U0", "U0> Meldung",   f"{u0['U0_Meld_V']:.0f}",  "V", f"7SJ64 · t = {u0['t_Meld']:.0f} s"),
-                ("U0", "U0>> Abschalt", f"{u0['U0_Absch_V']:.0f}", "V", f"7SJ64 · t = {u0['t_Absch']:.0f} s"),
+                ("U0", "U0> Meldung",   f"{de(u0['U0_Meld_V'], 0)}",  "V", f"7SJ64 · t = {de(u0['t_Meld'], 0)} s"),
+                ("U0", "U0>> Abschalt", f"{de(u0['U0_Absch_V'], 0)}", "V", f"7SJ64 · t = {de(u0['t_Absch'], 0)} s"),
             ]
         # 27/59 Spannung: pro Stufe der bezogene Sollwert + Volt-Äquivalent, beide Adressen
         if f2759["aktiv"]:
             for s in f2759["stufen"]:
                 ansi = s["name"].split()[0]
                 rows.append((ansi, s["name"].split(maxsplit=1)[1],
-                             f"{s['faktor']:.2f}  ({s['U_sek_V']:.0f} V sek.)", "× UnS",
-                             f"Adr.{s['adr_bez']} bez. / {s['adr_volt']} V · t {s['adr_t']} = {s['t_s']:.2f} s"))
+                             f"{de(s['faktor'], 2)}  ({de(s['U_sek_V'], 0)} V sek.)", "× UnS",
+                             f"Adr.{s['adr_bez']} bez. / {s['adr_volt']} V · t {s['adr_t']} = {de(s['t_s'], 2)} s"))
         # 81 Frequenz: pro Stufe Hz-Wert + Adressen
         if f81["aktiv"]:
             for s in f81["stufen"]:
                 ansi = s["name"].split()[0]
-                rows.append((ansi, s["name"].split(maxsplit=1)[1], f"{s['f_Hz']:.1f}", "Hz",
-                             f"Adr.{s['adr_f']} · t {s['adr_t']} = {s['t_s']:.2f} s"))
+                rows.append((ansi, s["name"].split(maxsplit=1)[1], f"{de(s['f_Hz'], 1)}", "Hz",
+                             f"Adr.{s['adr_f']} · t {s['adr_t']} = {de(s['t_s'], 2)} s"))
         # 24 Übererregung: dimensionsloser Direkteinstellwert
         if f24["aktiv"]:
             rows += [
-                ("24", "U/f >",  f"{f24['Uf_gt']:.2f}",  "dimensionslos",
-                 f"Adr.4302 · t 4303 = {f24['t_Uf_gt']:.0f} s · = {f24['Uf_gt']*100:.0f} % Nenninduktion"),
-                ("24", "U/f >>", f"{f24['Uf_gtgt']:.2f}", "dimensionslos",
-                 f"Adr.4304 · t 4305 = {f24['t_Uf_gtgt']:.1f} s"),
+                ("24", "U/f >",  f"{de(f24['Uf_gt'], 2)}",  "dimensionslos",
+                 f"Adr.4302 · t 4303 = {de(f24['t_Uf_gt'], 0)} s · = {de(f24['Uf_gt']*100, 0)} % Nenninduktion"),
+                ("24", "U/f >>", f"{de(f24['Uf_gtgt'], 2)}", "dimensionslos",
+                 f"Adr.4304 · t 4305 = {de(f24['t_Uf_gtgt'], 1)} s"),
             ]
         # 50BF: Stromschwelle je Seite + Zeitstufen
         if bf["aktiv"]:
             rows += [
-                ("50BF", "I> Stromfluss OS", f"{bf['I_BF_OS_sek_A']:.3f}", "A sek.",
-                 f"LS-I> Stromflussüberw. ({bf['I_BF_faktor']:.2f} × IN)"),
-                ("50BF", "I> Stromfluss US", f"{bf['I_BF_US_sek_A']:.3f}", "A sek.",
-                 f"LS-I> Stromflussüberw. ({bf['I_BF_faktor']:.2f} × IN)"),
+                ("50BF", "I> Stromfluss OS", f"{de(bf['I_BF_OS_sek_A'], 3)}", "A sek.",
+                 f"LS-I> Stromflussüberw. ({de(bf['I_BF_faktor'], 2)} × IN)"),
+                ("50BF", "I> Stromfluss US", f"{de(bf['I_BF_US_sek_A'], 3)}", "A sek.",
+                 f"LS-I> Stromflussüberw. ({de(bf['I_BF_faktor'], 2)} × IN)"),
             ]
             if bf["T1_s"] is not None:
-                rows.append(("50BF", "T1 (AUS-lokal)", f"{bf['T1_s']:.3f}", "s", "Adr.7015"))
-            rows.append(("50BF", "T2 (AUS-Sammelschiene)", f"{bf['T2_s']:.3f}", "s", "Adr.7016"))
-        dft = pd.DataFrame(rows, columns=["ANSI", "Parameter", "Sollwert", "Einheit", "Hinweis / Adresse"])
+                rows.append(("50BF", "T1 (AUS-lokal)", f"{de(bf['T1_s'], 3)}", "s", "Adr.7015"))
+            rows.append(("50BF", "T2 (AUS-Sammelschiene)", f"{de(bf['T2_s'], 3)}", "s", "Adr.7016"))
+        dft = pd.DataFrame(rows, columns=["ANSI", "Parameter", "Sollwert", "Einheit", "Hinweis / DIGSI-Adresse"])
         st.dataframe(dft, width="stretch", hide_index=True)

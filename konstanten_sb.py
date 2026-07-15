@@ -2,7 +2,8 @@
 konstanten_sb.py — Voreinstellungen, Adressen und Plausibilitäts-Schwellwerte (Sammelschiene)
 Herstellerneutrales Schutz-Engineering-Tool | HSU Hamburg
 
-Single Source of Truth für alle SIPROTEC-Werksvoreinstellungen, Engineering-Margen
+Single Source of Truth für die SIPROTEC-Voreinstellungen des Tools (Werksvor-
+einstellungen, abweichende Tool-Vorgaben sind gekennzeichnet), Engineering-Margen
 und Plausibilitätsgrenzen des Sammelschienen-Tabs. Alle Werte sind frei änderbar.
 
 Leitgerät:
@@ -20,7 +21,7 @@ Architekturhinweis (relevant für die Adressierung):
   (Adr. 11xx / 12xx / 15xx, je Abzweig).
 
 Quellen: SIPROTEC 7SS52 V4 Handbuch C53000-G1100-C182-8 (Ausgabe 2019),
-         IEC 60255-187-3 (Differentialschutz), IEC 60255-151 (UMZ/AMZ).
+         IEC 60255-187-1 (Differentialschutz), IEC 60255-151 (UMZ/AMZ).
 
 Hinweis: Alle Adressen wurden gegen die Parameterübersichten und Einstellhinweise
 des 7SS52-Handbuchs verifiziert (Inline-Adressangaben). Keine Adresse aus dem
@@ -340,11 +341,11 @@ HERST = {
         "adr":   "Stab.Faktor SS Adr.6101 (ZE)",
         "grund": ("Stabilisierungsfaktor der schienenselektiven Kennlinie. Bestimmt die "
                   "Neigung der Auslösekennlinie Id = f(Is) und damit die Stabilität bei "
-                  "Wandlerfehlern durchfliessenden Stromes. 0,65 deckt den üblichen "
+                  "Wandlerfehlern durchfließenden Stromes. 0,65 deckt den üblichen "
                   "Bebürdungsfaktor ab (7SS52 Hdb. 5.1.4)."),
     },
     "id_ss": {
-        "range": "0,20 ... 4,00 x Ino  (Voreinst. 1,00); 1,3 x Imax Abzw. < Id> SS < 0,8 x Iscc min",
+        "range": "0,20 ... 4,00 x Ino  (Voreinst. 1,00) · 1,3 x Imax Abzw. < Id> SS < 0,8 x Iscc min",
         "adr":   "Id> SS Adr.6102 (ZE)",
         "grund": ("Ansprechwert des Differentialstroms der selektiven Zone, bezogen auf den "
                   "Zonen-Bezugsstrom Ino. Untergrenze 1,3 x größter Abzweigstrom (Stabilität), "
@@ -360,7 +361,7 @@ HERST = {
                   "vermeiden (7SS52 Hdb. 5.1.4)."),
     },
     "id_cz": {
-        "range": "0,20 ... 4,00 x Ino  (Voreinst. 1,00); 1,3 x Imax Abzw. < Id> CZ < 0,8 x Iscc min",
+        "range": "0,20 ... 4,00 x Ino  (Voreinst. 1,00) · 1,3 x Imax Abzw. < Id> CZ < 0,8 x Iscc min",
         "adr":   "Id> CZ Adr.6104 (ZE)",
         "grund": ("Ansprechwert des Differentialstroms der Checkzone. Die Checkzone gibt die "
                   "selektive Zone frei und erfasst den Gesamt-Sammelschienenfehler ohne "
@@ -384,11 +385,11 @@ HERST = {
         "adr":   "Empf. Kennl. Adr.6320A (ZE)",
         "grund": ("Schaltet eine empfindlichere Kennlinie mit abgesenktem Differential-Schwellwert "
                   "frei. Sinnvoll, wenn schwache Einspeisung oder die Sternpunktbehandlung nur "
-                  "kleine Fehlerströme erzeugt; dann ist durch Zusatzkriterien die Stabilität "
+                  "kleine Fehlerströme erzeugt. Dann ist durch Zusatzkriterien die Stabilität "
                   "sicherzustellen (7SS52 Hdb. 5.1.4)."),
     },
     "is_ss_empf": {
-        "range": "0,00 ... 25,00 x Ino  (Voreinst. 5,00); 1,2 x (Imax Last + IEF)",
+        "range": "0,00 ... 25,00 x Ino  (Voreinst. 5,00) · 1,2 x (Imax Last + IEF)",
         "adr":   "Is< SS empf. KL Adr.6108A (ZE)",
         "grund": ("Grenzwert des Stabilisierungsstroms der selektiven Zone bei empfindlicher "
                   "Kennlinie. Unterhalb dieses Stabilisierungsstroms gilt der abgesenkte "
@@ -396,14 +397,14 @@ HERST = {
                   "(7SS52 Hdb. 5.1.4). Nur sichtbar bei freigegebener Empf. Kennl."),
     },
     "id_ss_empf": {
-        "range": "0,05 ... 4,00 x Ino  (Voreinst. 0,25); ca. 0,7 x Iscc min",
+        "range": "0,05 ... 4,00 x Ino  (Voreinst. 0,25) · ca. 0,7 x Iscc min",
         "adr":   "Id> SS empf. KL Adr.6109A (ZE)",
         "grund": ("Abgesenkter Differential-Schwellwert der selektiven Zone für kleine "
                   "Fehlerströme. Empfehlung 70 % des kleinsten zu erwartenden Fehlerstroms "
                   "(7SS52 Hdb. 5.1.4). Nur sichtbar bei freigegebener Empf. Kennl."),
     },
     "is_cz_empf": {
-        "range": "0,00 ... 25,00 x Ino  (Voreinst. 4,50); 1,2 x 0,5 x Imax Last",
+        "range": "0,00 ... 25,00 x Ino  (Voreinst. 4,50) · 1,2 x 0,5 x Imax Last",
         "adr":   "Is< CZ empf. KL Adr.6110A (ZE)",
         "grund": ("Grenzwert des Stabilisierungsstroms der Checkzone bei empfindlicher Kennlinie. "
                   "Wegen der Sonderbehandlung des Checkzonen-Stabilisierungsstroms auf "
@@ -411,7 +412,7 @@ HERST = {
                   "Nur sichtbar bei freigegebener Empf. Kennl."),
     },
     "id_cz_empf": {
-        "range": "0,05 ... 4,00 x Ino  (Voreinst. 0,25); ca. 0,7 x Iscc min",
+        "range": "0,05 ... 4,00 x Ino  (Voreinst. 0,25) · ca. 0,7 x Iscc min",
         "adr":   "Id> CZ empf. KL Adr.6111A (ZE)",
         "grund": ("Abgesenkter Differential-Schwellwert der Checkzone. Empfehlung 70 % des "
                   "kleinsten zu erwartenden Fehlerstroms (7SS52 Hdb. 5.2). "
@@ -444,7 +445,7 @@ HERST = {
                  "(Voreinst. Verstimmung)",
         "adr":   "SVS-Betriebsart Adr.115 (je Feldeinheit)",
         "grund": ("Betriebsart des Schalterversagerschutzes. Verstimmung wertet den fortbestehenden "
-                  "Differentialstrom aus; die AUS-Wied-Varianten setzen zunächst eine "
+                  "Differentialstrom aus. Die AUS-Wied-Varianten setzen zunächst eine "
                   "Auswiederholung auf den eigenen Leistungsschalter ab (zweistufig) "
                   "(7SS52 Hdb. 5.3.5)."),
     },
@@ -459,11 +460,11 @@ HERST = {
         "range": "1polig (Voreinst.) / 3polig",
         "adr":   "AUS-Wiederh. Adr.117 (je Feldeinheit)",
         "grund": ("Polzahl der AUS-Wiederholung auf den eigenen Schalter. 1-polig nur bei "
-                  "1-poligem Anstoss und 1-pol-fähigem Schalter; sonst 3-polig "
+                  "1-poligem Anstoß und 1-pol-fähigem Schalter, sonst 3-polig "
                   "(7SS52 Hdb. 5.3.5)."),
     },
     "i_svs": {
-        "range": "0,10 ... 2,00 x In  (Voreinst. 0,50); ca. 0,5 x Iscc min",
+        "range": "0,10 ... 2,00 x In  (Voreinst. 0,50) · ca. 0,5 x Iscc min",
         "adr":   "I> SVS Adr.118 (je Feldeinheit)",
         "grund": ("Stromschwelle, ab der ein anhaltender Stromfluss als Schalterversagen gewertet "
                   "wird. Empfehlung ca. 50 % des kleinsten zu erwartenden Kurzschlussstroms "
@@ -476,14 +477,14 @@ HERST = {
                   "stromschwache Fehler (7SS52 Hdb. 5.3.1)."),
     },
     "t_svs_1p": {
-        "range": "0,05 ... 10,00 s  (Voreinst. 0,25); ca. 2 x Ausschaltzeit LS",
+        "range": "0,05 ... 10,00 s  (Voreinst. 0,25) · ca. 2 x Ausschaltzeit LS",
         "adr":   "T-SVS-1P Adr.120 (je Feldeinheit)",
         "grund": ("Verzögerung von AUS-Kommando und Mitnahme bei 1-poligem Fehler. Einstufig: "
-                  "etwa das Doppelte der Ausschaltzeit des Leistungsschalters; zweistufig größer "
+                  "etwa das Doppelte der Ausschaltzeit des Leistungsschalters, zweistufig größer "
                   "als T-AUS-Wiederh. plus LS-Ausschaltzeit (7SS52 Hdb. 5.3.2)."),
     },
     "t_svs_mp": {
-        "range": "0,05 ... 10,00 s  (Voreinst. 0,25); ca. 2 x Ausschaltzeit LS",
+        "range": "0,05 ... 10,00 s  (Voreinst. 0,25) · ca. 2 x Ausschaltzeit LS",
         "adr":   "T-SVS-mP Adr.121 (je Feldeinheit)",
         "grund": ("Verzögerung von AUS-Kommando und Mitnahme bei mehrpoligem Fehler. Bemessung "
                   "wie T-SVS-1P (7SS52 Hdb. 5.3.2)."),
@@ -507,7 +508,7 @@ HERST = {
                   "Leistungsschalters dieses Abzweigs (7SS52 Hdb. 5.3.5)."),
     },
     "t_aus_wiederh": {
-        "range": "0,00 ... 10,00 s  (Voreinst. 0,12); kleiner als T-SVS-1P / T-SVS-mP",
+        "range": "0,00 ... 10,00 s  (Voreinst. 0,12) · kleiner als T-SVS-1P / T-SVS-mP",
         "adr":   "T-AUS-Wiederh. Adr.125 (je Feldeinheit)",
         "grund": ("Verzögerung der abzweigselektiven AUS-Wiederholung (1. Stufe auf den eigenen "
                   "Schalter). Muss kleiner als die SVS-Verzögerungszeiten T-SVS-1P/mP eingestellt "
@@ -522,7 +523,7 @@ HERST = {
     "t_svs_frto": {
         "range": "0,06 ... 1,00 s  (Voreinst. 0,06)",
         "adr":   "T-SVS-FrTo Adr.128 (je Feldeinheit)",
-        "grund": ("Zeitfenster, innerhalb dessen ab Anstoss das Freigabesignal vorliegen muss "
+        "grund": ("Zeitfenster, innerhalb dessen ab Anstoß das Freigabesignal vorliegen muss "
                   "(7SS52 Hdb. 5.3.2)."),
     },
     "stab_faktor_svs": {
@@ -565,7 +566,7 @@ HERST = {
         "range": "0,05 ... 25,00 x In  (Voreinst. 2,00)",
         "adr":   "I>> Adr.1202 (FE)",
         "grund": ("Phasen-Hochstromstufe des Reserve-Überstromzeitschutzes. Oberhalb der "
-                  "Überstromstufe I> einzustellen; dient als unverzögerte Reserve bei "
+                  "Überstromstufe I> einzustellen. Sie dient als unverzögerte Reserve bei "
                   "nahen Fehlern (7SS52 Hdb. 5.11)."),
     },
     "t_iph_hh": {
@@ -643,7 +644,7 @@ HERST = {
         "range": "1,00 ... 180,00 s  (Voreinst. 7,00)",
         "adr":   "TR-Laufzeit Adr.6301 (ZE)",
         "grund": ("Maximale Trenner-Laufzeit. Überwacht, dass die Trenner-Stellungsmeldungen "
-                  "innerhalb dieser Zeit plausibel werden; länger als die langsamste "
+                  "innerhalb dieser Zeit plausibel werden. Bemessung länger als die langsamste "
                   "Trennerbewegung (7SS52 Hdb. 5.9)."),
     },
     "id_ueberw": {

@@ -19,112 +19,36 @@ import konstanten_sb as KS
 from calc_sb import berechne_alle
 from utils import de
 
-
-# -- Farbkodierung (identisch zu den uebrigen Tabs) ---------------------------
-_CSS = """
-<style>
-[data-testid="stExpander"] summary {
-    background: #2E5A87 !important; border-radius: 6px !important; padding: 5px 12px !important;
-}
-[data-testid="stExpander"] summary:hover { background: #27496e !important; }
-[data-testid="stExpander"] summary,
-[data-testid="stExpander"] summary p,
-[data-testid="stExpander"] summary span {
-    color: #ffffff !important; font-weight: 600 !important; font-size: 0.92rem !important;
-}
-[data-testid="stExpander"] summary svg { fill: #ffffff !important; color: #ffffff !important; }
-[data-testid="stExpander"] details { border: none !important; }
-.result-box { background: #eef3f8; color: #14203a; border-left: 4px solid #2E5A87;
-    border-radius: 6px; padding: 10px 14px; margin-bottom: 8px; }
-.result-box .val { font-size: 1.2rem; font-weight: 700; color: #14203a; font-family: monospace; }
-.result-box .lbl { font-size: 0.76rem; color: #43526b; }
-.result-box .sub { font-size: 0.74rem; color: #5d6b82; margin-top: 2px; }
-.warn-box { background: #fff4d6; color: #5b4a00; border-left: 4px solid #f4a800;
-    border-radius: 6px; padding: 10px 14px; font-size: 0.86rem; margin-bottom: 8px; }
-.off-box { background: #fbe3ea; color: #7a0024; border-left: 4px solid #A50034;
-    border-radius: 6px; padding: 10px 14px; font-size: 0.86rem; margin-bottom: 8px; }
-.off-box b { color: #A50034; }
-.info-box { background: #e7f3ec; color: #14502b; border-left: 4px solid #2e7d32;
-    border-radius: 6px; padding: 10px 14px; font-size: 0.86rem; margin-bottom: 8px; }
-.pill { display:inline-block; padding:2px 9px; border-radius:11px; font-size:0.75rem; font-weight:700; }
-.pill-ok   { background:#d6f0dc; color:#1d6b32; }
-.pill-warn { background:#fdeccb; color:#8a5b00; }
-.pill-bad  { background:#fad3dc; color:#a3002b; }
-.pill-na   { background:#e6e9ee; color:#5d6b82; }
-</style>
-"""
-
-_AMPEL_EMOJI = {"OK": "🟢", "Hinweis": "🟡", "Prüfen!": "🔴", "Fehlt": "⚫", "—": "▫️"}
-_PILL_CLASS  = {"OK": "pill-ok", "Hinweis": "pill-warn", "Prüfen!": "pill-bad",
-                "Fehlt": "pill-na", "—": "pill-na"}
-
-
-def _metric(label, value, sub=""):
-    st.markdown(
-        f'<div class="result-box"><div class="lbl">{label}</div>'
-        f'<div class="val">{value}</div>'
-        + (f'<div class="sub">{sub}</div>' if sub else "") + "</div>",
-        unsafe_allow_html=True)
-
-
-def _section(title, expanded=True):
-    return st.expander(title, expanded=expanded)
+from utils import AMPEL_EMOJI as _AMPEL_EMOJI
+from ui import inject_css, metric as _metric, section as _section, pill as _pill, hreg
+from ui import grphead as _grphead, pin as _pin
 
 
 def _hreg(key):
-    h = KS.HERST.get(key)
-    if not h:
-        return
-    adr_pin = (f'<br>📍 <b>Eintragen unter:</b> {h["adr"]}' if h.get("adr") else '')
-    st.markdown(
-        f'<div style="font-size:0.72rem;color:#5d6b82;margin:-6px 0 10px;line-height:1.25;">'
-        f'<b>Hersteller:</b> {h["range"]}<br>{h["grund"]}{adr_pin}</div>',
-        unsafe_allow_html=True)
-
-
-def _pin(adr):
-    """Schlanker Adress-Pin unter einem Eingabefeld (nur reine Ein/Aus-Schalter)."""
-    if not adr:
-        return
-    st.markdown(
-        f'<div style="font-size:0.72rem;color:#5d6b82;margin:-6px 0 10px;">'
-        f'📍 <b>Eintragen unter:</b> Adr.{adr}</div>',
-        unsafe_allow_html=True)
-
-
-def _grphead(title):
-    st.markdown(
-        f'<div style="font-weight:700;font-size:0.97rem;margin:18px 0 8px;'
-        f'padding-bottom:4px;border-bottom:2px solid #2E5A87;">{title}</div>',
-        unsafe_allow_html=True)
-
-
-def _pill(status, count):
-    cls = _PILL_CLASS.get(status, "pill-na")
-    emj = _AMPEL_EMOJI.get(status, "")
-    return f'<span class="pill {cls}">{emj} {status}: {count}</span>'
+    """Hersteller-Hinweis unter einem Regler (nutzt das modul-lokale HERST-Dict)."""
+    hreg(KS.HERST, key)
 
 
 # -- Hauptfunktion ------------------------------------------------------------
 
 def show():
-    st.markdown(_CSS, unsafe_allow_html=True)
+    inject_css()
 
     # ====================== EINGABEN ======================
     with _section("Eingaben — Grunddaten, Wandler, Netz"):
         ci1, ci2, ci3 = st.columns(3, gap="medium")
         with ci1:
             st.caption("**Sammelschienen-Grunddaten**")
-            UN = st.number_input("UN — Bemessungsspannung [kV]", 0.4, value=20.0, step=1.0,
-                                 format="%.1f", key="sb_un")
+            UN = st.number_input("UN — Bemessungsspannung [kV]", 0.4, value=None, step=1.0,
+                                 format="%.1f", key="sb_un", placeholder="z. B. 20")
             topo = st.selectbox("Sammelschienen-Topologie", KS.SB_TOPOLOGIE_OPTIONEN, index=1,
                                 key="sb_topo")
-            n_abz = st.number_input("Anzahl Abzweige (Feldeinheiten)", 2, 48, value=8, step=1,
-                                    key="sb_nabz",
-                                    help="Je Abzweig eine Feldeinheit; max. 48 Längstrenner / "
+            n_abz = st.number_input("Anzahl Abzweige (Feldeinheiten)", 2, 48, value=None, step=1,
+                                    key="sb_nabz", placeholder="z. B. 8",
+                                    help="Je Abzweig eine Feldeinheit. Max. 48 Längstrenner / "
                                          "16 Kupplungen im 7SS52 V4.")
-            IN_ref = st.number_input("Bezugsstrom Ino [A]", 0.0, value=2000.0, step=10.0,
-                                     format="%.0f", key="sb_inref",
+            IN_ref = st.number_input("Bezugsstrom Ino [A]", 0.0, value=None, step=10.0,
+                                     format="%.0f", key="sb_inref", placeholder="z. B. 2000",
                                      help="Zonen-Bezugsstrom, auf den die Differential-Ansprechwerte "
                                           "(x Ino) bezogen sind. Üblich: Nennstrom des größten "
                                           "Abzweigs bzw. ein gewählter Referenzstrom.")
@@ -132,7 +56,7 @@ def show():
             st.caption("**Referenz-Stromwandler**")
             c1, c2 = st.columns(2)
             with c1:
-                CT_P = st.number_input("CT prim. [A]", 1, value=2000, step=10, key="sb_ctp")
+                CT_P = st.number_input("CT prim. [A]", 1, value=None, step=10, key="sb_ctp", placeholder="z. B. 2000")
             with c2:
                 CT_S = st.selectbox("CT sek. [A]", [1, 5], index=0, key="sb_cts")
             st.caption("Der Referenzwandler dient der Sekundärumrechnung. Die Feldeinheiten "
@@ -144,30 +68,43 @@ def show():
             st.caption("**Netz & Bemessungsströme**")
             stp = st.selectbox("Sternpunktbehandlung Netz", KS.STERNPUNKT_NETZ_OPTIONEN, index=0,
                                key="sb_stp")
-            Imax_Last = st.number_input("Imax Last (Summe Abzweige) [A]", 0.0, value=1800.0,
-                                        step=10.0, format="%.0f", key="sb_imaxlast",
-                                        help="Größter durchfliessender Laststrom der Sammelschiene "
+            Imax_Last = st.number_input("Imax Last (Summe Abzweige) [A]", 0.0, value=None,
+                                        step=10.0, format="%.0f", key="sb_imaxlast", placeholder="z. B. 1800",
+                                        help="Größter durchfließender Laststrom der Sammelschiene "
                                              "(für die empfindliche Kennlinie).")
-            Imax_Abz = st.number_input("Imax Abzweig [A]", 0.0, value=600.0, step=10.0,
-                                       format="%.0f", key="sb_imaxabz",
+            Imax_Abz = st.number_input("Imax Abzweig [A]", 0.0, value=None, step=10.0,
+                                       format="%.0f", key="sb_imaxabz", placeholder="z. B. 600",
                                        help="Größter Strom eines einzelnen Abzweigs (untere "
                                             "Stabilitätsgrenze für Id>).")
-            Iscc_min = st.number_input("Iscc min Sammelschiene [kA]", 0.0, value=8.0, step=0.5,
-                                       format="%.2f", key="sb_isccmin",
+            Iscc_min = st.number_input("Iscc min Sammelschiene [kA]", 0.0, value=None, step=0.5,
+                                       format="%.2f", key="sb_isccmin", placeholder="z. B. 8",
                                        help="Kleinster Sammelschienen-Kurzschlussstrom (DIN EN "
                                             "60909-0). Obergrenze für Id> und Bezug für I> SVS.")
-            Iscc_max = st.number_input("Iscc max Sammelschiene [kA]", 0.0, value=25.0, step=1.0,
-                                       format="%.1f", key="sb_isccmax")
-            t_LS = st.number_input("Ausschaltzeit Leistungsschalter t_LS [s]", 0.0, value=0.06,
-                                   step=0.01, format="%.3f", key="sb_tls",
+            Iscc_max = st.number_input("Iscc max Sammelschiene [kA]", 0.0, value=None, step=1.0,
+                                       format="%.1f", key="sb_isccmax", placeholder="z. B. 25")
+            t_LS = st.number_input("Ausschaltzeit Leistungsschalter t_LS [s]", 0.0, value=None,
+                                   step=0.01, format="%.3f", key="sb_tls", placeholder="z. B. 0,06",
                                    help="Eigenzeit des Leistungsschalters (Bezug für die "
                                         "SVS-Verzögerung T-SVS ~ 2 x t_LS).")
+
+    # -- Vollständigkeitsprüfung der Grunddaten --------------------------------
+    _pflicht = {"UN": UN, "Anzahl Abzweige": n_abz, "Bezugsstrom Ino": IN_ref, "CT prim.": CT_P,
+                "Imax Last": Imax_Last, "Imax Abzweig": Imax_Abz, "Iscc min": Iscc_min,
+                "Iscc max": Iscc_max, "t_LS": t_LS}
+    _fehlt = [k for k, v in _pflicht.items() if v is None]
+    if _fehlt:
+        st.info("\u25ab\ufe0f **Bitte zun\u00e4chst die Grunddaten ausf\u00fcllen.** Sobald die "
+                "Pflichtfelder gef\u00fcllt sind, erscheinen automatisch die erweiterten "
+                "Parameter, die Sollwerte und die Plausibilit\u00e4tspr\u00fcfung.\n\nNoch offen: "
+                + ", ".join(_fehlt) + ".")
+        return
 
     dev_key = KS.SB_GERAET_KEY[KS.SB_GERAET_OPTIONEN[0]]
 
     # -- Erweiterte Parameter: 87B Differentialschutz --------------------------
-    with _section("Erweiterte Parameter — Differentialschutz 87B (Zentraleinheit)", expanded=False):
-        st.caption("ℹ️ Adressen der Zentraleinheit (Adr.6101 ff.). Ansprechwerte als Vielfaches "
+    with _section("Erweiterte Parameter (Voreinstellungen nach SIPROTEC 7SS52 — frei änderbar) — Differentialschutz 87B (Zentraleinheit)", expanded=False):
+        st.caption("ℹ️ Unter jedem Regler stehen der Hersteller-Range und die Begründung. "
+                   "Adressen der Zentraleinheit (Adr.6101 ff.). Ansprechwerte als Vielfaches "
                    "des Bezugsstroms Ino. SS = schienenselektive Zone, CZ = Checkzone.")
         diff_aktiv = st.checkbox("87B Sammelschienen-Differentialschutz aktiv", value=KS.diff_aktiv_def,
                                  key="sb_diffaktiv")
@@ -251,14 +188,19 @@ def show():
                                        key="sb_svsiklein")
             _hreg("svs_i_klein")
             aus_wiederh = st.selectbox("AUS-Wiederholung", KS.AUS_WIEDERH_OPTIONEN,
-                                       index=KS.AUS_WIEDERH_OPTIONEN.index(KS.aus_wiederh_def),
+                                       index=KS.AUS_WIEDERH_OPTIONEN.index("3polig"),
                                        key="sb_auswiederh")
             _hreg("aus_wiederh")
 
         _grphead("Stromschwellen und Stabilisierung")
+        # Tool-Vorgaben (netzabgeleitet, statt Werksvoreinstellung):
+        #  I> SVS = 0,5 x Iscc min (zwischen Laststrom und kleinstem Fehlerstrom),
+        #  statt Werks-0,50 x In, das hier unter dem Laststrom läge.
+        _isvs_toolvorgabe = min(2.00, max(0.10,
+            round(KS.I_SVS_ANTEIL_ISCC * Iscc_min * 1000.0 / CT_P, 2))) if CT_P else KS.i_svs_def
         cs3, cs4 = st.columns(2)
         with cs3:
-            i_svs = st.number_input("I> SVS [x In]", 0.10, 2.00, value=KS.i_svs_def, step=0.05,
+            i_svs = st.number_input("I> SVS [x In]", 0.10, 2.00, value=_isvs_toolvorgabe, step=0.05,
                                     format="%.2f", key="sb_isvs")
             _hreg("i_svs")
             i_svs_empf = st.number_input("I> SVS empf. [x In]", 0.05, 2.00, value=KS.i_svs_empf_def,
@@ -275,16 +217,18 @@ def show():
             _hreg("is_svs_empf")
 
         _grphead("Verzögerungszeiten")
+        # Tool-Vorgabe: T-SVS = 2 x Ausschaltzeit des Leistungsschalters (statt Werks-0,25 s).
+        _tsvs_toolvorgabe = min(10.00, max(0.05, round(2.0 * t_LS, 2))) if t_LS > 0 else KS.t_svs_1p_def
         ct1, ct2, ct3 = st.columns(3)
         with ct1:
-            t_svs_1p = st.number_input("T-SVS-1P [s]", 0.05, 10.00, value=KS.t_svs_1p_def, step=0.01,
+            t_svs_1p = st.number_input("T-SVS-1P [s]", 0.05, 10.00, value=_tsvs_toolvorgabe, step=0.01,
                                        format="%.2f", key="sb_tsvs1p")
             _hreg("t_svs_1p")
             t_svs_iklein = st.number_input("T-SVS-I< [s]", 0.05, 10.00, value=KS.t_svs_iklein_def,
                                            step=0.01, format="%.2f", key="sb_tsvsik")
             _hreg("t_svs_iklein")
         with ct2:
-            t_svs_mp = st.number_input("T-SVS-mP [s]", 0.05, 10.00, value=KS.t_svs_mp_def, step=0.01,
+            t_svs_mp = st.number_input("T-SVS-mP [s]", 0.05, 10.00, value=_tsvs_toolvorgabe, step=0.01,
                                        format="%.2f", key="sb_tsvsmp")
             _hreg("t_svs_mp")
             t_svs_impuls = st.number_input("T-SVS-Impuls [s]", 0.05, 10.00, value=KS.t_svs_impuls_def,
@@ -515,6 +459,13 @@ def show():
             _metric("I> SVS Empfehlung", f"{de(dbf['i_svs_empf_prim'], 0)} A", "0,5 · Iscc min")
         with m8:
             _metric("T-SVS Empfehlung", f"{de(dbf['t_svs_empf'], 2)} s", "2 · t_LS")
+        m9, m10, _m11, _m12 = st.columns(4)
+        with m9:
+            _metric("Sk″ max Sammelschiene", f"{de(g['Sk_max_MVA'], 0)} MVA",
+                    "= √3 · UN · Iscc max")
+        with m10:
+            _metric("Sk″ min Sammelschiene", f"{de(g['Sk_min_MVA'], 0)} MVA",
+                    "= √3 · UN · Iscc min")
 
     # ====================== 87B DIFFERENTIALSCHUTZ ======================
     with _section("Sammelschienen-Differentialschutz 87B (selektive Zone + Checkzone)"):
@@ -583,8 +534,9 @@ def show():
     with _section("Reserve-Schalterversagerschutz (Feldeinheit)"):
         a = dres["adr"]
         if not dres["aktiv"]:
-            st.markdown('<div class="off-box"><b>Reserve-SVS Aus.</b> '
-                        f'(Adr.{a["RES_SVS"]})</div>', unsafe_allow_html=True)
+            st.markdown('<div class="info-box">ℹ️ <b>Reserve-Schalterversagerschutz nicht aktiviert</b> '
+                        f'(Adr.{a["RES_SVS"]}). Optionale Feldeinheit-Funktion; bei Bedarf im Abschnitt '
+                        '„Erweiterte Parameter — Reserve-SVS" einschalten.</div>', unsafe_allow_html=True)
         else:
             rr = [
                 ("RES.SVS-I", f"{de(dres['i_f'], 2)}", "x In", f"{de(dres['i_f'], 2)}→{a['RES_SVS_I']}"),
@@ -617,7 +569,7 @@ def show():
         st.caption(f"Phasen **{d50['umz_p']}** (Adr.{a['UMZ_P']}), Kennlinie **{d50['kennlinie_p']}** "
                    f"(Adr.{a['KENNLINIE_P']}) · Erde **{d50['umz_e']}** (Adr.{a['UMZ_E']}), Kennlinie "
                    f"**{d50['kennlinie_e']}** (Adr.{a['KENNLINIE_E']}). Bei UMZ wirken nur die "
-                   "unabhängigen Stufen I>>/I>; bei AMZ zusätzlich die stromabhängige Stufe Ip.")
+                   "unabhängigen Stufen I>>/I>. Bei AMZ wirkt zusätzlich die stromabhängige Stufe Ip.")
 
     # ====================== UEBERWACHUNG ======================
     with _section("Differential- / Trenner-Überwachung (Zentraleinheit)"):
@@ -641,14 +593,18 @@ def show():
     # ====================== PLAUSIBILITAETSPRUEFUNG (VOLLSTAENDIG) ======================
     with _section("Plausibilitätsprüfung (Ampel)"):
         rows = [(_AMPEL_EMOJI.get(c["status"], "") + " " + c["status"], c["pruefung"],
-                 c["ergebnis"], c["hinweis"], c["korrektur"]) for c in plaus]
-        dfp = pd.DataFrame(rows, columns=["Status", "Prüfung", "Ergebnis", "Hinweis", "Korrektur"])
+                 c["ergebnis"], c["korrektur"] or "—", c["hinweis"]) for c in plaus]
+        dfp = pd.DataFrame(rows, columns=["Status", "Prüfung", "Ergebnis",
+                                          "Konkrete Korrektur", "Hinweis / Quelle"])
         st.dataframe(dfp, width="stretch", hide_index=True)
+        st.caption("Spalte „Konkrete Korrektur“ nennt bei 🟡/🔴 den genauen Regler und Zielwert. "
+                   "Die wichtigsten Punkte stehen zusätzlich oben in der Handlungsempfehlungs-Box.")
 
     # ====================== GERAETE-/ARCHITEKTUR-EMPFEHLUNG ======================
     with _section("Geräte- / Architektur-Empfehlung"):
         e = r["empfehlung"]
-        st.markdown(f'<div class="info-box">{e["haupt"]}<br><br>{e["hinweis"]}</div>',
+        st.markdown(f'<div class="info-box">{e["haupt"]}<br><br>{e["hinweis"]}'
+                    f'<br><br>{e["erdschluss"]}<br><br>{e["endfehler"]}</div>',
                     unsafe_allow_html=True)
         st.caption("Hinweis: Das 7SS52 ist ein reiner Strom-Differential-/Schalterversagerschutz "
                    "und enthält keinen Spannungsschutz (27/59). Spannungs- und Frequenzschutz "

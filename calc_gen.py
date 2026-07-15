@@ -24,6 +24,7 @@ Schutzfunktionen:
 
 import math
 import konstanten_gen as K
+from utils import de, deg
 from calc_trafo import status_empfehlung, status_bereich  # gemeinsame Ampel-Helfer
 
 SQRT3 = math.sqrt(3)
@@ -38,6 +39,8 @@ def grundgroessen(p: dict) -> dict:
               VT_Prim_kV, VT_Sek_V
     """
     Sn, UN = p["Sn_MVA"], p["UN_kV"]
+    cosphi = p.get("cos_phi", 0.0)
+    xd_ss  = p.get("xd_subtrans", 0.0)
 
     IN_prim = (Sn * 1e6) / (SQRT3 * UN * 1e3) if UN > 0 else 0.0
 
@@ -57,6 +60,11 @@ def grundgroessen(p: dict) -> dict:
     UN_sek = p.get("VT_Sek_V", 0.0)
     SN_sek = SQRT3 * UN_sek * IN_K_sek if (UN_sek and IN_K_sek) else 0.0
 
+    # Wirkleistung PN = Sn * cos(phiN) (Bezug 32/32P) und subtransienter
+    # Kurzschlussbeitrag der Maschine Ik'' = IN / x''d (Naeherung, Klemmenfehler)
+    PN_MW = Sn * cosphi
+    Ik_sub_prim = (IN_prim / xd_ss) if xd_ss > 0 else 0.0
+
     return {
         "IN_prim":    round(IN_prim, 4),
         "kCT_K":      round(kCT_K, 4),
@@ -69,6 +77,8 @@ def grundgroessen(p: dict) -> dict:
         "I_an_S":     round(I_an_S, 4),
         "UN_sek":     round(UN_sek, 4),
         "SN_sek":     round(SN_sek, 4),
+        "PN_MW":      round(PN_MW, 3),
+        "Ik_sub_prim": round(Ik_sub_prim, 1),
     }
 
 
@@ -113,7 +123,7 @@ def schutz_87G(g: dict, p: dict) -> dict:
          "wert_prim": None, "empfehlung": emp_Steig1, "status": status_empfehlung(Steig1, emp_Steig1), "adresse": "Adr.2041A"},
         {"name": "Steigung 2", "faktor": Steig2, "einheit": "-", "wert_sek": None,
          "wert_prim": None, "empfehlung": emp_Steig2, "status": status_empfehlung(Steig2, emp_Steig2), "adresse": "Adr.2043A"},
-        row("Fusspunkt 2", Fp2, "I/InO", emp_Fp2, "Adr.2044A", sek=True, prim=False),
+        row("Fußpunkt 2", Fp2, "I/InO", emp_Fp2, "Adr.2044A", sek=True, prim=False),
         {"name": "Anlauf-Stabilisierung", "faktor": K.Anlauf_Stab_def, "einheit": "I/InO",
          "wert_sek": round(K.Anlauf_Stab_def * INO, 4), "wert_prim": None,
          "empfehlung": None, "status": "—", "adresse": "Adr.2051A"},
@@ -318,7 +328,7 @@ def schutz_81(g: dict, p: dict) -> dict:
             {"name": "f1 (Netztrennung)",       "f": f1, "t": K.t_f1_def, "adr": f"Adr.{a1} / T 4204"},
             {"name": "f2 (Stillsetzung)",       "f": f2, "t": K.t_f2_def, "adr": f"Adr.{a2} / T 4207"},
             {"name": "f3 (Warnung Unterfreq.)", "f": f3, "t": K.t_f3_def, "adr": f"Adr.{a3} / T 4210"},
-            {"name": "f4 (Ueberfrequenz)",      "f": f4, "t": K.t_f4_def, "adr": f"Adr.{a4} / T 4213"},
+            {"name": "f4 (Überfrequenz)",      "f": f4, "t": K.t_f4_def, "adr": f"Adr.{a4} / T 4213"},
         ],
     }
 
@@ -464,10 +474,10 @@ def bemessung_engineering(g: dict, p: dict, umz: dict) -> dict:
     empfind = I_k_min / I_gewaehlt if I_gewaehlt else 0.0
     empfind_status = "OK" if (empfind and empfind >= gamma) else ("Prüfen!" if I_k_min else "Fehlt")
 
-    korr_I = (f"Regler 'I> Phase' auf >= {f_I_emp:g} x IN stellen (aktuell {umz['f_I']:g})."
+    korr_I = (f"Regler 'I> Phase' auf >= {deg(f_I_emp)} x IN stellen (aktuell {deg(umz['f_I'])})."
               if I_status == "Prüfen!" else "")
     korr_emp = ("Empfindlichkeit zu gering: I> senken oder gamma reduzieren, "
-                f"bis I_k_min/I> >= {gamma:g}." if empfind_status == "Prüfen!" else "")
+                f"bis I_k_min/I> >= {deg(gamma)}." if empfind_status == "Prüfen!" else "")
 
     return {
         "I_max_Last_prim": round(I_max_Last, 2),
@@ -498,27 +508,27 @@ def plausibilitaet(g: dict, p: dict, b49: dict, beng: dict, f40: dict,
                        "korrektur": korrektur if status != "OK" else ""})
 
     add("Sn (Nennleistung) vorhanden", "Sn > 0",
-        f"{p['Sn_MVA']} MVA" if p["Sn_MVA"] > 0 else "fehlt",
+        f"{deg(p['Sn_MVA'])} MVA" if p["Sn_MVA"] > 0 else "fehlt",
         "OK" if p["Sn_MVA"] > 0 else "Fehlt",
-        "Pflichteingabe fuer alle Strom-/Anpassungsberechnungen.",
-        "Feld 'Sn' ausfuellen (> 0 MVA).")
+        "Pflichteingabe für alle Strom-/Anpassungsberechnungen.",
+        "Feld 'Sn' ausfüllen (> 0 MVA).")
 
     add("Nennspannung UN vorhanden", "UN > 0",
-        f"{p['UN_kV']} kV" if p["UN_kV"] > 0 else "fehlt",
+        f"{deg(p['UN_kV'])} kV" if p["UN_kV"] > 0 else "fehlt",
         "OK" if p["UN_kV"] > 0 else "Fehlt",
-        "Bemessungsspannung fuer IN-Berechnung erforderlich.",
-        "Feld 'UN' ausfuellen (> 0 kV).")
+        "Bemessungsspannung für IN-Berechnung erforderlich.",
+        "Feld 'UN' ausfüllen (> 0 kV).")
 
     ct_ok = all(p.get(k, 0) > 0 for k in ("CT_K_Prim", "CT_K_Sek", "CT_S_Prim", "CT_S_Sek"))
-    add("Stromwandler Klemmen- + Sternpunktseite vollstaendig", "beide CT-Saetze > 0",
+    add("Stromwandler Klemmen- + Sternpunktseite vollständig", "beide CT-Sätze > 0",
         "vollst." if ct_ok else "fehlt", "OK" if ct_ok else "Fehlt",
-        "87G benoetigt CTs an beiden Enden der Staenderwicklung.",
-        "Alle vier CT-Felder (Klemme/Sternpunkt, prim./sek.) ausfuellen.")
+        "87G benötigt CTs an beiden Enden der Ständerwicklung.",
+        "Alle vier CT-Felder (Klemme/Sternpunkt, prim./sek.) ausfüllen.")
 
     vt_ok = p.get("VT_Prim_kV", 0) > 0 and p.get("VT_Sek_V", 0) > 0
     add("Spannungswandler vorhanden", "VT prim/sek > 0",
         "vorhanden" if vt_ok else "fehlt", "OK" if vt_ok else "Hinweis",
-        "Voraussetzung fuer 32, 24, 27/59, 81, 40, 51V.",
+        "Voraussetzung für 32, 24, 27/59, 81, 40, 51V.",
         "VT prim. [kV] und VT sek. [V] eingeben, sonst sind die spannungs- "
         "und leistungsbasierten Funktionen nicht parametrierbar.")
 
@@ -526,59 +536,59 @@ def plausibilitaet(g: dict, p: dict, b49: dict, beng: dict, f40: dict,
     for seite, ian in (("Klemme", g["I_an_K"]), ("Sternpunkt", g["I_an_S"])):
         stt = status_bereich(ian, K.Anpass_min, K.Anpass_max) if ian else "Fehlt"
         if ian and ian > K.Anpass_max:
-            korr = f"Anpassfaktor {ian:.2f} > {K.Anpass_max}: CT {seite} prim. verkleinern."
+            korr = f"Anpassfaktor {de(ian, 2)} > {de(K.Anpass_max, 1)}: CT {seite} prim. verkleinern."
         elif ian and ian < K.Anpass_min:
-            korr = f"Anpassfaktor {ian:.2f} < {K.Anpass_min}: CT {seite} prim. vergroessern."
+            korr = f"Anpassfaktor {de(ian, 2)} < {de(K.Anpass_min, 1)}: CT {seite} prim. vergrößern."
         else:
-            korr = f"CT {seite} pruefen."
-        add(f"STW-Anpassung {seite} in [{K.Anpass_min} ... {K.Anpass_max}]",
-            "I_an = CT_Sek / IN_sek", f"{ian:.3f}" if ian else "-", stt,
-            "Anpassfaktor 0,5-2,0 fuer korrekte 87G-Stabilisierung.", korr)
+            korr = f"CT {seite} prüfen."
+        add(f"STW-Anpassung {seite} in [{de(K.Anpass_min, 1)} ... {de(K.Anpass_max, 1)}]",
+            "I_an = CT_Sek / IN_sek", f"{de(ian, 3)}" if ian else "-", stt,
+            "Anpassfaktor 0,5-2,0 für korrekte 87G-Stabilisierung.", korr)
 
     # x'd plausibel
     xds = p.get("xd_strich", 0.0)
     xds_st = status_bereich(xds, K.xd_strich_min, K.xd_strich_max) if xds else "Fehlt"
     add("x'd (transient) im plausiblen Bereich [0,10 ... 0,40]", "x'd_Masch",
-        f"{xds:g} p.u." if xds else "-", xds_st,
+        f"{deg(xds)} p.u." if xds else "-", xds_st,
         "x'd bestimmt die I-DIFF>>-Empfehlung (~1/x'd).",
-        f"x'd = {xds:g} p.u. ausserhalb [0,10 ... 0,40]: Wert vom Maschinendatenblatt pruefen.")
+        f"x'd = {deg(xds)} p.u. außerhalb [0,10 ... 0,40]: Wert vom Maschinendatenblatt prüfen.")
 
     # xd plausibel (fuer 40)
     xd = p.get("xd", 0.0)
     xd_st = status_bereich(xd, K.xd_min, K.xd_max) if xd else "Fehlt"
     add("xd (synchron) im plausiblen Bereich [0,8 ... 3,5]", "xd_Masch",
-        f"{xd:g} p.u." if xd else "-", xd_st,
+        f"{deg(xd)} p.u." if xd else "-", xd_st,
         "xd bestimmt 1/xd KL.1 des Untererregungsschutzes (40).",
-        f"xd = {xd:g} p.u. ausserhalb [0,8 ... 3,5]: Wert pruefen (synchrone Laengsreaktanz).")
+        f"xd = {deg(xd)} p.u. außerhalb [0,8 ... 3,5]: Wert prüfen (synchrone Längsreaktanz).")
 
     # k-Faktor 49
     k = b49["k_Faktor"]
-    add("k-Faktor (49) im Bereich [1,0 ... 1,5]", "k_Faktor", f"{k:.2f}", b49["k_status"],
+    add("k-Faktor (49) im Bereich [1,0 ... 1,5]", "k_Faktor", f"{de(k, 2)}", b49["k_status"],
         "Ohne Herstellerangabe typ. 1,11 (7UM62 Hdb. 2.6).",
-        f"k-Faktor {k:.2f} ausserhalb [1,0 ... 1,5]: Regler '49 k-Faktor' auf ~1,11 stellen.")
+        f"k-Faktor {de(k, 2)} außerhalb [1,0 ... 1,5]: Regler '49 k-Faktor' auf ~1,11 stellen.")
 
     # tau-Einheit Hinweis (immer, da haeufige Fehlerquelle)
     add("Zeitkonstante tau (49) in SEKUNDEN eingegeben", "Adr.1603 Einheit",
-        f"{b49['tau_s']:.0f} s (= {b49['tau_min']:.1f} min)", "OK",
+        f"{de(b49['tau_s'], 0)} s (= {de(b49['tau_min'], 1)} min)", "OK",
         "WICHTIG: 7UM62 erwartet tau in Sekunden (7UT613 dagegen Minuten!).")
 
     # I-Warn <= k*IN
     iw_ok = b49["I_Warn_sek"] <= b49["I_max_zul_sek"] * 1.001
     add("Stromwarnstufe I WARN <= k x IN_sek", "I WARN <= I_max_zul",
-        f"{b49['I_Warn_sek']:.3f} / {b49['I_max_zul_sek']:.3f} A",
+        f"{de(b49['I_Warn_sek'], 3)} / {de(b49['I_max_zul_sek'], 3)} A",
         "OK" if iw_ok else "Hinweis",
         "I WARN soll gleich oder unter dem dauernd zul. Strom liegen (7UM62 Hdb. 2.6).",
         "I-Warnstufe absenken (<= k x IN_sek).")
 
     # Reserve-Ueberstrom Stufenwahl
-    add("I> liegt oberhalb der Maximallast", "I> gewaehlt >= Empfehlung",
-        f"{beng['I_gewaehlt_prim']:.0f} / {beng['I_emp_prim']:.0f} A", beng["I_status"],
+    add("I> liegt oberhalb der Maximallast", "I> gewählt >= Empfehlung",
+        f"{de(beng['I_gewaehlt_prim'], 0)} / {de(beng['I_emp_prim'], 0)} A", beng["I_status"],
         "Anregung durch Betriebslast muss ausgeschlossen sein (7UM62 Hdb. 2.3).",
         beng["korr_I"])
 
     # Empfindlichkeit
-    add("Empfindlichkeit I_k_min / I> >= gamma", f"gamma = {beng['gamma']}",
-        f"{beng['empfind']:.2f}" if beng['empfind'] else "-", beng["empfind_status"],
+    add("Empfindlichkeit I_k_min / I> >= gamma", f"gamma = {deg(beng['gamma'])}",
+        f"{de(beng['empfind'], 2)}" if beng['empfind'] else "-", beng["empfind_status"],
         "Min. Fehlerstrom am Schutzgebiet-Ende muss I> sicher anregen. "
         "Hinweis: 51V mit Unterspannungssteuerung verbessert die Empfindlichkeit "
         "bei abklingendem Generator-KS-Strom.",
@@ -586,9 +596,9 @@ def plausibilitaet(g: dict, p: dict, b49: dict, beng: dict, f40: dict,
 
     # 40 Untererregung sinnvoll
     add("Untererregung (40): 1/xd KL.1 plausibel", "0,9*KL1 = KL2 < KL1",
-        f"KL1={f40['xd_KL1']:.2f}; KL2={f40['xd_KL2']:.2f}; KL3={f40['xd_KL3']:.2f}",
+        f"KL1={de(f40['xd_KL1'], 2)}; KL2={de(f40['xd_KL2'], 2)}; KL3={de(f40['xd_KL3'], 2)}",
         "OK" if f40["xd_KL1"] > 0 else "Fehlt",
-        "KL.1 statische Stabilitaet (~1/xd), KL.2=0,9*KL.1, KL.3 dynamisch (7UM62 Hdb. 2.11).",
+        "KL.1 statische Stabilität (~1/xd), KL.2=0,9*KL.1, KL.3 dynamisch (7UM62 Hdb. 2.11).",
         "xd eingeben, damit 1/xd KL.1 berechnet wird.")
 
     # Erdschlusserfassung passt zur Sternpunktbehandlung
@@ -596,53 +606,53 @@ def plausibilitaet(g: dict, p: dict, b49: dict, beng: dict, f40: dict,
     erg = ("U0/3I0-Richtung (sin-phi ~90 Grad)" if stp == "Isoliert"
            else "U0-Verfahren (Erdungstrafo)" if "Hochohmig" in stp
            else "niederohmig: Erdstrom direkt erfassbar")
-    add("Staendererdschluss passt zur Sternpunktbehandlung", "Stp_Gen",
+    add("Ständererdschluss passt zur Sternpunktbehandlung", "Stp_Gen",
         erg, "OK",
-        "90 % Staendererdschluss ueber U0 (Adr.5002). 100 % zusaetzlich ueber "
+        "90 % Ständererdschluss über U0 (Adr.5002). 100 % zusätzlich über "
         "3. Harmonische bzw. 20-Hz-Verspannung (7UM62 Hdb. 2.23/2.24/2.25).")
 
     # 32P Vorwaertsleistung: P< muss kleiner als P> sein (sinnvolle Stufenfolge)
     if f32P["aktiv"]:
         pvorw_ok = f32P["P_un_pct"] < f32P["P_ue_pct"]
         add("32P: P< VORW. < P> VORW. (Stufenfolge plausibel)",
-            "P_un < P_ue",
-            f"{f32P['P_un_pct']:.1f} % < {f32P['P_ue_pct']:.1f} %",
+            "P_un < P_ü",
+            f"{de(f32P['P_un_pct'], 1)} % < {de(f32P['P_ue_pct'], 1)} %",
             "OK" if pvorw_ok else "Prüfen!",
-            "Unterschreitungsschwelle muss unter Ueberschreitungsschwelle liegen (7UM62 Hdb. 2.13).",
-            "P< VORW. (Adr.3202) verkleinern oder P> VORW. (Adr.3204) vergroessern.")
+            "Unterschreitungsschwelle muss unter Überschreitungsschwelle liegen (7UM62 Hdb. 2.13).",
+            "P< VORW. (Adr.3202) verkleinern oder P> VORW. (Adr.3204) vergrößern.")
         vt_ok = f32P["vt_ok"]
-        add("32P: VT-Daten vorhanden (fuer SN_sek-Umrechnung)",
+        add("32P: VT-Daten vorhanden (für SN_sek-Umrechnung)",
             "SN_sek > 0",
-            f"SN_sek = {f32P['SN_sek']:.1f} VA" if vt_ok else "SN_sek = 0",
+            f"SN_sek = {de(f32P['SN_sek'], 1)} VA" if vt_ok else "SN_sek = 0",
             "OK" if vt_ok else "Fehlt",
-            "32P benoetigt Spannungswandler-Daten zur Umrechnung in Wattwert.",
+            "32P benötigt Spannungswandler-Daten zur Umrechnung in Wattwert.",
             "VT prim. [kV] und VT sek. [V] sowie CT-Daten eingeben.")
 
     # IEE Empfindlicher Erdstromschutz: IEE>> > IEE>
     if fIEE["aktiv"]:
-        add("IEE: Ausloesestrom IEE>> > Anregestrom IEE>",
+        add("IEE: Auslösestrom IEE>> > Anregestrom IEE>",
             "IEE>> > IEE>",
-            f"{fIEE['IEE_aus']:.1f} mA > {fIEE['IEE_an']:.1f} mA",
+            f"{de(fIEE['IEE_aus'], 1)} mA > {de(fIEE['IEE_an'], 1)} mA",
             "OK" if fIEE["stufen_ok"] else "Prüfen!",
-            "Ausloesestrom muss ueber Anregestrom liegen — sonst keine sinnvolle Zweistufigkeit "
+            "Auslösestrom muss über Anregestrom liegen, sonst keine sinnvolle Zweistufigkeit "
             "(7UM62 Hdb. 2.26, Adr.5102/5104).",
-            "IEE>> (Adr.5104) groesser als IEE> (Adr.5102) einstellen.")
+            "IEE>> (Adr.5104) größer als IEE> (Adr.5102) einstellen.")
 
     # 81R df/dt: VT-Check und U_MIN-Empfehlung
     if f81R["aktiv"]:
-        add("81R df/dt: VT-Daten vorhanden (fuer Frequenzmessung)",
+        add("81R df/dt: VT-Daten vorhanden (für Frequenzmessung)",
             "UN_sek > 0",
-            f"UN_sek = {f81R['UN_sek']:.1f} V" if f81R["vt_ok"] else "UN_sek = 0",
+            f"UN_sek = {de(f81R['UN_sek'], 1)} V" if f81R["vt_ok"] else "UN_sek = 0",
             "OK" if f81R["vt_ok"] else "Fehlt",
             "df/dt erfordert Mitsystemspannung. Spannungswandler-Daten eingeben.",
             "VT prim. [kV] und VT sek. [V] in den Grunddaten eingeben.")
         add("81R df/dt: U_MIN im empfohlenen Bereich (55...75 % UN_sek)",
             "0,55 * UN <= U_MIN <= 0,75 * UN",
-            f"{f81R['Umin']:.0f} V = {f81R['Umin_pct']:.0f} % UN_sek",
+            f"{de(f81R['Umin'], 0)} V = {de(f81R['Umin_pct'], 0)} % UN_sek",
             "OK" if f81R["umin_ok"] else "Hinweis",
             "Empfehlung: ~65 % UN_sek, damit bei Spannungseinbruch die Messung "
-            "noch zuverlaessig ist (7UM62 Hdb. 2.21, Adr.4518).",
-            f"U_MIN (Adr.4518) auf ca. {0.65 * f81R['UN_sek']:.0f} V ({65:.0f} % UN_sek) stellen.")
+            "noch zuverlässig ist (7UM62 Hdb. 2.21, Adr.4518).",
+            f"U_MIN (Adr.4518) auf ca. {de(0.65 * f81R['UN_sek'], 0)} V ({de(65, 0)} % UN_sek) stellen.")
 
     # Vektorsprung: VT-Check und Spannungsband
     if fVS["aktiv"]:
@@ -650,34 +660,34 @@ def plausibilitaet(g: dict, p: dict, b49: dict, beng: dict, f40: dict,
             "UN_sek > 0",
             "vorhanden" if fVS["vt_ok"] else "fehlt",
             "OK" if fVS["vt_ok"] else "Fehlt",
-            "Vektorsprung benoetigt Mitsystemspannung. VT-Daten eingeben.",
+            "Vektorsprung benötigt Mitsystemspannung. VT-Daten eingeben.",
             "VT prim. [kV] und VT sek. [V] in den Grunddaten eingeben.")
         add("Vektorsprung: U_MIN < U_MAX (Spannungsband sinnvoll)",
             "U_MIN < U_MAX",
-            f"{fVS['Umin']:.0f} V < {fVS['Umax']:.0f} V",
+            f"{de(fVS['Umin'], 0)} V < {de(fVS['Umax'], 0)} V",
             "OK" if fVS["uband_ok"] else "Prüfen!",
             "Der Spannungsarbeitsbereich U_MIN (Adr.4605A) muss kleiner als U_MAX (Adr.4606A) sein "
             "(7UM62 Hdb. 2.22).",
-            "U_MIN verkleinern oder U_MAX vergroessern.")
+            "U_MIN verkleinern oder U_MAX vergrößern.")
 
     # 50BF Leistungsschalterversagerschutz
     if fBF["aktiv"]:
-        add("50BF: SVS I> im gueltigen Einstellbereich",
-            f"[{fBF['I_min']:.2f} ... {fBF['I_max']:.2f}] A sek.",
-            f"{fBF['I_sek']:.3f} A sek. (CT {fBF['CT_sek']} A)",
+        add("50BF: SVS I> im gültigen Einstellbereich",
+            f"[{de(fBF['I_min'], 2)} ... {de(fBF['I_max'], 2)}] A sek.",
+            f"{de(fBF['I_sek'], 3)} A sek. (CT {fBF['CT_sek']} A)",
             "OK" if fBF["I_ok"] else "Prüfen!",
             "Stromansprechschwelle mindestens 10 % unterhalb des kleinsten erwarteten "
-            "Betriebsstroms — nicht zu niedrig, da sonst CT-Ausgleichsvorgaenge "
-            "die Rueckfallzeit erlaengern (7UM62 Hdb. 2.36, Adr.7003).",
-            f"SVS I> (Adr.7003) in gueltigen Bereich {fBF['I_min']:.2f}...{fBF['I_max']:.2f} A bringen.")
+            "Betriebsstroms, nicht zu niedrig, da sonst CT-Ausgleichsvorgänge "
+            "die Rückfallzeit erlängern (7UM62 Hdb. 2.36, Adr.7003).",
+            f"SVS I> (Adr.7003) in gültigen Bereich {de(fBF['I_min'], 2)}...{de(fBF['I_max'], 2)} A bringen.")
         add("50BF: SVS-Taus >= empfohlene Mindestzeit",
-            f">= t_LS + t_RF + t_Marge = {fBF['Taus_min_emp']:.3f} s",
-            f"{fBF['Taus']:.3f} s",
+            f">= t_LS + t_RF + t_Marge = {de(fBF['Taus_min_emp'], 3)} s",
+            f"{de(fBF['Taus'], 3)} s",
             "OK" if fBF["Taus_ok"] else "Hinweis",
             "SVS-Taus = t_LS_max + t_RF + t_Marge. "
-            f"Richtwert: 80 ms LS-Zeit + 20 ms Rueckfall + 50 ms Marge = {fBF['Taus_min_emp']:.0f} ms "
+            f"Richtwert: 80 ms LS-Zeit + 20 ms Rückfall + 50 ms Marge = {de(fBF['Taus_min_emp'], 0)} ms "
             "(7UM62 Hdb. 2.36, Adr.7004).",
-            f"SVS-Taus (Adr.7004) auf mindestens {fBF['Taus_min_emp']:.3f} s erhoehen.")
+            f"SVS-Taus (Adr.7004) auf mindestens {de(fBF['Taus_min_emp'], 3)} s erhöhen.")
 
     return checks
 
@@ -691,18 +701,18 @@ def reserveschutz(g: dict, umz: dict, v51: dict, b49: dict, p: dict) -> list:
     netz = "Maschinentrafo (Blockschaltung)" if anschluss.startswith("Block") else "MS-Sammelschiene (Direktanschluss)"
     return [
         {"funktion": "UMZ I> + U<-Haltung (Adr.1201)",
-         "ziel": f"Generator-Klemmen — Netzschnittstelle zu {netz} (CT Klemme, {un:.1f} kV)",
-         "I_sek": f"{umz['I_sek']:.4f}", "t": f"{umz['t_I']:.2f}",
-         "IHH_sek": f"{umz['IHH_sek']:.4f}", "tHH": f"{umz['t_IHH']:.2f}",
+         "ziel": f"Generator-Klemmen — Netzschnittstelle zu {netz} (CT Klemme, {de(un, 1)} kV)",
+         "I_sek": f"{de(umz['I_sek'], 4)}", "t": f"{de(umz['t_I'], 2)}",
+         "IHH_sek": f"{de(umz['IHH_sek'], 4)}", "tHH": f"{de(umz['t_IHH'], 2)}",
          "adresse": "I> 1202; T 1203; U< 1205; I>> 1302; T 1303"},
         {"funktion": "AMZ 51V spannungsabh. (Adr.1401)",
-         "ziel": f"Generator-Klemmen — Netzschnittstelle zu {netz} (CT Klemme, {un:.1f} kV)",
-         "I_sek": f"{v51['Ip_sek']:.4f}", "t": f"{v51['T_Ip']:.2f}",
+         "ziel": f"Generator-Klemmen — Netzschnittstelle zu {netz} (CT Klemme, {de(un, 1)} kV)",
+         "I_sek": f"{de(v51['Ip_sek'], 4)}", "t": f"{de(v51['T_Ip'], 2)}",
          "IHH_sek": "-", "tHH": "-",
          "adresse": "Ip 1402; T Ip 1403; U< 1408"},
-        {"funktion": "Ueberlast 49 (Adr.1601)",
-         "ziel": f"Generator-Stator — Wicklungsschutz thermisch (CT Klemme, {un:.1f} kV)",
-         "I_sek": f"{b49['k_Faktor'] * g['IN_K_sek']:.4f}", "t": f"{b49['tau_s']:.0f} s",
+        {"funktion": "Überlast 49 (Adr.1601)",
+         "ziel": f"Generator-Stator — Wicklungsschutz thermisch (CT Klemme, {de(un, 1)} kV)",
+         "I_sek": f"{de(b49['k_Faktor'] * g['IN_K_sek'], 4)}", "t": f"{de(b49['tau_s'], 0)} s",
          "IHH_sek": "-", "tHH": "-",
          "adresse": "k 1602; tau 1603 (SEKUNDEN!); Theta 1604; I-Warn 1610A"},
     ]
@@ -714,23 +724,23 @@ def geraeteempfehlung(p: dict) -> dict:
     anschluss = p.get("anschluss", "Direkt auf MS-Sammelschiene")
     stp = p.get("stp_Gen", "Hochohmig (Erdungstrafo / Petersen)")
     if anschluss.startswith("Block"):
-        arch = ("Blockschaltung: 87G schuetzt nur den Generator (CTs Klemme + Sternpunkt). "
-                "Maschinentrafo separat ueber 87T (Trafo-Tab); ein uebergreifender "
-                "Blockdifferentialschutz (87GT) kann optional ergaenzt werden.")
+        arch = ("Blockschaltung: 87G schützt nur den Generator (CTs Klemme + Sternpunkt). "
+                "Maschinentrafo separat über 87T (Trafo-Tab). Ein übergreifender "
+                "Blockdifferentialschutz (87GT) kann optional ergänzt werden.")
     else:
-        arch = ("Direkter Sammelschienen-Anschluss: 87G ueber CTs Klemme + Sternpunkt; "
+        arch = ("Direkter Sammelschienen-Anschluss: 87G über CTs Klemme + Sternpunkt; "
                 "der Generator speist auf das isolierte Industrienetz.")
     if stp == "Isoliert":
-        erd = ("Isolierter Generator-Sternpunkt: 90 % Staendererdschluss ueber "
+        erd = ("Isolierter Generator-Sternpunkt: 90 % Ständererdschluss über "
                "Verlagerungsspannung U0 mit Richtung (sin-phi ~90 Grad). "
-               "100 % ueber 3. Harmonische bzw. 20-Hz-Verspannung.")
+               "100 % über 3. Harmonische bzw. 20-Hz-Verspannung.")
     elif "Hochohmig" in stp:
-        erd = ("Hochohmige Erdung (Erdungstrafo/Petersen): 90 % Staendererdschluss "
-               "ueber U0 (Adr.5002), Richtungswinkel ~15 Grad. 100 % zusaetzlich "
-               "ueber 3. Harmonische.")
+        erd = ("Hochohmige Erdung (Erdungstrafo/Petersen): 90 % Ständererdschluss "
+               "über U0 (Adr.5002), Richtungswinkel ~15 Grad. 100 % zusätzlich "
+               "über 3. Harmonische.")
     else:
         erd = ("Niederohmige Erdung: Erdfehlerstrom direkt erfassbar; "
-               "Staendererdschluss ueber Stromkriterium moeglich.")
+               "Ständererdschluss über Stromkriterium möglich.")
     return {"architektur": arch, "erdschluss": erd}
 
 

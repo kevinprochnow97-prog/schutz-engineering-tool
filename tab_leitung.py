@@ -12,135 +12,70 @@ import streamlit as st
 import konstanten_leitung as KL
 from calc_leitung import berechne_alle
 
-
-# ── Farbkodierung (identisch zu den uebrigen Tabs) ───────────────────────────
-_CSS = """
-<style>
-[data-testid="stExpander"] summary {
-    background: #2E5A87 !important; border-radius: 6px !important; padding: 5px 12px !important;
-}
-[data-testid="stExpander"] summary:hover { background: #27496e !important; }
-[data-testid="stExpander"] summary,
-[data-testid="stExpander"] summary p,
-[data-testid="stExpander"] summary span {
-    color: #ffffff !important; font-weight: 600 !important; font-size: 0.92rem !important;
-}
-[data-testid="stExpander"] summary svg { fill: #ffffff !important; color: #ffffff !important; }
-[data-testid="stExpander"] details { border: none !important; }
-.result-box { background: #eef3f8; color: #14203a; border-left: 4px solid #2E5A87;
-    border-radius: 6px; padding: 10px 14px; margin-bottom: 8px; }
-.result-box .val { font-size: 1.2rem; font-weight: 700; color: #14203a; font-family: monospace; }
-.result-box .lbl { font-size: 0.76rem; color: #43526b; }
-.result-box .sub { font-size: 0.74rem; color: #5d6b82; margin-top: 2px; }
-.warn-box { background: #fff4d6; color: #5b4a00; border-left: 4px solid #f4a800;
-    border-radius: 6px; padding: 10px 14px; font-size: 0.86rem; margin-bottom: 8px; }
-.off-box { background: #fbe3ea; color: #7a0024; border-left: 4px solid #A50034;
-    border-radius: 6px; padding: 10px 14px; font-size: 0.86rem; margin-bottom: 8px; }
-.off-box b { color: #A50034; }
-.info-box { background: #e7f3ec; color: #14502b; border-left: 4px solid #2e7d32;
-    border-radius: 6px; padding: 10px 14px; font-size: 0.86rem; margin-bottom: 8px; }
-.pill { display:inline-block; padding:2px 9px; border-radius:11px; font-size:0.75rem; font-weight:700; }
-.pill-ok   { background:#d6f0dc; color:#1d6b32; }
-.pill-warn { background:#fdeccb; color:#8a5b00; }
-.pill-bad  { background:#fad3dc; color:#a3002b; }
-.pill-na   { background:#e6e9ee; color:#5d6b82; }
-</style>
-"""
-
-_AMPEL_EMOJI = {"OK": "🟢", "Hinweis": "🟡", "Prüfen!": "🔴", "Fehlt": "⚫", "—": "▫️"}
-_PILL_CLASS  = {"OK": "pill-ok", "Hinweis": "pill-warn", "Prüfen!": "pill-bad",
-                "Fehlt": "pill-na", "—": "pill-na"}
-
-
-def _metric(label, value, sub=""):
-    st.markdown(
-        f'<div class="result-box"><div class="lbl">{label}</div>'
-        f'<div class="val">{value}</div>'
-        + (f'<div class="sub">{sub}</div>' if sub else "") + "</div>",
-        unsafe_allow_html=True)
-
-
-def _section(title, expanded=True):
-    return st.expander(title, expanded=expanded)
+from utils import AMPEL_EMOJI as _AMPEL_EMOJI, de, deg
+from ui import inject_css, metric as _metric, section as _section, pill as _pill, hreg
+from ui import grphead as _grphead, pin as _pin
 
 
 def _hreg(key):
-    h = KL.HERST.get(key)
-    if not h:
-        return
-    adr_pin = (f'<br>📍 <b>Eintragen unter:</b> {h["adr"]}' if h.get("adr") else '')
-    st.markdown(
-        f'<div style="font-size:0.72rem;color:#5d6b82;margin:-6px 0 10px;line-height:1.25;">'
-        f'<b>Hersteller:</b> {h["range"]}<br>{h["grund"]}{adr_pin}</div>',
-        unsafe_allow_html=True)
-
-
-def _pin(adr):
-    """Schlanker Adress-Pin unter einem Eingabefeld (einheitlich fuer alle Parameter)."""
-    if not adr:
-        return
-    st.markdown(
-        f'<div style="font-size:0.72rem;color:#5d6b82;margin:-6px 0 10px;">'
-        f'📍 <b>Eintragen unter:</b> Adr.{adr}</div>',
-        unsafe_allow_html=True)
-
-
-def _grphead(title):
-    """Funktions-Untertitel innerhalb eines gruppierten Erweiterte-Parameter-Expanders.
-    Erbt die Theme-Textfarbe (im dunklen Theme weiss), mit blauem Trennstrich wie die Tabs."""
-    st.markdown(
-        f'<div style="font-weight:700;font-size:0.97rem;margin:18px 0 8px;'
-        f'padding-bottom:4px;border-bottom:2px solid #2E5A87;">{title}</div>',
-        unsafe_allow_html=True)
-
-
-def _pill(status, count):
-    cls = _PILL_CLASS.get(status, "pill-na")
-    emj = _AMPEL_EMOJI.get(status, "")
-    return f'<span class="pill {cls}">{emj} {status}: {count}</span>'
+    """Hersteller-Hinweis unter einem Regler (nutzt das modul-lokale HERST-Dict)."""
+    hreg(KL.HERST, key)
 
 
 # ── Hauptfunktion ─────────────────────────────────────────────────────────────
 
 def show():
-    st.markdown(_CSS, unsafe_allow_html=True)
+    inject_css()
 
     # ══════════════════════ EINGABEN ══════════════════════
-    with _section("Eingaben — Leitgeraet, Leitungsdaten, Wandler, Netz"):
+    with _section("Eingaben — Leitgerät, Leitungsdaten, Wandler, Netz"):
         ci1, ci2, ci3 = st.columns(3, gap="medium")
         with ci1:
             st.caption("**Leitungs-Grunddaten**")
-            UN  = st.number_input("UN — Bemessungsspannung [kV]", 0.4, value=110.0, step=1.0, format="%.1f", key="ltg_un")
+            UN  = st.number_input("UN — Bemessungsspannung [kV]", 0.4, value=None, step=1.0, format="%.1f", key="ltg_un", placeholder="z. B. 110")
             ltgart = st.selectbox("Leitungsart", KL.LEITUNGSART_OPTIONEN, index=0, key="ltg_art")
-            L   = st.number_input("Leitungslänge [km]", 0.1, value=25.0, step=0.5, format="%.2f", key="ltg_l")
-            Xbel = st.number_input("X′-Belag [Ω/km]", 0.001, value=KL.X_Belag_def, step=0.001, format="%.3f", key="ltg_xbel")
-            Cbel = st.number_input("C′-Belag [µF/km]", 0.0, value=KL.C_Belag_def, step=0.001, format="%.4f", key="ltg_cbel",
+            L   = st.number_input("Leitungslänge [km]", 0.1, value=None, step=0.5, format="%.2f", key="ltg_l", placeholder="z. B. 25")
+            Xbel = st.number_input("X′-Belag [Ω/km]", 0.001, value=None, step=0.001, format="%.3f", key="ltg_xbel", placeholder="z. B. 0,400")
+            Cbel = st.number_input("C′-Belag [µF/km]", 0.0, value=None, step=0.001, format="%.4f", key="ltg_cbel", placeholder="z. B. 0,0090",
                                    help="Kapazitätsbelag der Leitung (Adr.1114), bestimmt den Nennladestrom IcN für 87L.")
-            phi = st.number_input("Leitungswinkel φ_Ltg [°]", 30, 90, value=KL.phi_Ltg_def, step=1, key="ltg_phi")
-            IN_Ltg = st.number_input("Dauerstrombelastbarkeit IN_Ltg [A]", 0.0, value=600.0, step=10.0, format="%.0f", key="ltg_in",
+            phi = st.number_input("Leitungswinkel φ_Ltg [°]", 30, 90, value=None, step=1, key="ltg_phi", placeholder="z. B. 75")
+            IN_Ltg = st.number_input("Dauerstrombelastbarkeit IN_Ltg [A]", 0.0, value=None, step=10.0, format="%.0f", key="ltg_in", placeholder="z. B. 600",
                                      help="Thermischer Dauerstrom der Leitung (für Reserve-/Überlastfunktionen).")
         with ci2:
             st.caption("**Stromwandler**")
             c1, c2 = st.columns(2)
             with c1:
-                CT_P = st.number_input("CT prim. [A]", 1, value=600, step=1, key="ltg_ctp")
+                CT_P = st.number_input("CT prim. [A]", 1, value=None, step=1, key="ltg_ctp", placeholder="z. B. 600")
             with c2:
                 CT_S = st.selectbox("CT sek. [A]", [1, 5], index=0, key="ltg_cts")
             st.caption("**Spannungswandler**")
             v1, v2 = st.columns(2)
             with v1:
-                VT_P = st.number_input("VT prim. [kV]", 0.1, value=110.0, step=0.1, format="%.2f", key="ltg_vtp")
+                VT_P = st.number_input("VT prim. [kV]", 0.1, value=None, step=0.1, format="%.2f", key="ltg_vtp", placeholder="z. B. 110")
             with v2:
-                VT_S = st.number_input("VT sek. [V]", 50.0, 230.0, value=100.0, step=1.0, format="%.1f", key="ltg_vts")
+                VT_S = st.number_input("VT sek. [V]", 50.0, 230.0, value=None, step=1.0, format="%.1f", key="ltg_vts", placeholder="z. B. 100")
         with ci3:
             st.caption("**Leitgerät & Netz**")
             leitgeraet = st.selectbox("⚙️ Leitgerät (Schutzkonzept)", KL.LEITGERAET_OPTIONEN, index=0, key="ltg_dev",
                                       help="7SA6 = Distanzschutz als Hauptschutz · "
                                            "7SD5 = Leitungslängsdifferentialschutz (87L) + integrierter Distanzschutz.")
             stp = st.selectbox("Sternpunktbehandlung Netz", KL.STERNPUNKT_NETZ_OPTIONEN, index=0, key="ltg_stp")
-            Ik_max = st.number_input("Ik″ max am Leitungsanfang [kA]", 0.0, value=12.0, step=0.5, format="%.1f", key="ltg_ikmax")
-            Ik_min = st.number_input("Ik min am Leitungsende [kA]", 0.0, value=0.0, step=0.1, format="%.2f", key="ltg_ikmin",
-                                     help="Minimaler Kurzschlussstrom (DIN EN 60909-0). 0 = nicht vorhanden.")
+            Ik_max = st.number_input("Ik″ max am Leitungsanfang [kA]", 0.0, value=None, step=0.5, format="%.1f", key="ltg_ikmax", placeholder="z. B. 12")
+            Ik_min = st.number_input("Ik min am Leitungsende [kA]", 0.0, value=None, step=0.1, format="%.2f", key="ltg_ikmin", placeholder="optional",
+                                     help="Minimaler Kurzschlussstrom (DIN EN 60909-0). Leer = nicht vorhanden.")
+
+    # ── Vollständigkeitsprüfung der Grunddaten ────────────────────────────────
+    _pflicht = {"UN": UN, "Leitungslänge": L, "X′-Belag": Xbel, "C′-Belag": Cbel,
+                "Leitungswinkel φ": phi, "IN_Ltg": IN_Ltg, "CT prim.": CT_P,
+                "VT prim.": VT_P, "VT sek.": VT_S, "Ik\u2033 max": Ik_max}
+    _fehlt = [k for k, v in _pflicht.items() if v is None]
+    if _fehlt:
+        st.info("\u25ab\ufe0f **Bitte zun\u00e4chst die Grunddaten ausf\u00fcllen.** Sobald die "
+                "Pflichtfelder gef\u00fcllt sind, erscheinen automatisch die erweiterten "
+                "Parameter, die Sollwerte und die Plausibilit\u00e4tspr\u00fcfung.\n\nNoch offen: "
+                + ", ".join(_fehlt) + ".")
+        return
+    Ik_min = Ik_min or 0.0
 
     dev_key = KL.LEITGERAET_KEY[leitgeraet]
 
@@ -342,7 +277,7 @@ def show():
                 _hreg("i3i0_iph_stab")
         else:
             st.caption("Der gerichtete Erdkurzschlussschutz 67N ist für geerdete Netze vorgesehen. Das aktuell "
-                       "gewählte Netz ist isoliert oder kompensiert; dort wirkt die Erdschlusserfassung über "
+                       "gewählte Netz ist isoliert oder kompensiert. Dort wirkt die Erdschlusserfassung über "
                        "die Verlagerungsspannung.")
 
         _grphead("50/51 Not-Überstromzeitschutz (Reserveschutz)")
@@ -566,35 +501,44 @@ def show():
     with _section("Berechnete Grundgrößen"):
         m1, m2, m3, m4 = st.columns(4)
         with m1:
-            _metric("Leitungsreaktanz X_Ltg", f"{g['X_Ltg']:.3f} Ω", f"X′ · L = {Xbel:g} · {L:g}")
+            _metric("Leitungsreaktanz X_Ltg", f"{de(g['X_Ltg'], 3)} Ω", f"X′ · L = {deg(Xbel)} · {deg(L)}")
         with m2:
-            _metric("Leitungsresistanz R_Ltg", f"{g['R_Ltg']:.3f} Ω", f"X_Ltg / tan({phi}°)")
+            _metric("Leitungsresistanz R_Ltg", f"{de(g['R_Ltg'], 3)} Ω", f"X_Ltg / tan({phi}°)")
         with m3:
-            _metric("Schleifenimpedanz Z_Ltg", f"{g['Z_Ltg']:.3f} Ω", "√(R² + X²) primär")
+            _metric("Schleifenimpedanz Z_Ltg", f"{de(g['Z_Ltg'], 3)} Ω", "√(R² + X²) primär")
         with m4:
-            _metric("Z_Ltg sekundär", f"{g['Z_Ltg_sek']:.3f} Ω", f"× k_Z = {g['k_Z']:.4f}")
+            _metric("Z_Ltg sekundär", f"{de(g['Z_Ltg_sek'], 3)} Ω", f"× k_Z = {de(g['k_Z'], 4)}")
         m5, m6, m7, m8 = st.columns(4)
         with m5:
-            _metric("Wandlerverhältnis kCT", f"{g['kCT']:.2f}", f"{CT_P}/{CT_S} A")
+            _metric("Wandlerverhältnis kCT", f"{de(g['kCT'], 2)}", f"{CT_P}/{CT_S} A")
         with m6:
-            _metric("Wandlerverhältnis nVT", f"{g['nVT']:.2f}", f"{VT_P} kV / {VT_S} V")
+            _metric("Wandlerverhältnis nVT", f"{de(g['nVT'], 2)}", f"{VT_P} kV / {VT_S} V")
         with m7:
-            _metric("Sekundärfaktor k_Z", f"{g['k_Z']:.4f}", "Z_sek / Z_prim = kCT / nVT")
+            _metric("Sekundärfaktor k_Z", f"{de(g['k_Z'], 4)}", "Z_sek / Z_prim = kCT / nVT")
         with m8:
-            _metric("STW-Anpassung I_an", f"{g['I_an']:.2f}" if g["I_an"] else "—", "CT_sek / IN_Ltg_sek")
+            _metric("STW-Anpassung I_an", f"{de(g['I_an'], 2)}" if g["I_an"] else "—", "CT_sek / IN_Ltg_sek")
         m9, m10, m11, m12 = st.columns(4)
         with m9:
-            _metric("Leitungs-Nennstrom IN_Ltg", f"{g['IN_Ltg']:.1f} A",
+            _metric("Leitungs-Nennstrom IN_Ltg", f"{de(g['IN_Ltg'], 1)} A",
                     "Bezugsgröße für 87L · 67N · 50/51 · 49")
         with m10:
-            _metric("IN_Ltg sekundär", f"{g['IN_Ltg_sek']:.3f} A",
-                    f"IN_Ltg / kCT = {g['IN_Ltg']:.1f} / {g['kCT']:.2f}")
+            _metric("IN_Ltg sekundär", f"{de(g['IN_Ltg_sek'], 3)} A",
+                    f"IN_Ltg / kCT = {de(g['IN_Ltg'], 1)} / {de(g['kCT'], 2)}")
         with m11:
-            _metric("Nennladestrom IcN", f"{g['IcN']:.3f} A",
+            _metric("Nennladestrom IcN", f"{de(g['IcN'], 3)} A",
                     "U/√3 · 2πf · C′·L  (Mindestbezug 87L)")
         with m12:
-            _metric("X_Ltg sekundär", f"{g['X_Ltg_sek']:.3f} Ω",
+            _metric("X_Ltg sekundär", f"{de(g['X_Ltg_sek'], 3)} Ω",
                     f"X_Ltg × k_Z")
+        m13, m14, _m15, _m16 = st.columns(4)
+        with m13:
+            _metric("Ik″ max (Leitungsanfang)",
+                    f"{de(g['Ik_max_prim'], 0)} A" if g["Ik_max_prim"] else "—",
+                    "Konsistenzprüfung Kurzschlussrechnung")
+        with m14:
+            _metric("Ik min (Leitungsende)",
+                    f"{de(g['Ik_min_prim'], 0)} A" if g["Ik_min_prim"] else "—",
+                    "Empfindlichkeitsprüfung Not-Überstrom 50/51")
 
     # ══════════════════════ DISTANZSCHUTZ 21 ══════════════════════
     with _section(f"Distanzschutz 21 — Zonen ({leitgeraet})"):
@@ -612,10 +556,10 @@ def show():
         ):
             zr.append((
                 nm, "Vorwärts",
-                f"{z['faktor']*100:.0f} %",
-                f"{z['X_prim']:.3f}", f"{z['X_sek']:.3f}",
-                f"{z['R_sek']:.3f}", f"{z['RE_sek']:.3f}",
-                f"{z['t']:.2f}",
+                f"{de(z['faktor']*100, 0)} %",
+                f"{de(z['X_prim'], 3)}", f"{de(z['X_sek'], 3)}",
+                f"{de(z['R_sek'], 3)}", f"{de(z['RE_sek'], 3)}",
+                f"{de(z['t'], 2)}",
                 f"X(sek.)→{ax} | R(sek.)→{ar} | RE(sek.)→{are} | T→{at}",
             ))
         # Reservezonen Z4/Z5/Z6 (richtungswaehlbar, ggf. unwirksam)
@@ -624,10 +568,10 @@ def show():
             if z["aktiv"]:
                 zr.append((
                     nm, z["modus"],
-                    f"{z['faktor']*100:.0f} %",
-                    f"{z['X_prim']:.3f}", f"{z['X_sek']:.3f}",
-                    f"{z['R_sek']:.3f}", f"{z['RE_sek']:.3f}",
-                    f"{z['t']:.2f}",
+                    f"{de(z['faktor']*100, 0)} %",
+                    f"{de(z['X_prim'], 3)}", f"{de(z['X_sek'], 3)}",
+                    f"{de(z['R_sek'], 3)}", f"{de(z['RE_sek'], 3)}",
+                    f"{de(z['t'], 2)}",
                     f"X(sek.)→{z['x_adr']} | R(sek.)→{z['r_adr']} | RE(sek.)→{z['re_adr']} | T→{z['t_adr']}",
                 ))
             else:
@@ -637,7 +581,7 @@ def show():
             "Zone", "Richtung", "Reichw.", "X prim. [Ω]", "X sek. [Ω]", "R sek. [Ω]",
             "RE sek. [Ω]", "t [s]", "DIGSI-Adressen (sek.-Wert → Adresse)"])
         st.dataframe(dfz, width="stretch", hide_index=True)
-        st.caption("Primäre Reichweite X(Zk) = f_Zk · X_Ltg; sekundär × k_Z. "
+        st.caption("Primäre Reichweite X(Zk) = f_Zk · X_Ltg, sekundär × k_Z. "
                    "R(Zk) = R/X-Faktor · X(Zk), RE(Zk) = 1,5 · R(Zk). "
                    "Adressspalte: X(sek.) → X-Adresse | R(sek.) → R-Adresse | "
                    "RE(sek.) → RE-Adresse | T → Zeitadresse. "
@@ -649,24 +593,24 @@ def show():
         with _section("Leitungsdifferentialschutz 87L (Hauptschutz 7SD5)"):
             a87 = d87["adr"]
             st.caption(f"Ladestromkompensation **{d87['ic_komp']}** · "
-                       f"IcSTAB/IcN **{d87['icstab_icn']:.1f}** · Schutzdatentopologie "
+                       f"IcSTAB/IcN **{de(d87['icstab_icn'], 1)}** · Schutzdatentopologie "
                        f"**{d87['anzahl_geraete']} Geräte** · WS1 **{d87['ws_verbindung']}**")
             n1, n2, n3 = st.columns(3)
             with n1:
-                _metric("Nennladestrom IcN", f"{d87['IcN']:.2f} A", "U/√3 · 2πf · C′·L")
+                _metric("Nennladestrom IcN", f"{de(d87['IcN'], 2)} A", "U/√3 · 2πf · C′·L")
             with n2:
-                _metric("Mindest-Ansprechwert", f"{d87['i_diff_min']:.1f} A", "2,5 · IcN (Siemens-Empf.)")
+                _metric("Mindest-Ansprechwert", f"{de(d87['i_diff_min'], 1)} A", "2,5 · IcN (Siemens-Empf.)")
             with n3:
-                _metric("Auslöseverzögerung T-I-DIF>", f"{d87['t_i_diff']:.2f} s", f"Adr.{a87['T_I_DIF']}")
+                _metric("Auslöseverzögerung T-I-DIF>", f"{de(d87['t_i_diff'], 2)} s", f"Adr.{a87['T_I_DIF']}")
             sr = [
-                ("I-DIFF> (stabilisiert)", f"{d87['i_diff']:.2f} × IN",
-                 f"{d87['i_diff_prim']:.1f}", f"{d87['i_diff_sek']:.3f}",
+                ("I-DIFF> (stabilisiert)", f"{de(d87['i_diff'], 2)} × IN",
+                 f"{de(d87['i_diff_prim'], 1)}", f"{de(d87['i_diff_sek'], 3)}",
                  f"I(sek.)→{a87['I_DIFF']} | T→{a87['T_I_DIF']}"),
-                ("I-DIF> ZUSCH.", f"{d87['i_diff_zusch']:.2f} × IN",
-                 f"{d87['i_diff_zusch_prim']:.1f}", "—",
+                ("I-DIF> ZUSCH.", f"{de(d87['i_diff_zusch'], 2)} × IN",
+                 f"{de(d87['i_diff_zusch_prim'], 1)}", "—",
                  f"I(sek.)→{a87['I_DIF_ZUSCH']}"),
-                ("I-DIFF>> (unstabilisiert)", f"{d87['i_diff_hh']:.2f} × IN",
-                 f"{d87['i_diff_hh_prim']:.1f}", f"{d87['i_diff_hh_sek']:.3f}",
+                ("I-DIFF>> (unstabilisiert)", f"{de(d87['i_diff_hh'], 2)} × IN",
+                 f"{de(d87['i_diff_hh_prim'], 1)}", f"{de(d87['i_diff_hh_sek'], 3)}",
                  f"I(sek.)→{a87['I_DIFF_HH']}"),
             ]
             dfd = pd.DataFrame(sr, columns=["Stufe", "Ansprechwert", "I prim. [A]", "I sek. [A]", "DIGSI-Adressen (Wert → Adresse)"])
@@ -682,16 +626,17 @@ def show():
         a67 = d67["adr"]
         if not d67["geerdet"]:
             st.markdown(
-                f'<div class="warn-box">Sternpunktbehandlung <b>{d67["sternpunkt"]}</b>: '
-                'Der strombasierte 67N ist für geerdete Netze vorgesehen. In isolierten oder '
-                'kompensierten Netzen erfolgt die Erdschlusserfassung über die '
-                'Verlagerungsspannung U0 bzw. wattmetrisch. Die Stufen werden hier nur '
-                'informativ angezeigt.</div>',
+                f'<div class="info-box">Sternpunktbehandlung <b>{d67["sternpunkt"]}</b>: '
+                'Der strombasierte 67N ist für geerdete Netze vorgesehen und hier nicht '
+                'wirksam. In isolierten oder kompensierten Netzen erfolgt die '
+                'Erdschlusserfassung über die Verlagerungsspannung U0 bzw. wattmetrisch auf '
+                'einem dedizierten Erdschlussgerät. Die Stufen unten werden nur '
+                'informativ angezeigt, hier ist nichts einzustellen.</div>',
                 unsafe_allow_html=True)
         else:
             st.caption(f"Netz **{d67['sternpunkt']}** · Richtungswinkel PHI KOMP "
                        f"**{d67['phi_komp']}°** · Stabilisierung 3I0 IPH STAB "
-                       f"**{d67['iph_stab']*100:.0f} %**")
+                       f"**{de(d67['iph_stab']*100, 0)} %**")
         er = []
         for nm, s, ai, at, am in (
             ("3I0>>> (Hochstrom)", d67["3I0HHH"], a67["I_HHH"], a67["T_HHH"], a67["M_HHH"]),
@@ -701,10 +646,10 @@ def show():
             er.append((
                 nm,
                 s["modus"],
-                f"{s['faktor']:.2f} × IN",
-                f"{s['i_prim']:.1f}",
-                f"{s['i_sek']:.3f}",
-                f"{s['t']:.2f}",
+                f"{de(s['faktor'], 2)} × IN",
+                f"{de(s['i_prim'], 1)}",
+                f"{de(s['i_sek'], 3)}",
+                f"{de(s['t'], 2)}",
                 f"I(sek.)→{ai} | T→{at} | MODUS→{am}",
             ))
         dfe = pd.DataFrame(er, columns=[
@@ -730,12 +675,12 @@ def show():
         sr = [
             ("Verfahren", d85["verfahren"], "—", f"Adr.{a85['SIGNALZUSATZ']}"),
             ("Anschluss (Gegenenden)", d85["anschluss"], "—", f"Adr.{a85['ANSCHLUSS']}"),
-            ("T SENDVERL. (Sendeverlängerung)", f"{d85['t_sendverl']:.2f}", "s", f"Adr.{a85['T_SENDVERL']}"),
-            ("TV (Freigabeverzögerung Z1B)", f"{d85['tv']:.2f}", "s", f"Adr.{a85['TV']}"),
-            ("T WARTE RÜCKW.", f"{d85['t_warte_rueckw']:.2f}", "s", f"Adr.{a85['T_WARTE_RUECKW']}"),
-            ("T TRANSBLOCK", f"{d85['t_transblock']:.2f}", "s", f"Adr.{a85['T_TRANSBLOCK']}"),
+            ("T SENDVERL. (Sendeverlängerung)", f"{de(d85['t_sendverl'], 2)}", "s", f"Adr.{a85['T_SENDVERL']}"),
+            ("TV (Freigabeverzögerung Z1B)", f"{de(d85['tv'], 2)}", "s", f"Adr.{a85['TV']}"),
+            ("T WARTE RÜCKW.", f"{de(d85['t_warte_rueckw'], 2)}", "s", f"Adr.{a85['T_WARTE_RUECKW']}"),
+            ("T TRANSBLOCK", f"{de(d85['t_transblock'], 2)}", "s", f"Adr.{a85['T_TRANSBLOCK']}"),
         ]
-        dfs = pd.DataFrame(sr, columns=["Parameter", "Wert", "Einheit", "DIGSI-Adr."])
+        dfs = pd.DataFrame(sr, columns=["Parameter", "Wert", "Einheit", "DIGSI-Adresse"])
         st.dataframe(dfs, width="stretch", hide_index=True)
         st.caption("Die Freigabeverfahren (Mitnahme, Signalvergleich, Unblocking) senden bei "
                    "Vorwärtsfehler ein Freigabesignal und lösen Z1B bei Empfang sofort aus. Das "
@@ -752,11 +697,11 @@ def show():
         else:
             st.caption(f"Betriebsart **{d50['betriebsart']}**")
         r50 = [
-            ("Iph>> (Hochstrom)", f"{d50['IphHH']['faktor']:.2f} × IN", f"{d50['IphHH']['i_prim']:.1f}",
-             f"{d50['IphHH']['i_sek']:.3f}", f"{d50['IphHH']['t']:.2f}",
+            ("Iph>> (Hochstrom)", f"{de(d50['IphHH']['faktor'], 2)} × IN", f"{de(d50['IphHH']['i_prim'], 1)}",
+             f"{de(d50['IphHH']['i_sek'], 3)}", f"{de(d50['IphHH']['t'], 2)}",
              f"I(sek.)→{a50['IPH_HH']} | T→{a50['T_IPH_HH']}"),
-            ("Iph> (Grundstufe)", f"{d50['IphH']['faktor']:.2f} × IN", f"{d50['IphH']['i_prim']:.1f}",
-             f"{d50['IphH']['i_sek']:.3f}", f"{d50['IphH']['t']:.2f}",
+            ("Iph> (Grundstufe)", f"{de(d50['IphH']['faktor'], 2)} × IN", f"{de(d50['IphH']['i_prim'], 1)}",
+             f"{de(d50['IphH']['i_sek'], 3)}", f"{de(d50['IphH']['t'], 2)}",
              f"I(sek.)→{a50['IPH_H']} | T→{a50['T_IPH_H']}"),
         ]
         df50 = pd.DataFrame(r50, columns=["Stufe", "Ansprechwert", "I prim. [A]", "I sek. [A]", "t [s]", "DIGSI-Adressen (Wert → Adresse)"])
@@ -773,11 +718,11 @@ def show():
         else:
             st.caption(f"AUTO-WE **Ein** · **{d79['anzahl']}** Unterbrechungszyklus/-zyklen")
         r79 = [
-            ("Pausenzeit nach 1-pol. AUS", f"{d79['tp_1pol']:.2f}", "s", f"Adr.{a79['TP_1POL']}"),
-            ("Pausenzeit nach 3-pol. AUS", f"{d79['tp_3pol']:.2f}", "s", f"Adr.{a79['TP_3POL']}"),
-            ("Sperrzeit (Reclaim)", f"{d79['sperrzeit']:.2f}", "s", f"Adr.{a79['SPERRZEIT']}"),
+            ("Pausenzeit nach 1-pol. AUS", f"{de(d79['tp_1pol'], 2)}", "s", f"Adr.{a79['TP_1POL']}"),
+            ("Pausenzeit nach 3-pol. AUS", f"{de(d79['tp_3pol'], 2)}", "s", f"Adr.{a79['TP_3POL']}"),
+            ("Sperrzeit (Reclaim)", f"{de(d79['sperrzeit'], 2)}", "s", f"Adr.{a79['SPERRZEIT']}"),
         ]
-        df79 = pd.DataFrame(r79, columns=["Parameter", "Wert", "Einheit", "DIGSI-Adr."])
+        df79 = pd.DataFrame(r79, columns=["Parameter", "Wert", "Einheit", "DIGSI-Adresse"])
         st.dataframe(df79, width="stretch", hide_index=True)
         st.caption("Die 1-polige Pausenzeit muss lang genug für das Verlöschen des "
                    "Sekundärlichtbogens sein, die 3-polige Pausenzeit richtet sich nach der "
@@ -793,12 +738,12 @@ def show():
             st.caption(f"SCHALTERV. **Ein** · 1-poliges AUS (T1) **{dbf['aus_1pol']}**")
         n1, n2, n3 = st.columns(3)
         with n1:
-            _metric("I> SVS (Stromflussüberw.)", f"{dbf['i_svs_prim']:.1f} A",
-                    f"{dbf['i_svs']:.2f} × IN · Adr.{abf['I_SVS']}")
+            _metric("I> SVS (Stromflussüberw.)", f"{de(dbf['i_svs_prim'], 1)} A",
+                    f"{de(dbf['i_svs'], 2)} × IN · Adr.{abf['I_SVS']}")
         with n2:
-            _metric("T1 (eigener Schalter)", f"{dbf['t1_3pol']:.2f} s", f"Adr.{abf['T1_3POL']}")
+            _metric("T1 (eigener Schalter)", f"{de(dbf['t1_3pol'], 2)} s", f"Adr.{abf['T1_3POL']}")
         with n3:
-            _metric("T2 (umliegende Schalter)", f"{dbf['t2']:.2f} s", f"Adr.{abf['T2']}")
+            _metric("T2 (umliegende Schalter)", f"{de(dbf['t2'], 2)} s", f"Adr.{abf['T2']}")
         st.caption("Stufe 1 (T1) gibt ein Wiederholungskommando an den eigenen Schalter, Stufe 2 "
                    "(T2) schaltet bei echtem Versagen die umliegenden Leistungsschalter "
                    "(Sammelschiene) ab. T2 muss größer als T1 sein.")
@@ -823,14 +768,14 @@ def show():
         if not d2759["aktiv"]:
             st.markdown('<div class="warn-box">Spannungsschutz = <b>Aus</b>.</div>', unsafe_allow_html=True)
         r27 = [
-            ("Uph>> (Überspannung)", f"{d2759['UphHH']['faktor']:.2f} × UN", f"{d2759['UphHH']['u_sek']:.1f}",
-             f"{d2759['UphHH']['t']:.2f}", f"U(sek.)→{a27['UPH_HH']} | T→{a27['T_UPH_HH']}"),
-            ("Uph> (Überspannung)", f"{d2759['UphH']['faktor']:.2f} × UN", f"{d2759['UphH']['u_sek']:.1f}",
-             f"{d2759['UphH']['t']:.2f}", f"U(sek.)→{a27['UPH_H']} | T→{a27['T_UPH_H']}"),
-            ("Uph< (Unterspannung)", f"{d2759['UphL']['faktor']:.2f} × UN", f"{d2759['UphL']['u_sek']:.1f}",
-             f"{d2759['UphL']['t']:.2f}", f"U(sek.)→{a27['UPH_L']} | T→{a27['T_UPH_L']}"),
-            ("Uph<< (Unterspannung)", f"{d2759['UphLL']['faktor']:.2f} × UN", f"{d2759['UphLL']['u_sek']:.1f}",
-             f"{d2759['UphLL']['t']:.2f}", f"U(sek.)→{a27['UPH_LL']} | T→{a27['T_UPH_LL']}"),
+            ("Uph>> (Überspannung)", f"{de(d2759['UphHH']['faktor'], 2)} × UN", f"{de(d2759['UphHH']['u_sek'], 1)}",
+             f"{de(d2759['UphHH']['t'], 2)}", f"U(sek.)→{a27['UPH_HH']} | T→{a27['T_UPH_HH']}"),
+            ("Uph> (Überspannung)", f"{de(d2759['UphH']['faktor'], 2)} × UN", f"{de(d2759['UphH']['u_sek'], 1)}",
+             f"{de(d2759['UphH']['t'], 2)}", f"U(sek.)→{a27['UPH_H']} | T→{a27['T_UPH_H']}"),
+            ("Uph< (Unterspannung)", f"{de(d2759['UphL']['faktor'], 2)} × UN", f"{de(d2759['UphL']['u_sek'], 1)}",
+             f"{de(d2759['UphL']['t'], 2)}", f"U(sek.)→{a27['UPH_L']} | T→{a27['T_UPH_L']}"),
+            ("Uph<< (Unterspannung)", f"{de(d2759['UphLL']['faktor'], 2)} × UN", f"{de(d2759['UphLL']['u_sek'], 1)}",
+             f"{de(d2759['UphLL']['t'], 2)}", f"U(sek.)→{a27['UPH_LL']} | T→{a27['T_UPH_LL']}"),
         ]
         df27 = pd.DataFrame(r27, columns=["Stufe", "Ansprechwert", "U sek. (L-E) [V]", "t [s]", "DIGSI-Adressen (Wert → Adresse)"])
         st.dataframe(df27, width="stretch", hide_index=True)
@@ -846,7 +791,7 @@ def show():
         r81 = []
         for nm in ("f1", "f2", "f3", "f4"):
             s = d81[nm]
-            r81.append((nm, f"{s['f']:.2f} Hz", s["art"], f"{s['t']:.2f}",
+            r81.append((nm, f"{de(s['f'], 2)} Hz", s["art"], f"{de(s['t'], 2)}",
                         f"f(Hz)→{s['adr_f']} | T→{s['adr_t']}"))
         df81 = pd.DataFrame(r81, columns=["Stufe", "Ansprechwert", "Art", "t [s]", "DIGSI-Adressen (Wert → Adresse)"])
         st.dataframe(df81, width="stretch", hide_index=True)
@@ -861,13 +806,13 @@ def show():
             st.markdown('<div class="warn-box">Überlastschutz = <b>Aus</b>.</div>', unsafe_allow_html=True)
         c1, c2, c3, c4 = st.columns(4)
         with c1:
-            _metric("K-FAKTOR", f"{d49['k_faktor']:.2f}", f"I_dauer/IN · Adr.{a49['K_FAKTOR']}")
+            _metric("K-FAKTOR", f"{de(d49['k_faktor'], 2)}", f"I_dauer/IN · Adr.{a49['K_FAKTOR']}")
         with c2:
-            _metric("Dauergrenzstrom k·IN", f"{d49['i_max_prim']:.0f} A", "thermischer Endwert")
+            _metric("Dauergrenzstrom k·IN", f"{de(d49['i_max_prim'], 0)} A", "thermischer Endwert")
         with c3:
             _metric("Zeitkonstante τ_th", f"{d49['zeitkonstante']} min", f"Adr.{a49['ZEITKONST']}")
         with c4:
-            _metric("Θ WARN / I WARN", f"{d49['theta_warn']} % / {d49['i_warn']:.2f}×IN", f"Adr.{a49['THETA_WARN']}/{a49['I_WARN']}")
+            _metric("Θ WARN / I WARN", f"{d49['theta_warn']} % / {de(d49['i_warn'], 2)}×IN", f"Adr.{a49['THETA_WARN']}/{a49['I_WARN']}")
         st.caption("Das thermische Abbild bildet die Erwärmung der Leitung nach. Auslösung bei "
                    "100 % des Abbilds (k·IN dauerhaft). WICHTIG: Die Zeitkonstante ist bei 7SA6/7SD5 "
                    "in Minuten einzustellen, im Unterschied zu Sekunden bei anderen Gerätefamilien.")
@@ -878,11 +823,14 @@ def show():
         for c in r["plausibilitaet"]:
             rows.append((
                 f'{_AMPEL_EMOJI.get(c["status"], "")} {c["status"]}',
-                c["pruefung"], c["ergebnis"], c["hinweis"],
-                c["korrektur"] or "—",
+                c["pruefung"], c["ergebnis"],
+                c["korrektur"] or "—", c["hinweis"],
             ))
-        dfp = pd.DataFrame(rows, columns=["Status", "Prüfung", "Ergebnis", "Hinweis", "Korrektur"])
+        dfp = pd.DataFrame(rows, columns=["Status", "Prüfung", "Ergebnis",
+                                          "Konkrete Korrektur", "Hinweis / Quelle"])
         st.dataframe(dfp, width="stretch", hide_index=True)
+        st.caption("Spalte „Konkrete Korrektur“ nennt bei 🟡/🔴 den genauen Regler und Zielwert. "
+                   "Die wichtigsten Punkte stehen zusätzlich oben in der Handlungsempfehlungs-Box.")
 
     # ══════════════════════ GERÄTE-EMPFEHLUNG ══════════════════════
     with _section("Geräte- / Architektur-Empfehlung"):
@@ -909,19 +857,19 @@ def show():
         ):
             zonen_sw.append((
                 znm,
-                f"{z['X_sek']:.3f}", ax,
-                f"{z['R_sek']:.3f}", ar,
-                f"{z['RE_sek']:.3f}", are_,
-                f"{z['t']:.2f}", at,
+                f"{de(z['X_sek'], 3)}", ax,
+                f"{de(z['R_sek'], 3)}", ar,
+                f"{de(z['RE_sek'], 3)}", are_,
+                f"{de(z['t'], 2)}", at,
             ))
         for rnm, z in (("Z4", d21["Z4"]), ("Z5", d21["Z5"]), ("Z6", d21["Z6"])):
             if z["aktiv"]:
                 zonen_sw.append((
                     f"{rnm}  [{z['modus']}]",
-                    f"{z['X_sek']:.3f}", z["x_adr"],
-                    f"{z['R_sek']:.3f}", z["r_adr"],
-                    f"{z['RE_sek']:.3f}", z["re_adr"],
-                    f"{z['t']:.2f}", z["t_adr"],
+                    f"{de(z['X_sek'], 3)}", z["x_adr"],
+                    f"{de(z['R_sek'], 3)}", z["r_adr"],
+                    f"{de(z['RE_sek'], 3)}", z["re_adr"],
+                    f"{de(z['t'], 2)}", z["t_adr"],
                 ))
         dfz_sw = pd.DataFrame(zonen_sw, columns=[
             "Zone",
@@ -935,11 +883,11 @@ def show():
         # Erdimpedanzanpassung direkt unter Zonenmatrix (gehört zu 21)
         erdimp_rows = []
         if d21["erdimp_format"] == KL.ERDIMP_FORMAT_OPTIONEN[0]:
-            erdimp_rows.append(("RE/RL (Z1)", f"{d21['RE_RL']:.2f}", "—", f"Adr.{adr['RE_RL']}"))
-            erdimp_rows.append(("XE/XL (Z1)", f"{d21['XE_XL']:.2f}", "—",
+            erdimp_rows.append(("RE/RL (Z1)", f"{de(d21['RE_RL'], 2)}", "—", f"Adr.{adr['RE_RL']}"))
+            erdimp_rows.append(("XE/XL (Z1)", f"{de(d21['XE_XL'], 2)}", "—",
                                 "Adr." + KL.ADR_get("XE_XL_Z1", leitgeraet)))
         else:
-            erdimp_rows.append(("K0 (Z1) Betrag", f"{d21['K0']:.2f}", "—", f"Adr.{adr['K0']}"))
+            erdimp_rows.append(("K0 (Z1) Betrag", f"{de(d21['K0'], 2)}", "—", f"Adr.{adr['K0']}"))
             erdimp_rows.append(("PHI K0 (Z1)", f"{d21['PHI_K0']}", "°",
                                 "Adr." + KL.ADR_get("PHI_K0_Z1", leitgeraet)))
         erdimp_rows.append(("PHI LTG (Leitungswinkel)", f"{phi}", "°", f"Adr.{adr['PHI_LTG']}"))
@@ -959,12 +907,12 @@ def show():
         if d87["verfuegbar"]:
             a87 = d87["adr"]
             rows.append(("87L", "DIFF.-SCHUTZ", "Ein", "—", f"Adr.{a87['DIFF_SCHUTZ']}"))
-            rows.append(("87L", "I-DIFF>  I (prim.)", f"{d87['i_diff_prim']:.1f}", "A prim.", f"Adr.{a87['I_DIFF']}"))
-            rows.append(("87L", "I-DIFF>  T", f"{d87['t_i_diff']:.2f}", "s", f"Adr.{a87['T_I_DIF']}"))
-            rows.append(("87L", "I-DIF> ZUSCH.", f"{d87['i_diff_zusch_prim']:.1f}", "A prim.", f"Adr.{a87['I_DIF_ZUSCH']}"))
-            rows.append(("87L", "I-DIFF>>", f"{d87['i_diff_hh_prim']:.1f}", "A prim.", f"Adr.{a87['I_DIFF_HH']}"))
+            rows.append(("87L", "I-DIFF>  I (prim.)", f"{de(d87['i_diff_prim'], 1)}", "A prim.", f"Adr.{a87['I_DIFF']}"))
+            rows.append(("87L", "I-DIFF>  T", f"{de(d87['t_i_diff'], 2)}", "s", f"Adr.{a87['T_I_DIF']}"))
+            rows.append(("87L", "I-DIF> ZUSCH.", f"{de(d87['i_diff_zusch_prim'], 1)}", "A prim.", f"Adr.{a87['I_DIF_ZUSCH']}"))
+            rows.append(("87L", "I-DIFF>>", f"{de(d87['i_diff_hh_prim'], 1)}", "A prim.", f"Adr.{a87['I_DIFF_HH']}"))
             rows.append(("87L", "Ic-KOMP.", d87["ic_komp"], "—", f"Adr.{a87['IC_KOMP']}"))
-            rows.append(("87L", "IcSTAB/IcN", f"{d87['icstab_icn']:.1f}", "× IcN", f"Adr.{a87['ICSTAB_ICN']}"))
+            rows.append(("87L", "IcSTAB/IcN", f"{de(d87['icstab_icn'], 1)}", "× IcN", f"Adr.{a87['ICSTAB_ICN']}"))
             rows.append(("87L", "ANZAHL GERAETE", f"{d87['anzahl_geraete']}", "—", f"Adr.{a87['ANZAHL_GERAETE']}"))
         # 67N Gerichteter Erdkurzschlussschutz (geerdete Netze)
         if d67["geerdet"]:
@@ -976,41 +924,41 @@ def show():
                 ("3I0>",   d67["3I0H"],   a67["I_H"],   a67["T_H"],   a67["M_H"]),
             ):
                 rows.append(("67N", f"{nm}  MODUS [{s['modus']}]", s["modus"], "—", f"Adr.{am}"))
-                rows.append(("67N", f"{nm}  I (prim.)", f"{s['i_prim']:.1f}", "A prim.", f"Adr.{ai}"))
-                rows.append(("67N", f"{nm}  T", f"{s['t']:.2f}", "s", f"Adr.{at}"))
+                rows.append(("67N", f"{nm}  I (prim.)", f"{de(s['i_prim'], 1)}", "A prim.", f"Adr.{ai}"))
+                rows.append(("67N", f"{nm}  T", f"{de(s['t'], 2)}", "s", f"Adr.{at}"))
             rows.append(("67N", "PHI KOMP", f"{d67['phi_komp']}", "°", f"Adr.{a67['PHI_KOMP']}"))
         # 85 Signalübertragungsverfahren (wenn aktiv)
         if d85["aktiv"]:
             a85 = d85["adr"]
             rows.append(("85", "SIGNALZUSATZ", d85["verfahren"], "—", f"Adr.{a85['SIGNALZUSATZ']}"))
-            rows.append(("85", "T SENDVERL.", f"{d85['t_sendverl']:.2f}", "s", f"Adr.{a85['T_SENDVERL']}"))
-            rows.append(("85", "TV (Freigabe Z1B)", f"{d85['tv']:.2f}", "s", f"Adr.{a85['TV']}"))
-            rows.append(("85", "T WARTE RÜCKW.", f"{d85['t_warte_rueckw']:.2f}", "s", f"Adr.{a85['T_WARTE_RUECKW']}"))
-            rows.append(("85", "T TRANSBLOCK", f"{d85['t_transblock']:.2f}", "s", f"Adr.{a85['T_TRANSBLOCK']}"))
+            rows.append(("85", "T SENDVERL.", f"{de(d85['t_sendverl'], 2)}", "s", f"Adr.{a85['T_SENDVERL']}"))
+            rows.append(("85", "TV (Freigabe Z1B)", f"{de(d85['tv'], 2)}", "s", f"Adr.{a85['TV']}"))
+            rows.append(("85", "T WARTE RÜCKW.", f"{de(d85['t_warte_rueckw'], 2)}", "s", f"Adr.{a85['T_WARTE_RUECKW']}"))
+            rows.append(("85", "T TRANSBLOCK", f"{de(d85['t_transblock'], 2)}", "s", f"Adr.{a85['T_TRANSBLOCK']}"))
         # 50/51 Not-Überstrom (wenn aktiv)
         if d50["aktiv"]:
             a50 = d50["adr"]
             rows.append(("50/51", "Betriebsart", d50["betriebsart"], "—", f"Adr.{a50['BETRIEBSART']}"))
-            rows.append(("50/51", "Iph>>  I (prim.)", f"{d50['IphHH']['i_prim']:.1f}", "A prim.", f"Adr.{a50['IPH_HH']}"))
-            rows.append(("50/51", "Iph>>  T", f"{d50['IphHH']['t']:.2f}", "s", f"Adr.{a50['T_IPH_HH']}"))
-            rows.append(("50/51", "Iph>  I (prim.)", f"{d50['IphH']['i_prim']:.1f}", "A prim.", f"Adr.{a50['IPH_H']}"))
-            rows.append(("50/51", "Iph>  T", f"{d50['IphH']['t']:.2f}", "s", f"Adr.{a50['T_IPH_H']}"))
+            rows.append(("50/51", "Iph>>  I (prim.)", f"{de(d50['IphHH']['i_prim'], 1)}", "A prim.", f"Adr.{a50['IPH_HH']}"))
+            rows.append(("50/51", "Iph>>  T", f"{de(d50['IphHH']['t'], 2)}", "s", f"Adr.{a50['T_IPH_HH']}"))
+            rows.append(("50/51", "Iph>  I (prim.)", f"{de(d50['IphH']['i_prim'], 1)}", "A prim.", f"Adr.{a50['IPH_H']}"))
+            rows.append(("50/51", "Iph>  T", f"{de(d50['IphH']['t'], 2)}", "s", f"Adr.{a50['T_IPH_H']}"))
         # 79 AWE (wenn aktiv)
         if d79["aktiv"]:
             a79 = d79["adr"]
             rows.append(("79", "AUTO-WE", f"Ein ({d79['anzahl']} Zyklen)", "—", f"Adr.{a79['AUTO_WE']}"))
-            rows.append(("79", "TP nach 1-pol. AUS", f"{d79['tp_1pol']:.2f}", "s", f"Adr.{a79['TP_1POL']}"))
-            rows.append(("79", "TP nach 3-pol. AUS", f"{d79['tp_3pol']:.2f}", "s", f"Adr.{a79['TP_3POL']}"))
-            rows.append(("79", "Sperrzeit", f"{d79['sperrzeit']:.2f}", "s", f"Adr.{a79['SPERRZEIT']}"))
+            rows.append(("79", "TP nach 1-pol. AUS", f"{de(d79['tp_1pol'], 2)}", "s", f"Adr.{a79['TP_1POL']}"))
+            rows.append(("79", "TP nach 3-pol. AUS", f"{de(d79['tp_3pol'], 2)}", "s", f"Adr.{a79['TP_3POL']}"))
+            rows.append(("79", "Sperrzeit", f"{de(d79['sperrzeit'], 2)}", "s", f"Adr.{a79['SPERRZEIT']}"))
         # 50BF Schalterversager (wenn aktiv)
         if dbf["aktiv"]:
             abf = dbf["adr"]
-            rows.append(("50BF", "I> SVS", f"{dbf['i_svs_prim']:.1f}", "A prim.", f"Adr.{abf['I_SVS']}"))
-            rows.append(("50BF", "3I0> SVS", f"{round(dbf['i3i0_svs'] * g['IN_Ltg'], 1):.1f}", "A prim.", f"Adr.{abf['I3I0_SVS']}"))
+            rows.append(("50BF", "I> SVS", f"{de(dbf['i_svs_prim'], 1)}", "A prim.", f"Adr.{abf['I_SVS']}"))
+            rows.append(("50BF", "3I0> SVS", f"{de(round(dbf['i3i0_svs'] * g['IN_Ltg'], 1), 1)}", "A prim.", f"Adr.{abf['I3I0_SVS']}"))
             rows.append(("50BF", "AUS 1POL (T1)", dbf["aus_1pol"], "Ja/Nein", f"Adr.{abf['AUS_1POL']}"))
-            rows.append(("50BF", "T1 1POL", f"{dbf['t1_1pol']:.2f}", "s", f"Adr.{abf['T1_1POL']}"))
-            rows.append(("50BF", "T1 3POL (eigener LS)", f"{dbf['t1_3pol']:.2f}", "s", f"Adr.{abf['T1_3POL']}"))
-            rows.append(("50BF", "T2 (umliegende LS)", f"{dbf['t2']:.2f}", "s", f"Adr.{abf['T2']}"))
+            rows.append(("50BF", "T1 1POL", f"{de(dbf['t1_1pol'], 2)}", "s", f"Adr.{abf['T1_1POL']}"))
+            rows.append(("50BF", "T1 3POL (eigener LS)", f"{de(dbf['t1_3pol'], 2)}", "s", f"Adr.{abf['T1_3POL']}"))
+            rows.append(("50BF", "T2 (umliegende LS)", f"{de(dbf['t2'], 2)}", "s", f"Adr.{abf['T2']}"))
         # 68/78 Pendelsperre
         if d68["aktiv"]:
             a68 = d68["adr"]
@@ -1018,31 +966,31 @@ def show():
         # 27/59 Spannungsschutz — alle vier Stufen, je Wert und Zeit getrennt
         if d2759["aktiv"]:
             a27 = d2759["adr"]
-            rows.append(("59", "Uph>>  U (× UN)", f"{d2759['UphHH']['faktor']:.2f}", "× UN", f"Adr.{a27['UPH_HH']}"))
-            rows.append(("59", "Uph>>  T", f"{d2759['UphHH']['t']:.2f}", "s", f"Adr.{a27['T_UPH_HH']}"))
-            rows.append(("59", "Uph>  U (× UN)", f"{d2759['UphH']['faktor']:.2f}", "× UN", f"Adr.{a27['UPH_H']}"))
-            rows.append(("59", "Uph>  T", f"{d2759['UphH']['t']:.2f}", "s", f"Adr.{a27['T_UPH_H']}"))
-            rows.append(("27", "Uph<  U (× UN)", f"{d2759['UphL']['faktor']:.2f}", "× UN", f"Adr.{a27['UPH_L']}"))
-            rows.append(("27", "Uph<  T", f"{d2759['UphL']['t']:.2f}", "s", f"Adr.{a27['T_UPH_L']}"))
-            rows.append(("27", "Uph<<  U (× UN)", f"{d2759['UphLL']['faktor']:.2f}", "× UN", f"Adr.{a27['UPH_LL']}"))
-            rows.append(("27", "Uph<<  T", f"{d2759['UphLL']['t']:.2f}", "s", f"Adr.{a27['T_UPH_LL']}"))
+            rows.append(("59", "Uph>>  U (× UN)", f"{de(d2759['UphHH']['faktor'], 2)}", "× UN", f"Adr.{a27['UPH_HH']}"))
+            rows.append(("59", "Uph>>  T", f"{de(d2759['UphHH']['t'], 2)}", "s", f"Adr.{a27['T_UPH_HH']}"))
+            rows.append(("59", "Uph>  U (× UN)", f"{de(d2759['UphH']['faktor'], 2)}", "× UN", f"Adr.{a27['UPH_H']}"))
+            rows.append(("59", "Uph>  T", f"{de(d2759['UphH']['t'], 2)}", "s", f"Adr.{a27['T_UPH_H']}"))
+            rows.append(("27", "Uph<  U (× UN)", f"{de(d2759['UphL']['faktor'], 2)}", "× UN", f"Adr.{a27['UPH_L']}"))
+            rows.append(("27", "Uph<  T", f"{de(d2759['UphL']['t'], 2)}", "s", f"Adr.{a27['T_UPH_L']}"))
+            rows.append(("27", "Uph<<  U (× UN)", f"{de(d2759['UphLL']['faktor'], 2)}", "× UN", f"Adr.{a27['UPH_LL']}"))
+            rows.append(("27", "Uph<<  T", f"{de(d2759['UphLL']['t'], 2)}", "s", f"Adr.{a27['T_UPH_LL']}"))
         # 81 Frequenzschutz — f und T je eigene Zeile
         if d81["aktiv"]:
             for nm in ("f1", "f2", "f3", "f4"):
                 s = d81[nm]
-                rows.append(("81", f"{nm}  f ({s['art']})", f"{s['f']:.2f}", "Hz", f"Adr.{s['adr_f']}"))
-                rows.append(("81", f"{nm}  T", f"{s['t']:.2f}", "s", f"Adr.{s['adr_t']}"))
+                rows.append(("81", f"{nm}  f ({s['art']})", f"{de(s['f'], 2)}", "Hz", f"Adr.{s['adr_f']}"))
+                rows.append(("81", f"{nm}  T", f"{de(s['t'], 2)}", "s", f"Adr.{s['adr_t']}"))
         # 49 Überlastschutz
         if d49["aktiv"]:
             a49 = d49["adr"]
-            rows.append(("49", "K-FAKTOR", f"{d49['k_faktor']:.2f}", "—", f"Adr.{a49['K_FAKTOR']}"))
+            rows.append(("49", "K-FAKTOR", f"{de(d49['k_faktor'], 2)}", "—", f"Adr.{a49['K_FAKTOR']}"))
             rows.append(("49", "ZEITKONSTANTE τ_th", f"{d49['zeitkonstante']}", "min", f"Adr.{a49['ZEITKONST']}"))
             rows.append(("49", "THETA WARN", f"{d49['theta_warn']}", "%", f"Adr.{a49['THETA_WARN']}"))
-            rows.append(("49", "I WARN", f"{d49['i_warn']:.2f}", "× IN", f"Adr.{a49['I_WARN']}"))
-        dft = pd.DataFrame(rows, columns=["ANSI", "Parameter", "Sollwert", "Einheit", "Hinweis / Adresse"])
+            rows.append(("49", "I WARN", f"{de(d49['i_warn'], 2)}", "× IN", f"Adr.{a49['I_WARN']}"))
+        dft = pd.DataFrame(rows, columns=["ANSI", "Parameter", "Sollwert", "Einheit", "Hinweis / DIGSI-Adresse"])
         st.dataframe(dft, width="stretch", hide_index=True)
         st.caption("Sekundärwerte gelten für die gewählten Wandler. Physikalische IEC-Größen "
-                   "(Ω, s, A, °) → auf andere Relaisfamilien übertragbar; die SIPROTEC-Adressen dienen "
+                   "(Ω, s, A, °) → auf andere Relaisfamilien übertragbar. Die SIPROTEC-Adressen dienen "
                    "als nachvollziehbare Berechnungsgrundlage. "
                    "Der Distanzschutz 21 ist bei beiden Leitgeräten vorhanden, der "
                    "Leitungsdifferentialschutz 87L nur bei der 7SD5.")

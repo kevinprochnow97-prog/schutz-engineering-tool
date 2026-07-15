@@ -17,6 +17,7 @@ Sekundaerer Impedanzbezug:
 
 import math
 import konstanten_leitung as K
+from utils import de, deg
 from calc_trafo import status_bereich, status_empfehlung  # gemeinsame Ampel-Helfer
 
 SQRT3 = math.sqrt(3)
@@ -61,6 +62,11 @@ def grundgroessen(p: dict) -> dict:
     U_ph  = (UN * 1e3) / SQRT3                         # [V]
     IcN = U_ph * 2 * math.pi * K.f_netz * C_ges        # [A]
 
+    # Kurzschlussstroeme (DIN EN 60909-0) fuer Konsistenz- und
+    # Empfindlichkeitspruefungen des Not-Ueberstromschutzes
+    Ik_max_prim = p.get("Ik_max_kA", 0.0) * 1e3
+    Ik_min_prim = p.get("Ik_min_kA", 0.0) * 1e3
+
     return {
         "X_Ltg":      round(X_Ltg, 4),
         "R_Ltg":      round(R_Ltg, 4),
@@ -74,6 +80,8 @@ def grundgroessen(p: dict) -> dict:
         "IN_Ltg_sek": round(IN_Ltg_sek, 4),
         "I_an":       round(I_an, 4),
         "IcN":        round(IcN, 4),
+        "Ik_max_prim": round(Ik_max_prim, 1),
+        "Ik_min_prim": round(Ik_min_prim, 1),
     }
 
 
@@ -263,10 +271,10 @@ def plausibilitaet_87L(g: dict, p: dict, d87: dict) -> list:
     if ic_komp == "Aus":
         ok = i_diff_prim >= i_min if IcN > 0 else True
         add("I-DIFF> >= 2,5 x IcN (Ladestrom)", "I-DIFF> / IcN",
-            f"{i_diff_prim:.1f} A vs. {i_min:.1f} A", "OK" if ok else "Prüfen!",
+            f"{de(i_diff_prim, 1)} A vs. {de(i_min, 1)} A", "OK" if ok else "Prüfen!",
             "Ohne Ladestromkompensation muss der Ansprechwert oberhalb des kapazitiven "
-            f"Ladestroms liegen (IcN = {IcN:.1f} A, Siemens-Empfehlung >= 2,5 x IcN).",
-            f"I-DIFF> auf >= {i_min:.1f} A anheben oder Ladestromkompensation "
+            f"Ladestroms liegen (IcN = {de(IcN, 1)} A, Siemens-Empfehlung >= 2,5 x IcN).",
+            f"I-DIFF> auf >= {de(i_min, 1)} A anheben oder Ladestromkompensation "
             "(Adr.1221) einschalten.")
     else:
         add("Ladestromkompensation aktiv", "Ic-KOMP",
@@ -276,25 +284,25 @@ def plausibilitaet_87L(g: dict, p: dict, d87: dict) -> list:
     # I-DIFF>> deutlich groesser als I-DIFF>
     hh_ok = d87["i_diff_hh"] > d87["i_diff"]
     add("I-DIFF>> > I-DIFF> (Stufenstaffelung)", "I-DIFF>> / I-DIFF>",
-        f"{d87['i_diff_hh']:.2f} / {d87['i_diff']:.2f} x IN", "OK" if hh_ok else "Prüfen!",
+        f"{de(d87['i_diff_hh'], 2)} / {de(d87['i_diff'], 2)} x IN", "OK" if hh_ok else "Prüfen!",
         "Die unstabilisierte Hochstromstufe muss oberhalb der stabilisierten Stufe liegen.",
-        "I-DIFF>> groesser als I-DIFF> setzen (z.B. 8,0 x IN).")
+        "I-DIFF>> größer als I-DIFF> setzen (z.B. 8,0 x IN).")
 
     # I-DIF>> ZUSCH >= I-DIFF>> (Geraetelogik)
     zu_ok = d87["i_diff_hh_zusch"] >= d87["i_diff_hh"]
     add("I-DIF>> ZUSCH. >= I-DIFF>>", "Zuschaltschwelle",
-        f"{d87['i_diff_hh_zusch']:.2f} / {d87['i_diff_hh']:.2f} x IN",
+        f"{de(d87['i_diff_hh_zusch'], 2)} / {de(d87['i_diff_hh'], 2)} x IN",
         "OK" if zu_ok else "Hinweis",
-        "Der Zuschaltwert wird vom Geraet automatisch auf I-DIFF>> angehoben, falls kleiner "
+        "Der Zuschaltwert wird vom Gerät automatisch auf I-DIFF>> angehoben, falls kleiner "
         "(7SD5 Hdb. 2.2.1).",
         "I-DIF>> ZUSCH. >= I-DIFF>> einstellen.")
 
     # Anzahl Geraete / Wirkschnittstelle
     ng = d87["anzahl_geraete"]
-    add("Anzahl Geraete = Leitungsenden", "ANZAHL GERAETE",
+    add("Anzahl Geräte = Leitungsenden", "ANZAHL GERAETE",
         f"{ng}", "OK" if ng >= 2 else "Prüfen!",
-        "Die Geraetezahl muss mit der Anzahl der Messstellen (Leitungsenden) "
-        "uebereinstimmen; eine Wirkschnittstelle je Verbindung ist erforderlich.",
+        "Die Gerätezahl muss mit der Anzahl der Messstellen (Leitungsenden) "
+        "übereinstimmen. Eine Wirkschnittstelle je Verbindung ist erforderlich.",
         "ANZAHL GERAETE (Adr.147) an die Zahl der Leitungsenden anpassen.")
 
     return checks
@@ -360,12 +368,15 @@ def plausibilitaet_67N(g: dict, p: dict, d67: dict) -> list:
                        "korrektur": korrektur if status != "OK" else ""})
 
     if not d67["geerdet"]:
-        add("67N im gewaehlten Netz anwendbar", "Sternpunktbehandlung",
-            d67["sternpunkt"], "Hinweis",
-            "Der strombasierte gerichtete Erdkurzschlussschutz 67N ist fuer geerdete Netze "
-            "vorgesehen. In isolierten oder kompensierten Netzen wird statt dessen eine "
-            "wattmetrische bzw. U0-basierte Erdschlusserfassung eingesetzt.",
-            "Fuer isolierte/kompensierte Netze die Erdschlusserfassung ueber U0 verwenden.")
+        add("67N passend zur Sternpunktbehandlung", "Sternpunktbehandlung",
+            d67["sternpunkt"], "OK",
+            "Isoliertes/kompensiertes Netz erkannt: Der strombasierte gerichtete 67N ist für "
+            "geerdete Netze vorgesehen und daher hier nicht wirksam (die Stufen im Abschnitt "
+            "„Gerichteter Erdkurzschlussschutz 67N“ werden nur informativ angezeigt). Die "
+            "Erdschlusserfassung erfolgt in solchen Netzen über die Verlagerungsspannung U0 "
+            "bzw. wattmetrisch auf einem dedizierten Erdschlussgerät (z. B. 7SJ64/zentrale "
+            "Erfassung), das nicht in diesem Leitungs-Tab parametriert wird. Es ist hier "
+            "nichts einzustellen.")
         return checks
 
     HHH, HH, H = d67["3I0HHH"], d67["3I0HH"], d67["3I0H"]
@@ -373,34 +384,34 @@ def plausibilitaet_67N(g: dict, p: dict, d67: dict) -> list:
     # Stromstaffelung: 3I0>>> > 3I0>> > 3I0>
     strom_ok = HHH["faktor"] > HH["faktor"] > H["faktor"]
     add("Stromstaffelung 3I0>>> > 3I0>> > 3I0>", "Ansprechwerte",
-        f"{HHH['faktor']:.2f} / {HH['faktor']:.2f} / {H['faktor']:.2f} x IN",
+        f"{de(HHH['faktor'], 2)} / {de(HH['faktor'], 2)} / {de(H['faktor'], 2)} x IN",
         "OK" if strom_ok else "Prüfen!",
-        "Die hoeher ansprechenden Stufen muessen hoehere Stromschwellen haben.",
+        "Die höher ansprechenden Stufen müssen höhere Stromschwellen haben.",
         "Ansprechwerte so setzen, dass 3I0>>> > 3I0>> > 3I0>.")
 
     # Zeitstaffelung: T 3I0>>> < T 3I0>> < T 3I0>
     zeit_ok = HHH["t"] < HH["t"] < H["t"]
     add("Zeitstaffelung T(3I0>>>) < T(3I0>>) < T(3I0>)", "Zeiten",
-        f"{HHH['t']:.2f} / {HH['t']:.2f} / {H['t']:.2f} s",
+        f"{de(HHH['t'], 2)} / {de(HH['t'], 2)} / {de(H['t'], 2)} s",
         "OK" if zeit_ok else "Prüfen!",
-        "Hoeher ansprechende Stufen loesen schneller aus (inverse Staffelung).",
+        "Höher ansprechende Stufen lösen schneller aus (inverse Staffelung).",
         "Zeiten so setzen, dass T(3I0>>>) < T(3I0>>) < T(3I0>).")
 
     # Mindestens eine Stufe vorwaerts (Leitungsrichtung)
     vor = any(s["modus"] == "Vorwärts" for s in (HHH, HH, H))
-    add("Mindestens eine Stufe vorwaerts gerichtet", "MODUS 3I0",
+    add("Mindestens eine Stufe vorwärts gerichtet", "MODUS 3I0",
         "vorwärts vorhanden" if vor else "keine Vorwärtsstufe",
         "OK" if vor else "Hinweis",
-        "Fuer den Leitungsschutz sollte mindestens eine Stufe in Richtung Leitung "
-        "(vorwaerts) arbeiten.",
-        "MODUS einer Stufe (Adr.3110/3120/3130) auf vorwaerts stellen.")
+        "Für den Leitungsschutz sollte mindestens eine Stufe in Richtung Leitung "
+        "(vorwärts) arbeiten.",
+        "MODUS einer Stufe (Adr.3110/3120/3130) auf vorwärts stellen.")
 
     # Empfindliche Stufe oberhalb betriebsmaessiger Unsymmetrie (>= 0,05 x IN)
     h_ok = H["faktor"] >= 0.05
-    add("3I0> oberhalb betriebsmaessiger Unsymmetrie", "3I0> Ansprechwert",
-        f"{H['faktor']:.2f} x IN", "OK" if h_ok else "Hinweis",
-        "Der empfindlichste Ansprechwert muss oberhalb des betriebsmaessigen "
-        "Erdstroms (Unsymmetrie) liegen, um Fehlausloesungen zu vermeiden.",
+    add("3I0> oberhalb betriebsmäßiger Unsymmetrie", "3I0> Ansprechwert",
+        f"{de(H['faktor'], 2)} x IN", "OK" if h_ok else "Hinweis",
+        "Der empfindlichste Ansprechwert muss oberhalb des betriebsmäßigen "
+        "Erdstroms (Unsymmetrie) liegen, um Fehlauslösungen zu vermeiden.",
         "3I0> nicht unter ca. 0,05 x IN einstellen.")
 
     return checks
@@ -455,28 +466,28 @@ def plausibilitaet_85(g: dict, p: dict, d85: dict, d21: dict) -> list:
     # Uebergreifzone Z1B muss vorhanden und ausreichend sein (>= 120 %)
     fz1b = p.get("f_Z1B", K.f_Z1B_def)
     z1b_ok = fz1b >= K.f_uebergreif_min
-    add("Uebergreifzone Z1B fuer Teleschutz ausreichend", "f_Z1B",
-        f"{fz1b*100:.0f} %", "OK" if z1b_ok else "Prüfen!",
-        "Die Vergleichsverfahren beschleunigen ueber die vorwaerts gerichtete Uebergreifzone "
-        "Z1B; diese muss ueber das Leitungsende hinausreichen (>= 120 %).",
+    add("Übergreifzone Z1B für Teleschutz ausreichend", "f_Z1B",
+        f"{de(fz1b*100, 0)} %", "OK" if z1b_ok else "Prüfen!",
+        "Die Vergleichsverfahren beschleunigen über die vorwärts gerichtete Übergreifzone "
+        "Z1B. Diese muss über das Leitungsende hinausreichen (>= 120 %).",
         "f_Z1B auf >= 1,20 x XL anheben (Adr.1353).")
 
     # Blocking-Verfahren benoetigt schnelle Rueckwaertsstufe
     if d85["blockierverfahren"]:
         rueck = any(p.get("modus_" + nm, getattr(K, "modus_" + nm + "_def")) == "Rückwärts"
                     for nm in ("Z4", "Z5", "Z6"))
-        add("Blocking: schnelle Rueckwaertsstufe vorhanden", "MODUS Z4/Z5/Z6",
+        add("Blocking: schnelle Rückwärtsstufe vorhanden", "MODUS Z4/Z5/Z6",
             "rückwärts vorhanden" if rueck else "keine Rückwärtsstufe",
             "OK" if rueck else "Prüfen!",
-            "Das Blocking-Verfahren benoetigt eine schnelle rueckwaerts gerichtete Zone zur "
+            "Das Blocking-Verfahren benötigt eine schnelle rückwärts gerichtete Zone zur "
             "Erzeugung des Blockiersignals (7SA6 Hdb. 2.6).",
-            "Eine Reservezone (Z5) auf rueckwaerts stellen.")
+            "Eine Reservezone (Z5) auf rückwärts stellen.")
 
     # Transiente Blockierzeit gesetzt
     ttb = d85["t_transblock"]
     add("Transiente Blockierzeit gesetzt", "T TRANSBLOCK",
-        f"{ttb:.2f} s", "OK" if ttb > 0 else "Hinweis",
-        "Die transiente Blockierzeit muss laenger sein als transiente Vorgaenge bei "
+        f"{de(ttb, 2)} s", "OK" if ttb > 0 else "Hinweis",
+        "Die transiente Blockierzeit muss länger sein als transiente Vorgänge bei "
         "Fehlerrichtungsumkehr, um Fehlfreigaben zu verhindern.",
         "T TRANSBLOCK > 0 setzen (Voreinst. 0,04 s).")
 
@@ -488,15 +499,15 @@ def plausibilitaet_85(g: dict, p: dict, d85: dict, d21: dict) -> list:
             d85["anschluss"], "OK",
             "Voraussetzung: Der Teleschutz nutzt bei der 7SD5 die Wirkschnittstelle. Diese wird "
             "in der Kommunikationstopologie eingestellt (WS1 Verbindung Adr.4502, WS1-EIN "
-            "Adr.4501); die Gegenstellenzahl muss mit ANZAHL GERAETE (Adr.147) uebereinstimmen.",
+            "Adr.4501). Die Gegenstellenzahl muss mit ANZAHL GERAETE (Adr.147) übereinstimmen.",
             "")
     else:
         add("Kommunikationskanal (Signalkanal)", "Projektierung",
-            f"Voraussetzung fuer {d85['verfahren']}", "OK",
-            "Voraussetzung ausserhalb des Parametersatzes: Das Verfahren benoetigt einen "
-            "Signaluebertragungskanal zum Gegenende. Dieser wird nicht ueber einen Schutz-"
-            "Einstellwert festgelegt, sondern in der Geraeteprojektierung in DIGSI: Rangierung "
-            "der Binaerein-/-ausgaenge fuer Sende-/Empfangssignal bzw. Nutzung der "
+            f"Voraussetzung für {d85['verfahren']}", "OK",
+            "Voraussetzung außerhalb des Parametersatzes: Das Verfahren benötigt einen "
+            "Signalübertragungskanal zum Gegenende. Dieser wird nicht über einen Schutz-"
+            "Einstellwert festgelegt, sondern in der Geräteprojektierung in DIGSI: Rangierung "
+            "der Binärein-/-ausgänge für Sende-/Empfangssignal bzw. Nutzung der "
             "Wirkschnittstelle. Kein Tool-Parameter erforderlich.",
             "")
 
@@ -542,19 +553,36 @@ def plausibilitaet_5051(g: dict, p: dict, d50: dict) -> list:
 
     HH, H = d50["IphHH"], d50["IphH"]
     add("Stromstaffelung Iph>> > Iph>", "Ansprechwerte",
-        f"{HH['faktor']:.2f} / {H['faktor']:.2f} x IN",
+        f"{de(HH['faktor'], 2)} / {de(H['faktor'], 2)} x IN",
         "OK" if HH["faktor"] > H["faktor"] else "Prüfen!",
-        "Die Hochstromstufe Iph>> muss hoeher ansprechen als die Grundstufe Iph>.",
+        "Die Hochstromstufe Iph>> muss höher ansprechen als die Grundstufe Iph>.",
         "Iph>> > Iph> einstellen.")
     add("Zeitstaffelung T(Iph>>) < T(Iph>)", "Zeiten",
-        f"{HH['t']:.2f} / {H['t']:.2f} s",
+        f"{de(HH['t'], 2)} / {de(H['t'], 2)} s",
         "OK" if HH["t"] < H["t"] else "Prüfen!",
-        "Hoeher ansprechende Stufe loest schneller aus.",
+        "Höher ansprechende Stufe löst schneller aus.",
         "T(Iph>>) < T(Iph>) einstellen.")
     add("Iph> oberhalb Maximallast", "Iph> Ansprechwert",
-        f"{H['faktor']:.2f} x IN", "OK" if H["faktor"] >= 1.1 else "Hinweis",
+        f"{de(H['faktor'], 2)} x IN", "OK" if H["faktor"] >= 1.1 else "Hinweis",
         "Die Grundstufe muss oberhalb des maximalen Betriebsstroms liegen (Faktor >= 1,1).",
         "Iph> nicht unter ca. 1,1 x IN einstellen.")
+
+    # Empfindlichkeit gegen den minimalen Fehlerstrom am Leitungsende
+    Ik_min = g.get("Ik_min_prim", 0.0)
+    if Ik_min > 0:
+        H_prim, HH_prim = H["i_prim"], HH["i_prim"]
+        add(f"Empfindlichkeit: Ik,min >= {deg(K.gamma_Ikmin)} x Iph>", "Ik,min Leitungsende",
+            f"{de(Ik_min, 0)} A / {de(H_prim, 0)} A",
+            "OK" if (H_prim and Ik_min >= K.gamma_Ikmin * H_prim) else "Prüfen!",
+            "Der Not-Überstromschutz muss Fehler am Leitungsende sicher anregen "
+            f"(Sicherheitsfaktor {deg(K.gamma_Ikmin)} auf die Grundstufe Iph>).",
+            "Iph> verkleinern oder die Ik,min-Berechnung prüfen.")
+        add("Reichweite: Iph>> <= Ik,min", "Ik,min Leitungsende",
+            f"{de(HH_prim, 0)} A / {de(Ik_min, 0)} A",
+            "OK" if HH_prim <= Ik_min else "Hinweis",
+            "Liegt Iph>> über Ik,min, erreicht die Hochstromstufe entfernte Fehler "
+            "nicht. Es wirkt dann nur die Grundstufe Iph>.",
+            "Iph>> reduzieren oder bewusst als Nahfehlerstufe belassen.")
     return checks
 
 
@@ -591,17 +619,17 @@ def plausibilitaet_79(g: dict, p: dict, d79: dict) -> list:
         return checks
 
     sp_ok = d79["sperrzeit"] > max(d79["tp_1pol"], d79["tp_3pol"])
-    add("Sperrzeit groesser als Pausenzeiten", "T SPERRZEIT",
-        f"{d79['sperrzeit']:.2f} s vs. {max(d79['tp_1pol'], d79['tp_3pol']):.2f} s",
+    add("Sperrzeit größer als Pausenzeiten", "T SPERRZEIT",
+        f"{de(d79['sperrzeit'], 2)} s vs. {de(max(d79['tp_1pol'], d79['tp_3pol']), 2)} s",
         "OK" if sp_ok else "Prüfen!",
-        "Die Sperrzeit (Reclaim) muss laenger sein als die Pausenzeiten, damit ein "
-        "Wiedereinschaltzyklus vollstaendig abgeschlossen wird, bevor neu gestartet wird.",
-        "T SPERRZEIT groesser als die Pausenzeiten setzen (z.B. 3,0 s).")
-    add("1-polige Pausenzeit ausreichend (Sekundaerlichtbogen)", "TP AUS1Po",
-        f"{d79['tp_1pol']:.2f} s", "OK" if d79["tp_1pol"] >= 0.9 else "Hinweis",
-        "Die spannungslose Pause nach 1-poliger Abschaltung muss lang genug fuer das "
-        "Verloeschen des Sekundaerlichtbogens sein (typ. ab ca. 1 s).",
-        "TP AUS1Po nicht zu kurz waehlen (Richtwert >= 1,0 s).")
+        "Die Sperrzeit (Reclaim) muss länger sein als die Pausenzeiten, damit ein "
+        "Wiedereinschaltzyklus vollständig abgeschlossen wird, bevor neu gestartet wird.",
+        "T SPERRZEIT größer als die Pausenzeiten setzen (z.B. 3,0 s).")
+    add("1-polige Pausenzeit ausreichend (Sekundärlichtbogen)", "TP AUS1Po",
+        f"{de(d79['tp_1pol'], 2)} s", "OK" if d79["tp_1pol"] >= 0.9 else "Hinweis",
+        "Die spannungslose Pause nach 1-poliger Abschaltung muss lang genug für das "
+        "Verlöschen des Sekundärlichtbogens sein (typ. ab ca. 1 s).",
+        "TP AUS1Po nicht zu kurz wählen (Richtwert >= 1,0 s).")
     return checks
 
 
@@ -647,14 +675,14 @@ def plausibilitaet_50BF(g: dict, p: dict, dbf: dict) -> list:
 
     t1 = max(dbf["t1_1pol"], dbf["t1_3pol"])
     add("Zeitstaffelung T2 > T1", "T2 / T1",
-        f"{dbf['t2']:.2f} s / {t1:.2f} s", "OK" if dbf["t2"] > t1 else "Prüfen!",
-        "Die 2. Stufe (umliegende Schalter, Sammelschiene) muss spaeter ausloesen als die "
+        f"{de(dbf['t2'], 2)} s / {de(t1, 2)} s", "OK" if dbf["t2"] > t1 else "Prüfen!",
+        "Die 2. Stufe (umliegende Schalter, Sammelschiene) muss später auslösen als die "
         "1. Stufe (Wiederholungskommando an den eigenen Schalter).",
-        "T2 groesser als T1 setzen.")
-    add("Stromflussueberwachung empfindlich", "I> SVS",
-        f"{dbf['i_svs']:.2f} x IN", "OK" if dbf["i_svs"] <= 0.2 else "Hinweis",
+        "T2 größer als T1 setzen.")
+    add("Stromflussüberwachung empfindlich", "I> SVS",
+        f"{de(dbf['i_svs'], 2)} x IN", "OK" if dbf["i_svs"] <= 0.2 else "Hinweis",
         "Die Stromschwelle muss kleiner sein als der kleinste Fehlerstrom, aber oberhalb des "
-        "Ladestroms; ueblich sind ca. 0,1 x IN.",
+        "Ladestroms. Üblich sind ca. 0,1 x IN.",
         "I> SVS empfindlich einstellen (Richtwert ca. 0,1 x IN).")
     return checks
 
@@ -719,7 +747,7 @@ def schutz_81(g: dict, p: dict) -> dict:
     def stufe(nm, f_def, t_def):
         f = p.get(nm.lower(), f_def)
         return {"f": f, "t": p.get("t_" + nm.lower(), t_def),
-                "art": "Unterfrequenz" if f < fN else "Ueberfrequenz",
+                "art": "Unterfrequenz" if f < fN else "Überfrequenz",
                 "adr_f": K.ADR_get(f"{nm.upper()}_{suf}", dev),
                 "adr_t": K.ADR_get(f"T_{nm.upper()}", dev)}
 
@@ -779,47 +807,52 @@ def plausibilitaet_rest(g: dict, p: dict, d68: dict, d2759: dict, d81: dict, d49
     # 27/59 Staffelung Unter-/Ueberspannung
     if d2759["aktiv"]:
         ov_ok = d2759["UphHH"]["faktor"] > d2759["UphH"]["faktor"] > 1.0
-        add("Ueberspannung: Uph>> > Uph> > 1,0", "Uph-Stufen",
-            f"{d2759['UphHH']['faktor']:.2f} / {d2759['UphH']['faktor']:.2f} x UN",
+        add("Überspannung: Uph>> > Uph> > 1,0", "Uph-Stufen",
+            f"{de(d2759['UphHH']['faktor'], 2)} / {de(d2759['UphH']['faktor'], 2)} x UN",
             "OK" if ov_ok else "Prüfen!",
-            "Die hoehere Ueberspannungsstufe muss hoeher ansprechen als die untere, beide "
+            "Die höhere Überspannungsstufe muss höher ansprechen als die untere, beide "
             "oberhalb der Nennspannung.",
-            "Uph>> > Uph> > 1,0 einstellen.")
+            "Regler 'Uph>' und 'Uph>>' (Abschnitt 27/59) so setzen, dass Uph>> > Uph> > 1,0, "
+            "z.B. Uph> = 1,15 und Uph>> = 1,30.")
         uv_ok = d2759["UphLL"]["faktor"] < d2759["UphL"]["faktor"] < 1.0
         add("Unterspannung: Uph<< < Uph< < 1,0", "Uph-Stufen",
-            f"{d2759['UphLL']['faktor']:.2f} / {d2759['UphL']['faktor']:.2f} x UN",
+            f"{de(d2759['UphLL']['faktor'], 2)} / {de(d2759['UphL']['faktor'], 2)} x UN",
             "OK" if uv_ok else "Prüfen!",
             "Die tiefere Unterspannungsstufe muss tiefer ansprechen als die obere, beide "
             "unterhalb der Nennspannung.",
-            "Uph<< < Uph< < 1,0 einstellen.")
+            "Regler 'Uph<' und 'Uph<<' (Abschnitt 27/59) so setzen, dass Uph<< < Uph< < 1,0, "
+            "z.B. Uph< = 0,75 und Uph<< = 0,65.")
 
     # 81 Frequenzstufen sinnvoll um fN verteilt
     if d81["aktiv"]:
         fN = d81["fN"]
         unter = [s for s in (d81["f1"], d81["f2"], d81["f3"], d81["f4"]) if s["f"] < fN]
         ueber = [s for s in (d81["f1"], d81["f2"], d81["f3"], d81["f4"]) if s["f"] > fN]
-        add("Frequenzstufen um Nennfrequenz verteilt", f"fN = {fN} Hz",
-            f"{len(unter)} Unter-, {len(ueber)} Ueberfrequenzstufen",
+        add("Frequenzstufen um Nennfrequenz verteilt", f"fN = {deg(fN)} Hz",
+            f"{len(unter)} Unter-, {len(ueber)} Überfrequenzstufen",
             "OK" if (unter and ueber) else "Hinweis",
-            "Sinnvoll ist mindestens je eine Stufe fuer Unter- und Ueberfrequenz.",
-            "Frequenzstufen ober- und unterhalb der Nennfrequenz verteilen.")
+            "Sinnvoll ist mindestens je eine Stufe für Unter- und Überfrequenz.",
+            "Regler 'f1 [Hz]' … 'f4 [Hz]' (Abschnitt 81 Frequenzschutz) so verteilen, dass "
+            "mindestens eine Stufe unter und eine über fN liegt, z.B. f1 = 48,0 / f2 = 49,0 "
+            "(Unterfrequenz) und f3 = 51,0 / f4 = 51,5 Hz (Überfrequenz).")
         spanne = max(abs(s["f"] - fN) for s in (d81["f1"], d81["f2"], d81["f3"], d81["f4"]))
         add("Frequenz-Ansprechwerte im plausiblen Bereich", "|f - fN|",
-            f"max. {spanne:.2f} Hz von fN", "OK" if spanne <= 5 else "Hinweis",
+            f"max. {de(spanne, 2)} Hz von fN", "OK" if spanne <= 5 else "Hinweis",
             "Die Ansprechwerte sollten realistisch nahe der Nennfrequenz liegen "
             "(typ. +/- 3 Hz).",
-            "Frequenz-Ansprechwerte pruefen (Richtwert innerhalb +/- 5 Hz).")
+            f"Regler 'f1 [Hz]' … 'f4 [Hz]' (Abschnitt 81 Frequenzschutz) näher an fN = {deg(fN)} Hz "
+            f"legen, Richtwert innerhalb {deg(fN-5)} … {deg(fN+5)} Hz.")
 
     # 49 Zeitkonstante und k-Faktor plausibel
     if d49["aktiv"]:
         add("k-Faktor im plausiblen Bereich", "K-FAKTOR",
-            f"{d49['k_faktor']:.2f}", "OK" if 1.0 <= d49["k_faktor"] <= 1.3 else "Hinweis",
-            "Der k-Faktor (I_dauer/IN) liegt ueblicherweise zwischen 1,0 und 1,2.",
+            f"{de(d49['k_faktor'], 2)}", "OK" if 1.0 <= d49["k_faktor"] <= 1.3 else "Hinweis",
+            "Der k-Faktor (I_dauer/IN) liegt üblicherweise zwischen 1,0 und 1,2.",
             "k-Faktor aus den thermischen Leitungsdaten bestimmen (typ. 1,0 ... 1,2).")
         add("Zeitkonstante in Minuten angegeben", "ZEITKONSTANTE",
             f"{d49['zeitkonstante']} min", "OK",
-            "Die Erwaermungszeitkonstante ist bei 7SA6/7SD5 in Minuten einzustellen "
-            "(geraeteabhaengig, anders als z.B. 7UM62 in Sekunden).", "")
+            "Die Erwärmungszeitkonstante ist bei 7SA6/7SD5 in Minuten einzustellen "
+            "(geräteabhängig, anders als z.B. 7UM62 in Sekunden).", "")
 
     # 68/78 Pendelsperre setzt Distanzschutz voraus
     if d68["aktiv"]:
@@ -829,7 +862,7 @@ def plausibilitaet_rest(g: dict, p: dict, d68: dict, d2759: dict, d81: dict, d49
             "Die Pendelerfassung blockiert den Distanzschutz bei stabilen Pendelungen. Eine "
             "Auslösung bei instabiler Pendelung (Außertrittauslösung) ist nur bei "
             "entsprechender Netzanforderung zu aktivieren.",
-            "PEN-AUSLOES nur bei gewuenschter Außertrittauslösung auf Ja setzen.")
+            "PEN-AUSLOES nur bei gewünschter Außertrittauslösung auf Ja setzen.")
 
     return checks
 
@@ -847,16 +880,26 @@ def plausibilitaet(g: dict, p: dict, d21: dict) -> list:
 
     # Pflichteingaben
     add("Nennspannung UN vorhanden", "UN > 0",
-        f"{p.get('UN_kV', 0)} kV" if p.get("UN_kV", 0) > 0 else "fehlt",
+        f"{deg(p.get('UN_kV', 0))} kV" if p.get("UN_kV", 0) > 0 else "fehlt",
         "OK" if p.get("UN_kV", 0) > 0 else "Fehlt",
         "Bemessungsspannung der Leitung erforderlich.",
-        "Feld 'UN' ausfuellen (> 0 kV).")
+        "Feld 'UN' ausfüllen (> 0 kV).")
 
-    add("Leitungslaenge vorhanden", "L > 0",
-        f"{p.get('L_km', 0)} km" if p.get("L_km", 0) > 0 else "fehlt",
+    add("Leitungslänge vorhanden", "L > 0",
+        f"{deg(p.get('L_km', 0))} km" if p.get("L_km", 0) > 0 else "fehlt",
         "OK" if p.get("L_km", 0) > 0 else "Fehlt",
-        "Leitungslaenge bestimmt die primaere Leitungsreaktanz X_Ltg.",
-        "Feld 'Leitungslaenge' ausfuellen (> 0 km).")
+        "Leitungslänge bestimmt die primäre Leitungsreaktanz X_Ltg.",
+        "Feld 'Leitungslänge' ausfüllen (> 0 km).")
+
+    # Konsistenz der Kurzschlussrechnung (falls beide Werte vorliegen)
+    Ik_max, Ik_min = g.get("Ik_max_prim", 0.0), g.get("Ik_min_prim", 0.0)
+    if Ik_max > 0 and Ik_min > 0:
+        add("Konsistenz Ik″max >= Ik,min", "Kurzschlussrechnung",
+            f"{de(Ik_max, 0)} A / {de(Ik_min, 0)} A",
+            "OK" if Ik_max >= Ik_min else "Prüfen!",
+            "Der maximale Kurzschlussstrom am Leitungsanfang muss über dem "
+            "minimalen am Leitungsende liegen (DIN EN 60909-0).",
+            "Eingaben Ik″max und Ik,min prüfen.")
 
     # Mindestlaenge fuer sinnvollen Distanzschutz (streckenartabhaengig)
     L_km = p.get("L_km", 0.0)
@@ -867,50 +910,50 @@ def plausibilitaet(g: dict, p: dict, d21: dict) -> list:
         kurz = L_km < L_min
         if dev == "Distanzschutz 7SA6":
             rx_emp = K.RX_KURZ_EMPFEHLUNG.get(art, "2 bis 5")
-            add(f"Mindestleitungslaenge fuer Distanzschutz ({art})",
-                f"L = {L_km:g} km (Grenze {L_min:g} km)",
-                f"{L_km:g} km", "Hinweis" if kurz else "OK",
-                f"Fuer {art.lower()} gilt eine Strecke unter {L_min:g} km als kurz "
+            add(f"Mindestleitungslänge für Distanzschutz ({art})",
+                f"L = {deg(L_km)} km (Grenze {deg(L_min)} km)",
+                f"{deg(L_km)} km", "Hinweis" if kurz else "OK",
+                f"Für {art.lower()} gilt eine Strecke unter {deg(L_min)} km als kurz "
                 "(Anwendungstabelle 7SD5-Hdb. nach Ziegler). Bei kleinen Leitungsimpedanzen wird "
                 "der Z1-Reach (0,85 x X_Ltg) sehr klein und die Distanzmessung reagiert empfindlich "
-                "auf Wandler- und Geraetetoleranzen.",
-                f"R/X-Verhaeltnis der Zonen auf ca. {rx_emp} anheben; bei sehr kurzer Strecke "
-                "Leitungsdifferentialschutz 7SD5 (87L) als Hauptschutz erwaegen.")
+                "auf Wandler- und Gerätetoleranzen.",
+                f"R/X-Verhältnis der Zonen auf ca. {rx_emp} anheben. Bei sehr kurzer Strecke "
+                "Leitungsdifferentialschutz 7SD5 (87L) als Hauptschutz erwägen.")
         else:
-            add(f"Leitungslaenge fuer Leitungsdifferentialschutz ({art})",
-                f"L = {L_km:g} km (Grenze Distanzschutz {L_min:g} km)",
-                f"{L_km:g} km", "OK",
-                ("Der Leitungsdifferentialschutz 87L ist gerade fuer kurze Strecken die robuste "
-                 "Wahl, da er unabhaengig von der Leitungsimpedanz arbeitet."
-                 if kurz else "Leitungslaenge im ueblichen Bereich; 87L als Hauptschutz geeignet."),
+            add(f"Leitungslänge für Leitungsdifferentialschutz ({art})",
+                f"L = {deg(L_km)} km (Grenze Distanzschutz {deg(L_min)} km)",
+                f"{deg(L_km)} km", "OK",
+                ("Der Leitungsdifferentialschutz 87L ist gerade für kurze Strecken die robuste "
+                 "Wahl, da er unabhängig von der Leitungsimpedanz arbeitet."
+                 if kurz else "Leitungslänge im üblichen Bereich; 87L als Hauptschutz geeignet."),
                 "")
 
     add("Reaktanzbelag X' vorhanden", "X' > 0",
-        f"{p.get('X_Belag', 0)} Ω/km" if p.get("X_Belag", 0) > 0 else "fehlt",
+        f"{deg(p.get('X_Belag', 0))} Ω/km" if p.get("X_Belag", 0) > 0 else "fehlt",
         "OK" if p.get("X_Belag", 0) > 0 else "Fehlt",
         "Reaktanzbelag aus den Leitungskonstanten (Adr.1110 X-BELAG).",
-        "Feld 'X'-Belag' ausfuellen (> 0 Ω/km).")
+        "Feld 'X'-Belag' ausfüllen (> 0 Ω/km).")
 
     # Leitungswinkel plausibel
     phi = p.get("phi_Ltg", 0)
     phi_st = status_bereich(phi, K.phi_Ltg_min, K.phi_Ltg_max) if phi else "Fehlt"
-    add(f"Leitungswinkel im Bereich [{K.phi_Ltg_min} ... {K.phi_Ltg_max}°]", "PHI LTG",
-        f"{phi}°" if phi else "-", phi_st,
+    add(f"Leitungswinkel im Bereich [{deg(K.phi_Ltg_min)} ... {deg(K.phi_Ltg_max)}°]", "PHI LTG",
+        f"{deg(phi)}°" if phi else "-", phi_st,
         "Typischer Leitungswinkel arctan(X'/R') liegt bei 60 ... 88°.",
-        f"PHI LTG = {phi}° ausserhalb [{K.phi_Ltg_min} ... {K.phi_Ltg_max}°]: "
-        "Leitungskonstanten pruefen (Adr.1105).")
+        f"PHI LTG = {deg(phi)}° außerhalb [{deg(K.phi_Ltg_min)} ... {deg(K.phi_Ltg_max)}°]: "
+        "Leitungskonstanten prüfen (Adr.1105).")
 
     # Stromwandler / Spannungswandler vorhanden
     ct_ok = p.get("CT_Prim", 0) > 0 and p.get("CT_Sek", 0) > 0
     add("Stromwandler vorhanden", "CT prim/sek > 0",
         "vorhanden" if ct_ok else "fehlt", "OK" if ct_ok else "Fehlt",
-        "Stromwandler fuer Sekundaerbezug der Distanzzonen erforderlich.",
+        "Stromwandler für Sekundärbezug der Distanzzonen erforderlich.",
         "CT prim. [A] und CT sek. [A] eingeben.")
 
     vt_ok = p.get("VT_Prim_kV", 0) > 0 and p.get("VT_Sek_V", 0) > 0
     add("Spannungswandler vorhanden", "VT prim/sek > 0",
         "vorhanden" if vt_ok else "fehlt", "OK" if vt_ok else "Fehlt",
-        "Spannungswandler fuer Impedanzmessung des Distanzschutzes erforderlich.",
+        "Spannungswandler für Impedanzmessung des Distanzschutzes erforderlich.",
         "VT prim. [kV] und VT sek. [V] eingeben.")
 
     # Sekundaerbezug k_Z plausibel (Zonen sekundaer lesbar)
@@ -918,30 +961,30 @@ def plausibilitaet(g: dict, p: dict, d21: dict) -> list:
     if kZ > 0:
         Xs_Z1 = d21["Z1"]["X_sek"]
         kz_ok = 0.05 <= Xs_Z1 <= 250.0
-        add("Sekundaere Z1-Reichweite im lesbaren Bereich", "X(Z1) sek.",
-            f"{Xs_Z1:.3f} Ω sek." if Xs_Z1 else "-",
+        add("Sekundäre Z1-Reichweite im lesbaren Bereich", "X(Z1) sek.",
+            f"{de(Xs_Z1, 3)} Ω sek." if Xs_Z1 else "-",
             "OK" if kz_ok else "Hinweis",
-            "Sekundaere Zonenimpedanz sollte im einstellbaren Bereich liegen.",
-            "Sehr kleine/grosse Sekundaerwerte: Wandlerdaten (CT/VT) pruefen.")
+            "Sekundäre Zonenimpedanz sollte im einstellbaren Bereich liegen.",
+            "Sehr kleine/große Sekundärwerte: Wandlerdaten (CT/VT) prüfen.")
 
     # Z1-Unterreichweite 70 ... 90 %
     fZ1 = p.get("f_Z1", K.f_Z1_def)
     z1_st = status_bereich(fZ1, K.f_Z1_min, K.f_Z1_max)
     add(f"Z1-Reichweite im Bereich [{int(K.f_Z1_min*100)} ... {int(K.f_Z1_max*100)} %]",
-        "f_Z1 x XL", f"{fZ1*100:.0f} %", z1_st,
-        "Z1 als Unterreichweite (Voreinst. 85 %), damit die unverzoegerte Zone nicht "
-        "ueber das Leitungsende hinausreicht.",
-        f"f_Z1 = {fZ1*100:.0f} % ausserhalb [{int(K.f_Z1_min*100)} ... "
+        "f_Z1 x XL", f"{de(fZ1*100, 0)} %", z1_st,
+        "Z1 als Unterreichweite (Voreinst. 85 %), damit die unverzögerte Zone nicht "
+        "über das Leitungsende hinausreicht.",
+        f"f_Z1 = {de(fZ1*100, 0)} % außerhalb [{int(K.f_Z1_min*100)} ... "
         f"{int(K.f_Z1_max*100)} %]: Z1-Reichweite auf ~85 % stellen.")
 
     # Uebergreifzonen >= ~120 %
     for nm, key in (("Z1B", "f_Z1B"), ("Z2", "f_Z2")):
         f = p.get(key, getattr(K, key + "_def"))
         st = "OK" if f >= K.f_uebergreif_min else "Prüfen!"
-        add(f"{nm}-Reichweite >= {int(K.f_uebergreif_min*100)} % (Uebergreifzone)",
-            f"{key} x XL", f"{f*100:.0f} %", st,
-            f"{nm} muss ueber das Leitungsende hinausreichen (>= ~120 %).",
-            f"{key} = {f*100:.0f} % < {int(K.f_uebergreif_min*100)} %: "
+        add(f"{nm}-Reichweite >= {int(K.f_uebergreif_min*100)} % (Übergreifzone)",
+            f"{key} x XL", f"{de(f*100, 0)} %", st,
+            f"{nm} muss über das Leitungsende hinausreichen (>= ~120 %).",
+            f"{key} = {de(f*100, 0)} % < {int(K.f_uebergreif_min*100)} %: "
             f"{nm}-Reichweite anheben (>= 1,20 x XL).")
 
     # Staffelung Z1 < Z2 < Z3 (monoton steigende Reichweite)
@@ -949,8 +992,8 @@ def plausibilitaet(g: dict, p: dict, d21: dict) -> list:
                   p.get("f_Z3", K.f_Z3_def))
     staff_ok = f1 < f2 <= f3
     add("Staffelung der Reichweiten Z1 < Z2 <= Z3", "f_Z1 < f_Z2 <= f_Z3",
-        f"{f1:.2f} / {f2:.2f} / {f3:.2f}", "OK" if staff_ok else "Prüfen!",
-        "Reichweiten muessen mit der Zonennummer zunehmen (Zeitstaffelung).",
+        f"{de(f1, 2)} / {de(f2, 2)} / {de(f3, 2)}", "OK" if staff_ok else "Prüfen!",
+        "Reichweiten müssen mit der Zonennummer zunehmen (Zeitstaffelung).",
         "Reichweitenfaktoren so setzen, dass f_Z1 < f_Z2 <= f_Z3.")
 
     # Zeitstaffelung t_Z1 < t_Z2 < t_Z3
@@ -958,8 +1001,8 @@ def plausibilitaet(g: dict, p: dict, d21: dict) -> list:
                   p.get("t_Z3", K.t_Z3_def))
     tstaff_ok = t1 <= t2 < t3 or (t1 == 0 and t2 < t3)
     add("Zeitstaffelung T1 <= T2 < T3", "t_Z1 <= t_Z2 < t_Z3",
-        f"{t1:.2f} / {t2:.2f} / {t3:.2f} s", "OK" if (t1 <= t2 <= t3 and t2 < t3) else "Prüfen!",
-        "Z1 unverzoegert, hoehere Zonen zeitlich gestaffelt.",
+        f"{de(t1, 2)} / {de(t2, 2)} / {de(t3, 2)} s", "OK" if (t1 <= t2 <= t3 and t2 < t3) else "Prüfen!",
+        "Z1 unverzögert, höhere Zonen zeitlich gestaffelt.",
         "Zeiten so setzen, dass T1 <= T2 < T3 (z.B. 0,00 / 0,30 / 0,60 s).")
 
     # Reservezonen Z4/Z5/Z6: aktive Zonen zeitlich hinter T3, Vorwaerts-Zonen
@@ -975,14 +1018,14 @@ def plausibilitaet(g: dict, p: dict, d21: dict) -> list:
         t_vor = [t for nm, md, f, t in aktive if md in ("Vorwärts", "Ungerichtet")]
         zeit_ok = all(t >= t3 for nm, md, f, t in aktive)
         sortiert = all(t_vor[i] <= t_vor[i + 1] for i in range(len(t_vor) - 1)) if len(t_vor) > 1 else True
-        liste = ", ".join(f"{nm}={md}/{t:.2f}s" for nm, md, f, t in aktive)
+        liste = ", ".join(f"{nm}={md}/{de(t, 2)}s" for nm, md, f, t in aktive)
         st = "OK" if (zeit_ok and sortiert) else "Hinweis"
         add("Reservezonen Z4-Z6 zeitlich hinter T3 gestaffelt", "aktive Z4/Z5/Z6",
             liste, st,
-            "Aktive Reservezonen wirken zeitverzoegert nach den Hauptzonen; "
-            "Vorwaertszonen mit zunehmender Reichweite ansteigend gestaffelt.",
-            f"Verzoegerung aktiver Reservezonen >= T3 = {t3:.2f} s setzen "
-            "und Vorwaertszonen aufsteigend staffeln.")
+            "Aktive Reservezonen wirken zeitverzögert nach den Hauptzonen; "
+            "Vorwärtszonen mit zunehmender Reichweite ansteigend gestaffelt.",
+            f"Verzögerung aktiver Reservezonen >= T3 = {de(t3, 2)} s setzen "
+            "und Vorwärtszonen aufsteigend staffeln.")
     else:
         add("Reservezonen Z4-Z6", "MODUS", "alle unwirksam", "OK",
             "Keine Reservezonen aktiviert (Standardstaffelung Z1/Z1B/Z2/Z3).", "")
@@ -990,11 +1033,11 @@ def plausibilitaet(g: dict, p: dict, d21: dict) -> list:
     # R/X-Stabilitaet der Z1
     rxz1 = p.get("RX_Z1", K.RX_Z1_def)
     rx_st = "OK" if rxz1 <= K.RX_Z1_max else "Hinweis"
-    add(f"R/X-Verhaeltnis der Z1 <= {K.RX_Z1_max}", "RX_Z1",
-        f"{rxz1:.2f}", rx_st,
-        "Der 85-%-Staffelfaktor gilt nur bis R/X <= 1; bei groesserem R-Abschnitt "
+    add(f"R/X-Verhältnis der Z1 <= {de(K.RX_Z1_max, 1)}", "RX_Z1",
+        f"{de(rxz1, 2)}", rx_st,
+        "Der 85-%-Staffelfaktor gilt nur bis R/X <= 1. Bei größerem R-Abschnitt "
         "ist die X-Reichweite zu reduzieren (7SA6 Hdb. 2.2.2).",
-        f"R/X = {rxz1:.2f} > {K.RX_Z1_max}: entweder R(Z1) verkleinern oder "
+        f"R/X = {de(rxz1, 2)} > {de(K.RX_Z1_max, 1)}: entweder R(Z1) verkleinern oder "
         "X(Z1)-Reichweite reduzieren.")
 
     # Erdimpedanzanpassung gesetzt
@@ -1002,14 +1045,14 @@ def plausibilitaet(g: dict, p: dict, d21: dict) -> list:
     if fmt == K.ERDIMP_FORMAT_OPTIONEN[0]:   # RE/RL, XE/XL
         val = p.get("RE_RL", K.RE_RL_def)
         gesetzt = val > 0
-        erg = f"RE/RL = {val:.2f}"
+        erg = f"RE/RL = {de(val, 2)}"
     else:                                    # K0
         val = p.get("K0", K.K0_def)
         gesetzt = val > 0
-        erg = f"K0 = {val:.2f} ∠ {p.get('PHI_K0', K.PHI_K0_def)}°"
+        erg = f"K0 = {de(val, 2)} ∠ {p.get('PHI_K0', K.PHI_K0_def)}°"
     add("Erdimpedanzanpassung gesetzt", "Format Adr.237",
         erg, "OK" if gesetzt else "Prüfen!",
-        "k0 bzw. RE/RL,XE/XL aus den Leitungskonstanten bestimmen, nicht schaetzen.",
+        "k0 bzw. RE/RL,XE/XL aus den Leitungskonstanten bestimmen, nicht schätzen.",
         "Erdimpedanzfaktor aus dem Leitungsdatenblatt eintragen.")
 
     return checks
@@ -1021,19 +1064,19 @@ def geraeteempfehlung(p: dict) -> dict:
     dev = p.get("leitgeraet", K.LEITGERAET_OPTIONEN[0])
     L   = p.get("L_km", 0.0)
     if dev == "Leitungsdifferential 7SD5":
-        haupt = ("87L Leitungslaengsdifferentialschutz als Hauptschutz, Distanzschutz 21 "
+        haupt = ("87L Leitungslängsdifferentialschutz als Hauptschutz, Distanzschutz 21 "
                  "als integrierte Reserve. Voraussetzung: Wirkschnittstelle (Kommunikation) "
                  "zwischen beiden Leitungsenden.")
     else:
         haupt = ("Distanzschutz 21 als Hauptschutz mit Signalvergleichsverfahren (Teleschutz) "
-                 "zur Beschleunigung. Kein Kommunikationskanal fuer einen Laengsvergleich "
+                 "zur Beschleunigung. Kein Kommunikationskanal für einen Längsvergleich "
                  "zwingend erforderlich.")
     hinweis = ""
     art = p.get("leitungsart", "Freileitung")
     L_min = K.L_MIN_DISTANZ_KM.get(art, K.L_MIN_DISTANZ_DEFAULT_KM)
     if L and L < L_min and dev == "Distanzschutz 7SA6":
-        hinweis = (f"Kurze {art.lower()} (< {L_min:g} km): hier ist der "
-                   "Leitungslaengsdifferentialschutz 7SD5 (87L) haeufig die robustere Wahl, da "
+        hinweis = (f"Kurze {art.lower()} (< {deg(L_min)} km): hier ist der "
+                   "Leitungslängsdifferentialschutz 7SD5 (87L) häufig die robustere Wahl, da "
                    "die Distanzmessung bei kleinen Leitungsimpedanzen empfindlich auf Mess- und "
                    "Wandlerfehler reagiert.")
     return {"leitgeraet": dev, "haupt": haupt, "hinweis": hinweis}

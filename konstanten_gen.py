@@ -2,13 +2,14 @@
 konstanten_gen.py — Voreinstellungen und Plausibilitaets-Schwellwerte (Generator)
 Herstellerneutrales Schutz-Engineering-Tool | HSU Hamburg
 
-Single Source of Truth fuer alle SIPROTEC-7UM62-Werksvoreinstellungen,
+Single Source of Truth fuer die SIPROTEC-7UM62-Voreinstellungen des Tools
+(Werksvoreinstellungen, abweichende Tool-Vorgaben sind gekennzeichnet),
 Engineering-Margen und Plausibilitaetsgrenzen des Generator-Tabs.
 Alle Werte sind frei aenderbar.
 
 Quellen: SIPROTEC 7UM62 Handbuch C53000-G1100-C149-C (Ausgabe 08.2018),
          Querverweis SIPROTEC 7UT613 (Differentialmethodik),
-         IEC 60255-151, IEC 60255-187-3, VDE-FNN-Leitfaden.
+         IEC 60255-151, IEC 60255-187-1, VDE-FNN-Leitfaden.
 
 Hinweis zu Adressen: 7UM62-DIGSI-Adressen (Adr.), Adressen mit "A" sind nur
 unter "Weitere Parameter" sichtbar.
@@ -17,7 +18,7 @@ unter "Weitere Parameter" sichtbar.
 # ── 87G Staenderdifferentialschutz (7UM62, Adr. 20xx) ────────────────────────
 I_DIFF_def        = 0.20   # Adr.2021  Ansprechwert I-DIFF>            [I/InO]
 T_I_DIFF_def      = 0.00   # Adr.2026A Verzoegerung T I-DIFF>          [s]
-I_DIFF_HH_def     = 5.00   # Adr.2031  Ansprechwert I-DIFF>> (Schnell) [I/InO]
+I_DIFF_HH_def     = 5.00   # Adr.2031  I-DIFF>> Tool-Vorgabe 1/x'd (Werk 7,5) [I/InO]
 T_I_DIFF_HH_def   = 0.00   # Adr.2036A Verzoegerung T I-DIFF>>         [s]
 Steigung_1_def    = 0.25   # Adr.2041A Steigung 1                      [-]
 Fusspunkt_1_def   = 0.00   # Adr.2042A Fusspunkt 1                     [I/InO]
@@ -325,28 +326,28 @@ HERST = {
     "I_DIFF": {
         "range": "0,05 ... 2,00 I/InO (Voreinst. 0,20)",
         "adr":   "Adr.2021",
-        "grund": ("Ansprechwert des Staenderdifferentialschutzes. 0,20 deckt kleine "
-                  "Windungsschluesse ab; tiefer als beim Trafo moeglich, da keine "
+        "grund": ("Ansprechwert des Ständerdifferentialschutzes. 0,20 deckt kleine "
+                  "Windungsschlüsse ab. Tiefer als beim Trafo möglich, da keine "
                   "Stufensteller-Fehler auftreten (7UM62 Hdb. 2.9, Adr.2021)."),
     },
     "I_DIFF_HH": {
-        "range": "ca. 1/x'd, typ. (3 ... 7) x IN  (Voreinst. 5,0)",
+        "range": "ca. 1/x'd, typ. (3 ... 7) x IN (Tool-Vorgabe 5,0, Werksvoreinst. 7,5)",
         "adr":   "Adr.2031",
-        "grund": ("Unstabilisierte Schnellausloesestufe. Muss oberhalb des max. "
-                  "durchfliessenden Fehlerstroms liegen; bei Maschinen aus der "
+        "grund": ("Unstabilisierte Schnellauslösestufe. Muss oberhalb des max. "
+                  "durchfließenden Fehlerstroms liegen, bei Maschinen aus der "
                   "transienten Reaktanz x'd: I-DIFF>> ~ 1/x'd (7UM62 Hdb. 2.9, Adr.2031)."),
     },
     "Steigung_1": {
         "range": "0,10 ... 0,50 (Voreinst. 0,25)",
         "adr":   "Adr.2041A",
-        "grund": ("Neigung des ersten Kennlinienastes. Beruecksichtigt Wandlerfehler "
+        "grund": ("Neigung des ersten Kennlinienastes. Berücksichtigt Wandlerfehler "
                   "im unteren Strombereich (7UM62 Hdb. 2.9, Adr.2041A)."),
     },
     "Steigung_2": {
         "range": "0,25 ... 0,95 (Voreinst. 0,50)",
         "adr":   "Adr.2043A",
-        "grund": ("Neigung ab Fusspunkt 2 — hoehere Stabilisierung gegen Wandler- "
-                  "saettigung bei grossen Durchgangsfehlern (7UM62 Hdb. 2.9, Adr.2043A)."),
+        "grund": ("Neigung ab Fußpunkt 2 für höhere Stabilisierung gegen Wandler- "
+                  "sättigung bei großen Durchgangsfehlern (7UM62 Hdb. 2.9, Adr.2043A)."),
     },
     "Fusspunkt_2": {
         "range": "0,00 ... 10,00 I/InO (Voreinst. 2,50)",
@@ -356,30 +357,30 @@ HERST = {
     "Harm_2": {
         "range": "10 ... 80 % (Voreinst. 15 %)",
         "adr":   "Adr.2071",
-        "grund": ("Inrush-Stabilisierung ueber 2. Harmonische — relevant beim "
+        "grund": ("Inrush-Stabilisierung über 2. Harmonische, relevant beim "
                   "Zuschalten eines Blocktrafos (7UM62 Hdb. 2.9, Adr.2071)."),
     },
     "f_I_Ph": {
-        "range": "ca. 1,2 ... 1,5 x IN (Voreinst. 1,40)",
+        "range": "ca. 1,2 ... 1,5 x IN (Tool-Voreinst. 1,40; Werk 1,35 A bei 1 A)",
         "adr":   "Adr.1202",
-        "grund": ("Reserve-Ueberstromstufe I>. Oberhalb der max. Betriebslast; beim "
+        "grund": ("Reserve-Überstromstufe I>. Oberhalb der max. Betriebslast, beim "
                   "Generator mit Unterspannungshaltung kombinierbar (7UM62 Hdb. 2.3, Adr.1202)."),
     },
     "t_I_Ph": {
         "range": "aus Staffelplan, typ. 1 ... 3 s (Voreinst. 3,0 s)",
         "adr":   "Adr.1203",
-        "grund": ("Verzoegerung I>. Generatorseitig bewusst lang, da Reserveschutz "
+        "grund": ("Verzögerung I>. Generatorseitig bewusst lang, da Reserveschutz "
                   "(7UM62 Hdb. 2.3, Adr.1203)."),
     },
     "U_Haltung": {
         "range": "10 ... 125 V (Voreinst. 80 V)",
         "adr":   "Adr.1205",
-        "grund": ("Unterspannungshaltung: haelt die I>-Anregung bei einbrechender "
+        "grund": ("Unterspannungshaltung: hält die I>-Anregung bei einbrechender "
                   "Spannung gespeichert, damit der abklingende Generator-KS-Strom "
                   "(1/xd) trotzdem erfasst wird (7UM62 Hdb. 2.3, Adr.1205)."),
     },
     "f_I_Ph_HH": {
-        "range": "typ. 3 ... 7 x IN (Voreinst. 4,0)",
+        "range": "typ. 3 ... 7 x IN (Tool-Voreinst. 4,0; Werk 4,30 A bei 1 A)",
         "adr":   "Adr.1302",
         "grund": ("Hochstromstufe I>> als schneller Kurzschlussschutz, oberhalb des "
                   "subtransienten Speisestroms benachbarter Quellen (7UM62 Hdb. 2.4, Adr.1302)."),
@@ -387,12 +388,12 @@ HERST = {
     "t_I_Ph_HH": {
         "range": "0,0 ... 0,1 s (Voreinst. 0,10 s)",
         "adr":   "Adr.1303",
-        "grund": ("Kurze Sicherheitsverzoegerung der Hochstromstufe (7UM62 Hdb. 2.4, Adr.1303)."),
+        "grund": ("Kurze Sicherheitsverzögerung der Hochstromstufe (7UM62 Hdb. 2.4, Adr.1303)."),
     },
     "f_Ip": {
         "range": "0,10 ... 4,00 A bzw. ~1,0 x IN (Voreinst. 1,0)",
         "adr":   "Adr.1402",
-        "grund": ("Anregewert der spannungsabhaengigen AMZ-Stufe (51V). Mit aktiver "
+        "grund": ("Anregewert der spannungsabhängigen AMZ-Stufe (51V). Mit aktiver "
                   "Spannungssteuerung sinkt die Schwelle bei Spannungseinbruch "
                   "(7UM62 Hdb. 2.5, Adr.1402)."),
     },
@@ -405,75 +406,75 @@ HERST = {
     "k_Faktor": {
         "range": "0,10 ... 4,00 x IN (Voreinst. 1,11)",
         "adr":   "Adr.1602",
-        "grund": ("Zulaessiger thermischer Dauerstrom (ANSI 49), bezogen auf 40 Grad C "
+        "grund": ("Zulässiger thermischer Dauerstrom (ANSI 49), bezogen auf 40 Grad C "
                   "Umgebung (7UM62 Hdb. 2.6, Adr.1602)."),
     },
     "tau_s": {
         "range": "30 ... 32000 s, Maschine typ. 600 s (Voreinst. 600)",
         "adr":   "Adr.1603",
         "grund": ("Thermische Zeitkonstante. ACHTUNG: beim 7UM62 in SEKUNDEN "
-                  "(beim 7UT613 in Minuten!) — haeufige Verwechslung (7UM62 Hdb. 2.6, Adr.1603)."),
+                  "(beim 7UT613 in Minuten!), eine häufige Verwechslung (7UM62 Hdb. 2.6, Adr.1603)."),
     },
     "I2_zul": {
         "range": "3,0 ... 30,0 % (Voreinst. 10,6 %)",
         "adr":   "Adr.1702",
         "grund": ("Dauernd zul. Schieflast (Gegensystem I2, ANSI 46). Maschinen sind "
-                  "gegensystemempfindlich — Richtwert ~10 % (7UM62 Hdb. 2.7, Adr.1702)."),
+                  "gegensystemempfindlich, Richtwert ~10 % (7UM62 Hdb. 2.7, Adr.1702)."),
     },
     "I2_HH": {
         "range": "10 ... 200 % (Voreinst. 60 %)",
         "adr":   "Adr.1706",
-        "grund": ("Unabhaengige Schnellstufe I2>>. ~60 % trennt Phasenausfall (<58 %) "
+        "grund": ("Unabhängige Schnellstufe I2>>. ~60 % trennt Phasenausfall (<58 %) "
                   "vom 2-poligen Kurzschluss (7UM62 Hdb. 2.7, Adr.1706)."),
     },
     "Winkel_1": {
         "range": "50 ... 120 Grad (Voreinst. 80 Grad)",
         "adr":   "Adr.3003",
         "grund": ("Neigung Kennlinie 1 (40). Winkel der Untererregungsbegrenzung bzw. "
-                  "der statischen Stabilitaetsgrenze, typ. 60 ... 80 Grad (7UM62 Hdb. 2.11, Adr.3003)."),
+                  "der statischen Stabilitätsgrenze, typ. 60 ... 80 Grad (7UM62 Hdb. 2.11, Adr.3003)."),
     },
     "xd_KL3": {
         "range": "0,20 ... 3,00 (Voreinst. 1,10)",
         "adr":   "Adr.3008",
-        "grund": ("1/xd Kennlinie 3 (dyn. Stabilitaet). Wert zwischen xd und x'd, "
+        "grund": ("1/xd Kennlinie 3 (dyn. Stabilität). Wert zwischen xd und x'd, "
                   "jedoch > 1 (7UM62 Hdb. 2.11, Adr.3008)."),
     },
     "Prueck": {
         "range": "-30,00 ... -0,50 % (negativ; Voreinst. -1,93 %)",
         "adr":   "Adr.3102",
-        "grund": ("Rueckleistungsschwelle (ANSI 32), ~0,5 x Schleppleistung. "
+        "grund": ("Rückleistungsschwelle (ANSI 32), ~0,5 x Schleppleistung. "
                   "Dampf 1-3 %, Gas 3-30 %, Diesel >5 % von SN (7UM62 Hdb. 2.12, Adr.3102)."),
     },
     "Uf_Warn": {
         "range": "1,00 ... 1,20 (Voreinst. 1,10)",
         "adr":   "Adr.4302",
-        "grund": ("U/f-Warnstufe (ANSI 24). 1,10 schuetzt Eisen vor Saettigung beim "
+        "grund": ("U/f-Warnstufe (ANSI 24). 1,10 schützt Eisen vor Sättigung beim "
                   "Hochfahren/Lastabwurf (7UM62 Hdb. 2.19, Adr.4302)."),
     },
     "Uf_Aus": {
         "range": "1,00 ... 1,40 (Voreinst. 1,40)",
         "adr":   "Adr.4304",
-        "grund": ("U/f-Ausloesestufe — Schnellabschaltung bei starker Uebererregung "
+        "grund": ("U/f-Auslösestufe zur Schnellabschaltung bei starker Übererregung "
                   "(7UM62 Hdb. 2.19, Adr.4304)."),
     },
     "U0": {
         "range": "2,0 ... 125,0 V (Voreinst. 10,0 V)",
         "adr":   "Adr.5002",
-        "grund": ("Verlagerungsspannungs-Schwelle (90 % Staendererdschluss). 10 V bei "
+        "grund": ("Verlagerungsspannungs-Schwelle (90 % Ständererdschluss). 10 V bei "
                   "100 V voller Verlagerung -> 90 % Schutzbereich (7UM62 Hdb. 2.23, Adr.5002)."),
     },
     "RE_Aus": {
         "range": "1,0 ... 5,0 kOhm (Voreinst. 2,0 kOhm)",
         "adr":   "Adr.6003",
-        "grund": ("Ausloeseschwelle Laeufererdschluss (64R). Unter 2 kOhm wird ein "
+        "grund": ("Auslöseschwelle Läufererdschluss (64R). Unter 2 kOhm wird ein "
                   "Erdschluss der Erregerwicklung angenommen (7UM62 Hdb. 2.30, Adr.6003)."),
     },
     "Imp_I": {
         "range": "0,10 ... 20,00 A (1A); Voreinst. 1,35 A (1A) / 6,75 A (5A)",
         "adr":   "Adr.3302",
-        "grund": ("Ueberstromanregung des Impedanzschutzes (ANSI 21). Muss ueber der "
-                  "max. Betriebslast liegen, eine Anregung durch Ueberlast ist "
-                  "auszuschliessen. Hier als Faktor x IN_sek (7UM62 Hdb. 2.14, Adr.3302)."),
+        "grund": ("Überstromanregung des Impedanzschutzes (ANSI 21). Muss über der "
+                  "max. Betriebslast liegen, eine Anregung durch Überlast ist "
+                  "auszuschließen. Hier als Faktor x IN_sek (7UM62 Hdb. 2.14, Adr.3302)."),
     },
     "Imp_Z1": {
         "range": "0,05 ... 130,00 Ohm (1A); Voreinst. 2,90 Ohm",
@@ -485,21 +486,21 @@ HERST = {
     "Imp_Z2": {
         "range": "0,05 ... 65,00 Ohm (1A); Voreinst. 4,15 Ohm",
         "adr":   "Adr.3310",
-        "grund": ("Reichweite Zone Z2 (sek.) als verzoegerte Reservestufe ueber Z1 "
+        "grund": ("Reichweite Zone Z2 (sek.) als verzögerte Reservestufe über Z1 "
                   "hinaus. Zeitlich gestaffelt (T2 > T1) (7UM62 Hdb. 2.14, Adr.3310)."),
     },
     "Aus_I1": {
         "range": "20,0 ... 400,0 % IN (Voreinst. 120 %)",
         "adr":   "Adr.3502",
-        "grund": ("Mitsystem-Freigabe I1> des Aussertrittfallschutzes (ANSI 78). "
+        "grund": ("Mitsystem-Freigabe I1> des Außertrittfallschutzes (ANSI 78). "
                   "Oberhalb Nennstrom (~120 % IN), gibt die Pendelmessung nur bei "
                   "hoher Stromschwingung frei (7UM62 Hdb. 2.15, Adr.3502)."),
     },
     "Aus_I2": {
         "range": "5,0 ... 100,0 % IN (Voreinst. 20 %)",
         "adr":   "Adr.3503",
-        "grund": ("Gegensystem-Sperre I2< (ANSI 78). Der Aussertrittfall ist ein "
-                  "symmetrischer Vorgang; hoher I2 (Unsymmetrie/Fehler) sperrt die "
+        "grund": ("Gegensystem-Sperre I2< (ANSI 78). Der Außertrittfall ist ein "
+                  "symmetrischer Vorgang. Hoher I2 (Unsymmetrie/Fehler) sperrt die "
                   "Funktion (7UM62 Hdb. 2.15, Adr.3503)."),
     },
     "Aus_Za": {
@@ -511,98 +512,98 @@ HERST = {
     "Aus_Zb": {
         "range": "0,10 ... 130,00 Ohm (1A); Voreinst. 12,00 Ohm",
         "adr":   "Adr.3505",
-        "grund": ("Reaktanz Zb rueckwaerts (sek.), in den Generator gerichtet. Aus der "
+        "grund": ("Reaktanz Zb rückwärts (sek.), in den Generator gerichtet. Aus der "
                   "transienten Reaktanz x'd der Maschine (7UM62 Hdb. 2.15, Adr.3505)."),
     },
     "Aus_Zc": {
         "range": "0,10 ... 130,00 Ohm (1A); Voreinst. 3,60 Ohm",
         "adr":   "Adr.3506",
-        "grund": ("Reaktanz Zc vorwaerts (Kennlinie 1, sek.), in Richtung Netz/Trafo. "
+        "grund": ("Reaktanz Zc vorwärts (Kennlinie 1, sek.), in Richtung Netz/Trafo. "
                   "Begrenzt das Polygon zur Netzseite (7UM62 Hdb. 2.15, Adr.3506)."),
     },
     "PVorw_un": {
         "range": "0,5 ... 120,0 % SN_sek (Voreinst. 9,7 %)",
         "adr":   "Adr.3202",
-        "grund": ("Unterschreitungsschwelle P< der Vorwaertsleistungsueberwachung. "
-                  "Unterschreitet die abgegebene Wirkleistung diesen Wert (P< VORW.), loest die "
+        "grund": ("Unterschreitungsschwelle P< der Vorwärtsleistungsüberwachung. "
+                  "Unterschreitet die abgegebene Wirkleistung diesen Wert (P< VORW.), löst die "
                   "Funktion aus. Typische Anwendung: Erkennung von Schwachlast vor der "
-                  "Rueckleistungsgrenze. Einstellwert > |PRueck| der Rueckleistungsschwelle (32). "
-                  "Bezugsgroesse SN_sek = sqrt(3)*UN_sek*IN_sek (7UM62 Hdb. 2.13, Adr.3202)."),
+                  "Rückleistungsgrenze. Einstellwert > |PRück| der Rückleistungsschwelle (32). "
+                  "Bezugsgröße SN_sek = sqrt(3)*UN_sek*IN_sek (7UM62 Hdb. 2.13, Adr.3202)."),
     },
     "PVorw_ue": {
         "range": "1,0 ... 120,0 % SN_sek (Voreinst. 96,6 %)",
         "adr":   "Adr.3204",
-        "grund": ("Ueberschreitungsschwelle P> der Vorwaertsleistungsueberwachung. "
-                  "Steigt die abgegebene Wirkleistung ueber diesen Wert, kann ein Steuerbefehl "
+        "grund": ("Überschreitungsschwelle P> der Vorwärtsleistungsüberwachung. "
+                  "Steigt die abgegebene Wirkleistung über diesen Wert, kann ein Steuerbefehl "
                   "ausgegeben werden (z.B. Lastabwurf, Netztrennung). Anlagenspezifisch aus "
-                  "max. zulaessiger Maschinenleistung zu bestimmen (7UM62 Hdb. 2.13, Adr.3204)."),
+                  "max. zulässiger Maschinenleistung zu bestimmen (7UM62 Hdb. 2.13, Adr.3204)."),
     },
     "IEE_an": {
         "range": "2 ... 1000 mA (Voreinst. 10 mA)",
         "adr":   "Adr.5102",
-        "grund": ("Anregestrom IEE> der Warnstufe. Erfasst Isolationswiderstaende RE im "
+        "grund": ("Anregestrom IEE> der Warnstufe. Erfasst Isolationswiderstände RE im "
                   "Bereich 3-5 kOhm. Der Einstellwert muss mindestens doppelt so hoch sein wie "
-                  "der Stoerstrom infolge der Erdkapazitaeten (7UM62 Hdb. 2.26, Adr.5102)."),
+                  "der Störstrom infolge der Erdkapazitäten (7UM62 Hdb. 2.26, Adr.5102)."),
     },
     "IEE_aus": {
         "range": "2 ... 1000 mA (Voreinst. 23 mA)",
         "adr":   "Adr.5104",
-        "grund": ("Ausloesesstrom IEE>>. Fuer Fehlerwiderstand RE ca. 1,5 kOhm bemessen. "
-                  "IEE>> muss stets groesser als IEE> sein (7UM62 Hdb. 2.26, Adr.5104)."),
+        "grund": ("Auslösesstrom IEE>>. Für Fehlerwiderstand RE ca. 1,5 kOhm bemessen. "
+                  "IEE>> muss stets größer als IEE> sein (7UM62 Hdb. 2.26, Adr.5104)."),
     },
     "IEE_ueb": {
         "range": "1,5 ... 50,0 mA (Voreinst. 0,0 mA = inaktiv)",
         "adr":   "Adr.5106",
-        "grund": ("Ueberwachungsstufe IEE< fuer den Messkreis. Fliesst dauerhaft weniger Strom "
-                  "als dieser Wert (typisch 2 mA bei Laeufererd-Verspannung), wird eine "
-                  "Stoerungsmeldung ausgegeben. Auf 0 setzen, wenn Erdkapazitaeten zu klein "
+        "grund": ("Überwachungsstufe IEE< für den Messkreis. Fließt dauerhaft weniger Strom "
+                  "als dieser Wert (typisch 2 mA bei Läufererd-Verspannung), wird eine "
+                  "Störungsmeldung ausgegeben. Auf 0 setzen, wenn Erdkapazitäten zu klein "
                   "(7UM62 Hdb. 2.26, Adr.5106)."),
     },
     "dfdt_stufe": {
         "range": "0,1 ... 10,0 Hz/s je Stufe (Voreinst. Stufen 1/2: 1,0; Stufen 3/4: 4,0)",
         "adr":   "Adr.4503 / 4507 / 4511 / 4515",
         "grund": ("Absolutbetrag des Frequenzgradienten-Ansprechwerts. Richtung getrennt "
-                  "parametrierbar (-df/dt< Abfall, +df/dt> Anstieg). Applikationsabhaengig: "
-                  "typ. 1 Hz/s fuer verzoegerte Warnstufe, 4 Hz/s fuer schnelle Ausloesung. "
+                  "parametrierbar (-df/dt< Abfall, +df/dt> Anstieg). Applikationsabhängig: "
+                  "typ. 1 Hz/s für verzögerte Warnstufe, 4 Hz/s für schnelle Auslösung. "
                   "Bemessungsformel: |df/dt| = fN/(2H) * |dP/SN| (7UM62 Hdb. 2.21)."),
     },
     "dfdt_Umin": {
         "range": "10,0 ... 125,0 V (Empfehlung ca. 65 % UN_sek; Voreinst. 65,0 V)",
         "adr":   "Adr.4518",
-        "grund": ("Mindestspannung; bei Unterschreitung wird der gesamte df/dt-Schutz "
-                  "blockiert, da dann keine zuverlaessige Frequenzmessung moeglich ist. "
+        "grund": ("Mindestspannung. Bei Unterschreitung wird der gesamte df/dt-Schutz "
+                  "blockiert, da dann keine zuverlässige Frequenzmessung möglich ist. "
                   "Empfohlener Wert: ~65 % UN_sek (7UM62 Hdb. 2.21, Adr.4518)."),
     },
     "VS_dphi": {
         "range": "2 ... 30 Grad (Voreinst. 10 Grad)",
         "adr":   "Adr.4602",
         "grund": ("Phasenwinkelschwelle des Vektorsprungschutzes. Anlagenspezifisch aus dem "
-                  "Kurzschlussverhaeltnis des Netzes und der typischen Lastabwurfgroesse zu "
-                  "ermitteln. Zu empfindlich -> Fehlausloesung bei Lastschaltvorgaengen. "
+                  "Kurzschlussverhältnis des Netzes und der typischen Lastabwurfgröße zu "
+                  "ermitteln. Zu empfindlich -> Fehlauslösung bei Lastschaltvorgängen. "
                   "Voreinstellung 10 Grad als konservativer Ausgangswert (7UM62 Hdb. 2.22, Adr.4602)."),
     },
     "VS_t_reset": {
         "range": "0,10 ... 60,00 s (Voreinst. 5,00 s)",
         "adr":   "Adr.4604",
-        "grund": ("Selbstreset-Zeit T RESET. Nach Ablauf setzt die Funktion selbststaendig "
-                  "zurueck; vor einer Wiedereinschaltung des Leistungsschalters muss T RESET "
+        "grund": ("Selbstreset-Zeit T RESET. Nach Ablauf setzt die Funktion selbstständig "
+                  "zurück. Vor einer Wiedereinschaltung des Leistungsschalters muss T RESET "
                   "abgelaufen sein. Soll kein Selbstreset erfolgen, auf Unendlich setzen und "
-                  "ueber Binaereingang (Hilfskontakt) ruecksetzen (7UM62 Hdb. 2.22, Adr.4604)."),
+                  "über Binäreingang (Hilfskontakt) rücksetzen (7UM62 Hdb. 2.22, Adr.4604)."),
     },
     "BF_I": {
         "range": "1A-CT: 0,04...2,00 A (Voreinst. 0,20 A) · 5A-CT: 0,20...10,00 A (Voreinst. 1,00 A)",
         "adr":   "Adr.7003",
-        "grund": ("Stromansprechschwelle SVS I> des Schalterversagerschutzes. Gilt fuer alle "
+        "grund": ("Stromansprechschwelle SVS I> des Schalterversagerschutzes. Gilt für alle "
                   "drei Phasen. Mindestens 10 % unterhalb des kleinsten erwarteten "
                   "Betriebsstroms einstellen. Nicht zu empfindlich, da sonst "
-                  "Ausgleichsvorgaenge im CT-Sekundaerkreis zu erlaengerter Rueckfallzeit "
-                  "fuehren koennen (7UM62 Hdb. 2.36, Adr.7003)."),
+                  "Ausgleichsvorgänge im CT-Sekundärkreis zu erlängerter Rückfallzeit "
+                  "führen können (7UM62 Hdb. 2.36, Adr.7003)."),
     },
     "BF_Taus": {
         "range": "0,06 ... 60,00 s (Voreinst. 0,25 s)",
         "adr":   "Adr.7004",
-        "grund": ("Ausloesezeit SVS-Taus. Setzt sich zusammen aus maximaler LS-Ausschaltzeit "
-                  "zuzueglich Rueckfallzeit der Ueberstromerfassung und einer Sicherheitsmarge. "
+        "grund": ("Auslösezeit SVS-Taus. Setzt sich zusammen aus maximaler LS-Ausschaltzeit "
+                  "zuzüglich Rückfallzeit der Überstromerfassung und einer Sicherheitsmarge. "
                   "Typisch: t_LS_max (~80 ms) + t_RF (~20 ms) + t_Marge (~50 ms) = 150-200 ms. "
                   "Voreinst. 250 ms beinhaltet Marge. Zu kurz eingestellt -> Fehlanregung bei "
                   "normalem Abschaltvorgang (7UM62 Hdb. 2.36, Adr.7004)."),
@@ -611,32 +612,32 @@ HERST = {
         "range": "10,0 ... 125,0 V (Voreinst. 75,0 V)",
         "adr":   "Adr.4002",
         "grund": ("Anregeschwelle U< des zweistufigen Unterspannungsschutzes (ANSI 27). "
-                  "Typisch ~75 % UN_sek. Haelt die I>-Anregung bei Spannungseinbruch aufrecht; "
-                  "Verzögerung T U< (Adr.4003) so waehlen, dass kurzzeitige Spannungseinbrueche "
-                  "nicht zu Fehlausloesung fuehren (7UM62 Hdb. 2.16, Adr.4002)."),
+                  "Typisch ~75 % UN_sek. Hält die I>-Anregung bei Spannungseinbruch aufrecht; "
+                  "Verzögerung T U< (Adr.4003) so wählen, dass kurzzeitige Spannungseinbrüche "
+                  "nicht zu Fehlauslösung führen (7UM62 Hdb. 2.16, Adr.4002)."),
     },
     "U_kleinklein": {
         "range": "10,0 ... 125,0 V (Voreinst. 65,0 V)",
         "adr":   "Adr.4004",
-        "grund": ("Anregeschwelle U<< der schnellen Ausloesestufe des Unterspannungsschutzes. "
-                  "Typisch ~65 % UN_sek, kombiniert mit kurzer Verzoegerung T U<< = 0,5 s "
-                  "(Adr.4005). Schutzt gegen instabilen Betrieb bei starken Spannungseinbruechen "
+        "grund": ("Anregeschwelle U<< der schnellen Auslösestufe des Unterspannungsschutzes. "
+                  "Typisch ~65 % UN_sek, kombiniert mit kurzer Verzögerung T U<< = 0,5 s "
+                  "(Adr.4005). Schutzt gegen instabilen Betrieb bei starken Spannungseinbrüchen "
                   "(7UM62 Hdb. 2.16, Adr.4004)."),
     },
     "U_gross": {
         "range": "30,0 ... 170,0 V (Voreinst. 115,0 V)",
         "adr":   "Adr.4102",
-        "grund": ("Anregeschwelle U> des zweistufigen Ueberspannungsschutzes (ANSI 59). "
-                  "Typisch ~115 % UN_sek. Langzeitstufe fuer statische Ueberspannungen "
-                  "(Erregerfehler, Lastabwurf). Verzoegerung T U> (Adr.4103) typisch 3 s "
+        "grund": ("Anregeschwelle U> des zweistufigen Überspannungsschutzes (ANSI 59). "
+                  "Typisch ~115 % UN_sek. Langzeitstufe für statische Überspannungen "
+                  "(Erregerfehler, Lastabwurf). Verzögerung T U> (Adr.4103) typisch 3 s "
                   "(7UM62 Hdb. 2.17, Adr.4102)."),
     },
     "U_grossgross": {
         "range": "30,0 ... 170,0 V (Voreinst. 130,0 V)",
         "adr":   "Adr.4104",
-        "grund": ("Anregeschwelle U>> der schnellen Ausloesestufe des Ueberspannungsschutzes. "
-                  "Typisch ~130 % UN_sek mit kurzer oder keiner Verzoegerung T U>> (Adr.4105). "
-                  "Schutzt bei starken Ueberspannungen nach Lastabwurf "
+        "grund": ("Anregeschwelle U>> der schnellen Auslösestufe des Überspannungsschutzes. "
+                  "Typisch ~130 % UN_sek mit kurzer oder keiner Verzögerung T U>> (Adr.4105). "
+                  "Schutzt bei starken Überspannungen nach Lastabwurf "
                   "(7UM62 Hdb. 2.17, Adr.4104)."),
     },
 }

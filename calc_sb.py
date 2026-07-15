@@ -49,6 +49,11 @@ def grundgroessen(p: dict) -> dict:
     Iscc_min = p.get("Iscc_min_kA", 0.0) * 1e3
     Iscc_max = p.get("Iscc_max_kA", 0.0) * 1e3
 
+    # Kurzschlussleistungen Sk'' = sqrt(3) * UN * Ik (DIN EN 60909-0)
+    UN = p.get("UN_kV", 0.0)
+    Sk_max_MVA = (SQRT3 * UN * 1e3 * Iscc_max) / 1e6 if UN > 0 else 0.0
+    Sk_min_MVA = (SQRT3 * UN * 1e3 * Iscc_min) / 1e6 if UN > 0 else 0.0
+
     return {
         "kCT":        round(kCT, 4),
         "IN_ref":     round(IN_ref, 3),
@@ -62,6 +67,9 @@ def grundgroessen(p: dict) -> dict:
         "Iscc_max":   round(Iscc_max, 3),
         "t_LS":       round(p.get("t_LS", 0.0), 4),
         "anzahl_abzweige": int(p.get("anzahl_abzweige", 0)),
+        "UN_kV":      round(UN, 2),
+        "Sk_max_MVA": round(Sk_max_MVA, 1),
+        "Sk_min_MVA": round(Sk_min_MVA, 1),
     }
 
 
@@ -436,7 +444,7 @@ def plausibilitaet_50BF(g: dict, p: dict, d: dict) -> list:
     if d["aus_wiederh"] == "1polig":
         add("Auswiederholung 1-polig", "AUS-Wiederh.",
             "1polig", "Hinweis",
-            "Eine 1-polige Auswiederholung setzt einen 1-poligen Anstoss und einen 1-pol-fähigen "
+            "Eine 1-polige Auswiederholung setzt einen 1-poligen Anstoß und einen 1-pol-fähigen "
             "Leistungsschalter voraus. Andernfalls auf 3-polig stellen.",
             _korr("AUS-Wiederholung", d['adr']['AUS_WIEDERH'], K.ABSCHNITT_50BF,
                   "ggf. auf '3polig' setzen."))
@@ -694,7 +702,28 @@ def geraeteempfehlung(p: dict) -> dict:
         hinweis = ("Einfachsammelschiene: selektive Zone und Checkzone erfassen denselben "
                    "Schutzbereich. Stabilisierungsfaktoren von SS und CZ können gleich gewählt "
                    "werden.")
-    return {"haupt": haupt, "hinweis": hinweis, "topologie": topo,
+    # Sternpunktbehandlung des Netzes: Erdschluss-Erfassbarkeit des 87B
+    stp = p.get("sternpunkt", K.STERNPUNKT_NETZ_OPTIONEN[0])
+    if stp in K.NETZ_GEERDET:
+        erd = (f"Sternpunktbehandlung '{stp}': Erdkurzschlüsse treiben einen "
+               "definierten Fehlerstrom und werden vom 87B als Differenzstrom "
+               "erfasst. Bei kleinen einpoligen Fehlerströmen die empfindliche "
+               "Kennlinie (Adr.6320A) prüfen.")
+    else:
+        erd = (f"Sternpunktbehandlung '{stp}': einpolige Erdschlüsse erzeugen "
+               "keinen auswertbaren Differenzstrom, der 87B erfasst sie nicht. "
+               "Die Erdschlusserfassung ist den Abzweig- und Einspeisegeräten "
+               "zuzuordnen.")
+    # Endfehlerschutz: Totzone Stromwandler-Leistungsschalter (7SS52 Hdb. 5.4)
+    efs = ("Endfehlerschutz (EFS): Fehler zwischen Stromwandler und geöffnetem "
+           "Leistungsschalter deckt je Abzweig-Feldeinheit der Endfehlerschutz ab. "
+           "Bei sammelschienenseitigen Wandlern dehnt er den Schutzbereich bis zum "
+           "Leistungsschalter aus, bei leitungsseitigen Wandlern verhindert er eine "
+           "Überfunktion des Sammelschienenschutzes. Die Aktivierung erfolgt über die "
+           "Schalterstellungs-Binäreingaben, der Wandlerort wird in der "
+           "DIGSI-Anlagenprojektierung hinterlegt (7SS52 Hdb. 5.4).")
+    return {"haupt": haupt, "hinweis": hinweis, "erdschluss": erd, "endfehler": efs,
+            "topologie": topo,
             "anzahl_abzweige": n_abz, "mehrfach": mehrfach}
 
 

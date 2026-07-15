@@ -18,6 +18,7 @@ Schutzfunktionen:
 
 import math
 import konstanten_motor as K
+from utils import de, deg
 from calc_trafo import status_empfehlung, status_bereich  # gemeinsame Ampel-Helfer
 
 SQRT3 = math.sqrt(3)
@@ -330,8 +331,8 @@ def schutz_47(g: dict, p: dict) -> dict:
         "U59_V2_2_pct": pc(p.get("U59_V2_2", K.U59_V2_2_def)),
         "t_59_V2_2": K.t_59_2_def,
         "grund": ("" if vt else
-                  "Die Spannungsunsymmetrie (Gegensystem-Ueberspannung V2) benoetigt einen "
-                  "Spannungswandler. Die stromseitige Phasenfolgepruefung (|I| > 0,5 IN) bleibt "
+                  "Die Spannungsunsymmetrie (Gegensystem-Überspannung V2) benötigt einen "
+                  "Spannungswandler. Die stromseitige Phasenfolgeprüfung (|I| > 0,5 IN) bleibt "
                   "auch ohne VT wirksam."),
     }
 
@@ -375,19 +376,19 @@ def bemessung_engineering(g: dict, p: dict, umz: dict, b48: dict) -> dict:
     _sek = lambda A: (A / kCT) if kCT else 0.0
 
     if hh_status == "Prüfen!" and not fenster_vorhanden:
-        korr_hh = (f"Kein gueltiges 50-2-Fenster: 1,6·I_Anlauf ({f502_untere:.0f} A) liegt "
-                   f"ueber Ik,2pol,min ({f502_obere:.0f} A). Eine unverzoegerte Hochstromstufe "
-                   f"kann Anlauf und Kurzschluss nicht trennen — verzoegerte 50-2 oder "
+        korr_hh = (f"Kein gültiges 50-2-Fenster: 1,6·I_Anlauf ({de(f502_untere, 0)} A) liegt "
+                   f"über Ik,2pol,min ({de(f502_obere, 0)} A). Eine unverzögerte Hochstromstufe "
+                   f"kann Anlauf und Kurzschluss nicht trennen, verzögerte 50-2 oder "
                    f"Motordifferentialschutz (87M) erforderlich.")
     elif hh_status == "Prüfen!" and f502_gewaehlt < f502_untere:
-        korr_hh = (f"Regler '50-2 I>> [A sek.]' von {_sek(f502_gewaehlt):.3f} auf mindestens "
-                   f"{_sek(f502_untere):.3f} A sek. ERHOEHEN (= {f502_untere:.0f} A prim., "
-                   f"das 1,6-fache des Anlaufstroms). Aktuell loest 50-2 bei {f502_gewaehlt:.0f} A prim. "
+        korr_hh = (f"Regler '50-2 I>> [A sek.]' von {de(_sek(f502_gewaehlt), 3)} auf mindestens "
+                   f"{de(_sek(f502_untere), 3)} A sek. ERHOEHEN (= {de(f502_untere, 0)} A prim., "
+                   f"das 1,6-fache des Anlaufstroms). Aktuell löst 50-2 bei {de(f502_gewaehlt, 0)} A prim. "
                    f"schon im Anlauf aus.")
     elif hh_status == "Prüfen!":
-        korr_hh = (f"Regler '50-2 I>> [A sek.]' von {_sek(f502_gewaehlt):.3f} auf hoechstens "
-                   f"{_sek(f502_obere):.3f} A sek. VERRINGERN (= {f502_obere:.0f} A prim., "
-                   f"unter Ik,2pol,min). Aktuell liegt 50-2 bei {f502_gewaehlt:.0f} A prim. oberhalb "
+        korr_hh = (f"Regler '50-2 I>> [A sek.]' von {de(_sek(f502_gewaehlt), 3)} auf höchstens "
+                   f"{de(_sek(f502_obere), 3)} A sek. VERRINGERN (= {de(f502_obere, 0)} A prim., "
+                   f"unter Ik,2pol,min). Aktuell liegt 50-2 bei {de(f502_gewaehlt, 0)} A prim. oberhalb "
                    f"des kleinsten Fehlerstroms und spricht nicht sicher an.")
     else:
         korr_hh = ""
@@ -396,10 +397,10 @@ def bemessung_engineering(g: dict, p: dict, umz: dict, b48: dict) -> dict:
     I51_emp      = k_S * I_max
     I51_gewaehlt = umz["f_51"] * INp
     I51_status   = "OK" if (I51_emp and I51_gewaehlt >= I51_emp * 0.999) else ("Prüfen!" if I51_emp else "Fehlt")
-    korr_51 = (f"Regler '51 Ip (AMZ) [A sek.]' von {_sek(I51_gewaehlt):.3f} auf mindestens "
-               f"{_sek(I51_emp):.3f} A sek. ERHOEHEN (= {I51_emp:.0f} A prim. = {k_S:g}·I_max). "
-               f"Aktuell regt 51 schon bei {I51_gewaehlt:.0f} A prim. an und koennte durch Betriebslast "
-               f"ausloesen." if I51_status == "Prüfen!" else "")
+    korr_51 = (f"Regler '51 Ip (AMZ) [A sek.]' von {de(_sek(I51_gewaehlt), 3)} auf mindestens "
+               f"{de(_sek(I51_emp), 3)} A sek. ERHOEHEN (= {de(I51_emp, 0)} A prim. = {deg(k_S)}·I_max). "
+               f"Aktuell regt 51 schon bei {de(I51_gewaehlt, 0)} A prim. an und könnte durch Betriebslast "
+               f"auslösen." if I51_status == "Prüfen!" else "")
 
     # Empfindlichkeit Ik,min / 51
     if Ik_min_in > 0:
@@ -414,9 +415,9 @@ def bemessung_engineering(g: dict, p: dict, umz: dict, b48: dict) -> dict:
     empfind = I_k_min / I51_gewaehlt if I51_gewaehlt else 0.0
     empfind_status = "OK" if (empfind and empfind >= gamma) else ("Prüfen!" if I_k_min else "Fehlt")
     _f51_max_sek = (I_k_min / (gamma * kCT)) if (gamma and kCT) else 0.0
-    korr_emp = (f"Regler '51 Ip (AMZ) [A sek.]' von {_sek(I51_gewaehlt):.3f} auf hoechstens "
-                f"{_f51_max_sek:.3f} A sek. VERRINGERN (oder Kennlinie/TIME DIAL anpassen), damit "
-                f"Ik,min/51 >= {gamma:g} erreicht wird (aktuell {empfind:.2f})."
+    korr_emp = (f"Regler '51 Ip (AMZ) [A sek.]' von {de(_sek(I51_gewaehlt), 3)} auf höchstens "
+                f"{de(_f51_max_sek, 3)} A sek. VERRINGERN (oder Kennlinie/TIME DIAL anpassen), damit "
+                f"Ik,min/51 >= {deg(gamma)} erreicht wird (aktuell {de(empfind, 2)})."
                 if empfind_status == "Prüfen!" else "")
 
     # 48-Anlauf: t_Anlauf < t_LR_zul (Motor kann thermisch anlaufen)
@@ -433,13 +434,13 @@ def bemessung_engineering(g: dict, p: dict, umz: dict, b48: dict) -> dict:
     else:
         anlauf_status = "Hinweis"   # Anlauf moeglich, aber STARTUP TIME nicht im Korridor
     if anlauf_status == "Prüfen!":
-        korr_anl = (f"Anlaufzeit ({t_Anl:.1f} s) >= zul. Blockierzeit ({t_LR:.1f} s): Der Motor "
-                    f"kann thermisch nicht sicher hochlaufen. Lastmoment/Tragheitsmoment pruefen "
-                    f"oder Motor groesser auslegen.")
+        korr_anl = (f"Anlaufzeit ({de(t_Anl, 1)} s) >= zul. Blockierzeit ({de(t_LR, 1)} s): Der Motor "
+                    f"kann thermisch nicht sicher hochlaufen. Lastmoment/Tragheitsmoment prüfen "
+                    f"oder Motor größer auslegen.")
     elif anlauf_status == "Hinweis":
-        korr_anl = (f"Regler '48 STARTUP TIME [s]' von {t_set:.1f} auf einen Wert zwischen "
-                    f"{t_Anl:.1f} s und {t_LR:.1f} s setzen (knapp ueber der realen Anlaufzeit, "
-                    f"unter der zul. Blockierzeit). Empfehlung etwa {min(t_Anl*1.2, (t_Anl+t_LR)/2):.1f} s.")
+        korr_anl = (f"Regler '48 STARTUP TIME [s]' von {de(t_set, 1)} auf einen Wert zwischen "
+                    f"{de(t_Anl, 1)} s und {de(t_LR, 1)} s setzen (knapp über der realen Anlaufzeit, "
+                    f"unter der zul. Blockierzeit). Empfehlung etwa {de(min(t_Anl*1.2, (t_Anl+t_LR)/2), 1)} s.")
     else:
         korr_anl = ""
 
@@ -456,9 +457,9 @@ def bemessung_engineering(g: dict, p: dict, umz: dict, b48: dict) -> dict:
     if ms_status == "Prüfen!":
         _ms_ziel = (I_ms_u + I_ms_o) / 2.0
         _ms_richtung = "ERHOEHEN" if I_ms < I_ms_u else "VERRINGERN"
-        korr_ms = (f"Regler '48 I MOTOR START [A sek.]' von {I_ms:.3f} auf einen Wert zwischen "
-                   f"{I_ms_u:.3f} und {I_ms_o:.3f} A sek. {_ms_richtung} (ueber dem max. "
-                   f"Betriebsstrom, sicher unter dem Anlaufstrom). Empfehlung etwa {_ms_ziel:.3f} A sek.")
+        korr_ms = (f"Regler '48 I MOTOR START [A sek.]' von {de(I_ms, 3)} auf einen Wert zwischen "
+                   f"{de(I_ms_u, 3)} und {de(I_ms_o, 3)} A sek. {_ms_richtung} (über dem max. "
+                   f"Betriebsstrom, sicher unter dem Anlaufstrom). Empfehlung etwa {de(_ms_ziel, 3)} A sek.")
     else:
         korr_ms = ""
 
@@ -509,19 +510,19 @@ def plausibilitaet(g: dict, p: dict, b49: dict, b46: dict, beng: dict,
     # Pn / IN vorhanden
     inp_ok = g["IN_prim"] > 0
     add("Motornennstrom IN bestimmbar", "Pn/cosφ/η oder IN direkt",
-        f"{g['IN_prim']:.1f} A ({g['in_quelle']})" if inp_ok else "fehlt",
+        f"{de(g['IN_prim'], 1)} A ({g['in_quelle']})" if inp_ok else "fehlt",
         "OK" if inp_ok else "Fehlt",
-        "IN = Pn / (√3·UN·cosφ·η) oder Direkteingabe — Bezug aller Motorfunktionen.",
-        "Pn, UN, cosφ, η ausfuellen oder IN direkt eingeben.")
+        "IN = Pn / (√3·UN·cosφ·η) oder Direkteingabe, Bezug aller Motorfunktionen.",
+        "Pn, UN, cosφ, η ausfüllen oder IN direkt eingeben.")
 
     add("Nennspannung UN vorhanden", "UN > 0",
-        f"{p['UN_kV']} kV" if p.get("UN_kV", 0) > 0 else "fehlt",
+        f"{deg(p['UN_kV'])} kV" if p.get("UN_kV", 0) > 0 else "fehlt",
         "OK" if p.get("UN_kV", 0) > 0 else "Fehlt",
-        "Bemessungsspannung fuer IN-Berechnung erforderlich.",
-        "Feld 'UN' ausfuellen (> 0 kV).")
+        "Bemessungsspannung für IN-Berechnung erforderlich.",
+        "Feld 'UN' ausfüllen (> 0 kV).")
 
     ct_ok = p.get("CT_Prim", 0) > 0 and p.get("CT_Sek", 0) > 0
-    add("Stromwandler vollstaendig", "CT prim/sek > 0",
+    add("Stromwandler vollständig", "CT prim/sek > 0",
         "vollst." if ct_ok else "fehlt", "OK" if ct_ok else "Fehlt",
         "Ein Wandlersatz im Motorabgang (kein Differentialschutz im 7SJ66-Basisumfang).",
         "CT prim. [A] und sek. [1/5 A] eingeben.")
@@ -530,83 +531,83 @@ def plausibilitaet(g: dict, p: dict, b49: dict, b46: dict, beng: dict,
     ian = g["I_an"]
     stt = status_bereich(ian, K.Anpass_min, K.Anpass_max) if ian else "Fehlt"
     if ian and ian > K.Anpass_max:
-        korr = f"Anpassfaktor {ian:.2f} > {K.Anpass_max}: CT prim. verkleinern."
+        korr = f"Anpassfaktor {de(ian, 2)} > {de(K.Anpass_max, 1)}: CT prim. verkleinern."
     elif ian and ian < K.Anpass_min:
-        korr = f"Anpassfaktor {ian:.2f} < {K.Anpass_min}: CT prim. vergroessern."
+        korr = f"Anpassfaktor {de(ian, 2)} < {de(K.Anpass_min, 1)}: CT prim. vergrößern."
     else:
-        korr = "CT pruefen."
-    add(f"STW-Anpassung in [{K.Anpass_min} ... {K.Anpass_max}]", "I_an = CT_sek / IN_sek",
-        f"{ian:.3f}" if ian else "-", stt,
-        "Anpassfaktor 0,5-2,0 fuer korrekte sekundaere Stromauswertung.", korr)
+        korr = "CT prüfen."
+    add(f"STW-Anpassung in [{de(K.Anpass_min, 1)} ... {de(K.Anpass_max, 1)}]", "I_an = CT_sek / IN_sek",
+        f"{de(ian, 3)}" if ian else "-", stt,
+        "Anpassfaktor 0,5-2,0 für korrekte sekundäre Stromauswertung.", korr)
 
     # Anlaufstromverhaeltnis plausibel
     iav = g["I_Anlauf_Verh"]
     iav_st = status_bereich(iav, K.I_Anlauf_min, K.I_Anlauf_max)
-    add("Anlaufstromverhaeltnis I_A/IN plausibel [4,0 ... 8,5]", "I_A/IN",
-        f"{iav:.1f}", iav_st,
+    add("Anlaufstromverhältnis I_A/IN plausibel [4,0 ... 8,5]", "I_A/IN",
+        f"{de(iav, 1)}", iav_st,
         "Asynchronmaschinen MS typ. 5 ... 7 x IN. Bestimmt 48/66/50-2.",
-        f"I_A/IN = {iav:.1f} ausserhalb [4,0 ... 8,5]: Datenblattwert pruefen.")
+        f"I_A/IN = {de(iav, 1)} außerhalb [4,0 ... 8,5]: Datenblattwert prüfen.")
 
     # k-Faktor 49
     k = b49["k_Faktor"]
-    add("k-Faktor (49) im Bereich [1,0 ... 1,2]", "k = I_max/IN", f"{k:.2f}", b49["k_status"],
-        "Dauer-Ueberlastbarkeit der Maschine (7SJ66 Hdb. 2.11). Motor typ. ~1,1.",
-        f"k-Faktor {k:.2f} ausserhalb [1,0 ... 1,2]: Regler '49 k-Faktor' pruefen.")
+    add("k-Faktor (49) im Bereich [1,0 ... 1,2]", "k = I_max/IN", f"{de(k, 2)}", b49["k_status"],
+        "Dauer-Überlastbarkeit der Maschine (7SJ66 Hdb. 2.11). Motor typ. ~1,1.",
+        f"k-Faktor {de(k, 2)} außerhalb [1,0 ... 1,2]: Regler '49 k-Faktor' prüfen.")
 
     # tau-Einheit Hinweis (haeufige Fehlerquelle)
     add("Zeitkonstante tau (49) in MINUTEN eingegeben", "Adr.4203 Einheit",
-        f"{b49['tau_min']:.0f} min (= {b49['tau_s']:.0f} s)", "OK",
-        "WICHTIG: 7SJ66 erwartet tau in Minuten (wie 7UT613) — NICHT in Sekunden wie 7UM62.")
+        f"{de(b49['tau_min'], 0)} min (= {de(b49['tau_s'], 0)} s)", "OK",
+        "WICHTIG: 7SJ66 erwartet tau in Minuten (wie 7UT613), NICHT in Sekunden wie 7UM62.")
 
     # I-Warn <= k*IN
     iw_ok = b49["I_Warn_sek"] <= b49["I_max_zul_sek"] * 1.001
     add("Stromwarnstufe I ALARM <= k x IN_sek", "I ALARM <= I_max_zul",
-        f"{b49['I_Warn_sek']:.3f} / {b49['I_max_zul_sek']:.3f} A",
+        f"{de(b49['I_Warn_sek'], 3)} / {de(b49['I_max_zul_sek'], 3)} A",
         "OK" if iw_ok else "Hinweis",
         "I ALARM soll gleich oder unter dem dauernd zul. Strom liegen (7SJ66 Hdb. 2.11).",
         "I-ALARM-Stufe (Adr.4205) absenken (<= k x IN_sek).")
 
     # 46 I2-dauer plausibel
-    add("46-1 dauernd zul. I2 plausibel [5 ... 15 %]", "I2 dauer", f"{b46['I2_dauer_faktor']*100:.0f} %",
+    add("46-1 dauernd zul. I2 plausibel [5 ... 15 %]", "I2 dauer", f"{de(b46['I2_dauer_faktor']*100, 0)} %",
         b46["I2d_status"],
         "Asynchronmaschinen nach IEC 60034-1 typ. ~11 % (7SJ66 Hdb. 2.7).",
-        f"I2 dauer = {b46['I2_dauer_faktor']*100:.0f}% ausserhalb [5 ... 15 %]: Datenblatt/IEC 60034-1 pruefen.")
+        f"I2 dauer = {de(b46['I2_dauer_faktor']*100, 0)}% außerhalb [5 ... 15 %]: Datenblatt/IEC 60034-1 prüfen.")
 
     # 50-2 Fenster
     add("50-2 im Fenster 1,6·I_Anlauf < 50-2 < Ik,2pol,min", "Hochstromstufe",
-        f"{beng['f502_gewaehlt_prim']:.0f} A in [{beng['f502_untere_prim']:.0f} ... "
-        f"{beng['f502_obere_prim']:.0f} A]" if beng['f502_obere_prim'] else "Ik,2pol,min fehlt",
+        f"{de(beng['f502_gewaehlt_prim'], 0)} A in [{de(beng['f502_untere_prim'], 0)} ... "
+        f"{de(beng['f502_obere_prim'], 0)} A]" if beng['f502_obere_prim'] else "Ik,2pol,min fehlt",
         beng["hh_status"],
         "Motorseitige Auslegung: oberhalb des 1,6-fachen Anlaufstroms, unterhalb des "
-        "kleinsten 2-poligen Fehlerstroms; unverzoegert (7SJ66 Hdb. 2.2).",
+        "kleinsten 2-poligen Fehlerstroms. Unverzögert (7SJ66 Hdb. 2.2).",
         beng["korr_hh"])
 
     # 51 ueber Maximallast
     add("51 liegt oberhalb der Maximallast", "51 >= k_S · I_max",
-        f"{beng['I51_gewaehlt_prim']:.0f} / {beng['I51_emp_prim']:.0f} A", beng["I51_status"],
+        f"{de(beng['I51_gewaehlt_prim'], 0)} / {de(beng['I51_emp_prim'], 0)} A", beng["I51_status"],
         "Anregung durch Betriebslast muss ausgeschlossen sein (7SJ66 Hdb. 2.2).",
         beng["korr_51"])
 
     # Empfindlichkeit 51
-    add("Empfindlichkeit Ik,min / 51 >= gamma", f"gamma = {beng['gamma']} (Ik,min: {beng['I_k_min_quelle']})",
-        f"{beng['empfind']:.2f}" if beng['empfind'] else "-", beng["empfind_status"],
+    add("Empfindlichkeit Ik,min / 51 >= gamma", f"gamma = {deg(beng['gamma'])} (Ik,min: {beng['I_k_min_quelle']})",
+        f"{de(beng['empfind'], 2)}" if beng['empfind'] else "-", beng["empfind_status"],
         "Minimaler Fehlerstrom muss die 51-Stufe sicher anregen.",
         beng["korr_emp"])
 
     # 48 Anlauf moeglich
-    add("Anlauf thermisch moeglich (t_Anlauf < zul. Blockierzeit)", "48 Anlaufkorridor",
-        f"t_Anlauf={beng['t_Anlauf']:.1f} s; STARTUP TIME={beng['Startup_Time']:.1f} s; "
-        f"t_LR_zul={beng['t_LR_zul']:.1f} s", beng["anlauf_status"],
-        "STARTUP TIME knapp ueber der realen Anlaufzeit, unter der zul. Blockierzeit "
+    add("Anlauf thermisch möglich (t_Anlauf < zul. Blockierzeit)", "48 Anlaufkorridor",
+        f"t_Anlauf={de(beng['t_Anlauf'], 1)} s; STARTUP TIME={de(beng['Startup_Time'], 1)} s; "
+        f"t_LR_zul={de(beng['t_LR_zul'], 1)} s", beng["anlauf_status"],
+        "STARTUP TIME knapp über der realen Anlaufzeit, unter der zul. Blockierzeit "
         "(7SJ66 Hdb. 2.8).",
         beng["korr_anl"])
 
     # 1107 I MOTOR START Position
     add("I MOTOR START zwischen Last- und Anlaufstrom", "Adr.1107",
-        f"{beng['I_ms_sek']:.3f} A in [{beng['I_ms_unten_sek']:.3f} ... {beng['I_ms_oben_sek']:.3f} A]",
+        f"{de(beng['I_ms_sek'], 3)} A in [{de(beng['I_ms_unten_sek'], 3)} ... {de(beng['I_ms_oben_sek'], 3)} A]",
         beng["ms_status"],
-        "Anlauf-Erkennung muss unter dem Anlaufstrom und ueber dem max. Betriebsstrom liegen "
-        "(friert das thermische Abbild waehrend des Anlaufs ein; 7SJ66 Hdb. 2.1.6/2.8).",
+        "Anlauf-Erkennung muss unter dem Anlaufstrom und über dem max. Betriebsstrom liegen "
+        "(friert das thermische Abbild während des Anlaufs ein; 7SJ66 Hdb. 2.1.6/2.8).",
         beng["korr_ms"])
 
     # ── Erdfehlerschutz 50N/51N (Sternpunktbehandlung-abhaengig) ──────────────
@@ -614,106 +615,109 @@ def plausibilitaet(g: dict, p: dict, b49: dict, b46: dict, beng: dict,
         n2, n1 = b50N["f_50N2_sek"], b50N["f_50N1_sek"]
         ord_ok = n2 >= n1 > 0
         add("50N-Stufung 50N-2 >= 50N-1 > 0", "Erdstrom-Hochstrom > Reserve",
-            f"50N-2={n2:.3f} / 50N-1={n1:.3f} A sek.", "OK" if ord_ok else "Prüfen!",
+            f"50N-2={de(n2, 3)} / 50N-1={de(n1, 3)} A sek.", "OK" if ord_ok else "Prüfen!",
             "Niederohmig geerdetes Netz: Stromkriterium 50N/51N mit gestaffelten Stufen "
             "(7SJ66 Hdb. 2.2).",
-            f"Regler '50N-2 I_E>> [A sek.]' (Adr.1302, akt. {n2:.3f}) auf einen Wert >= "
-            f"'50N-1 I_E>' (Adr.1304, akt. {n1:.3f}) ERHOEHEN; beide > 0 A.")
+            f"Regler '50N-2 I_E>> [A sek.]' (Adr.1302, akt. {de(n2, 3)}) auf einen Wert >= "
+            f"'50N-1 I_E>' (Adr.1304, akt. {de(n1, 3)}) ERHOEHEN. Beide > 0 A.")
     else:
         add("Erdschlusserfassung passend zur Sternpunktbehandlung", b50N["stp"],
-            b50N["modus"], "Hinweis",
-            "Isoliertes/kompensiertes Netz: das reine Stromkriterium 50N/51N ist unempfindlich. "
-            "Empfindliche, gerichtete Stufe 50Ns/51Ns/67Ns ueber U0 (Adr.3109) und INs verwenden.",
-            "Empfindliche Erdschlussstufe (Adr.3101 ON) mit U0-Schwelle (Adr.3109) und "
-            "Richtung 67Ns (Adr.3115) parametrieren; 50N/51N nur als grober Backup.")
+            b50N["modus"], "OK",
+            "Isoliertes/kompensiertes Netz erkannt: Das Tool hat automatisch die empfindliche, "
+            "gerichtete Stufe 50Ns/51Ns/67Ns gewählt. Ihre Sollwerte (U0-Schwelle VN, 50Ns-2, "
+            "50Ns-1, Richtung 67Ns) stehen mit konkreten Zahlen und Adressen in der Tabelle im "
+            "Abschnitt „Erdschluss-/Erdfehlerschutz“ direkt darüber. Einzige verbleibende "
+            "Handlung in DIGSI: die empfindliche Erdschlussfunktion einschalten (Adr.3101 = Ein) "
+            "und die dort ausgewiesenen Werte übertragen. Das reine Stromkriterium 50N/51N ist "
+            "hier unempfindlich und dient nur als grober Backup.")
 
     # ── 27/59 Spannungsschutz (nur mit VT) ────────────────────────────────────
     if f2759["aktiv"]:
         # 59-2 muss oberhalb 59-1 liegen, 27-1 oberhalb 27-2 (Stufung)
         ov_ok = f2759["U59_2"] >= f2759["U59_1"]
-        add("59-Stufung 59-2 >= 59-1", "Ueberspannung-Schnellstufe ueber Warnstufe",
-            f"59-2={f2759['U59_2']:.0f} V >= 59-1={f2759['U59_1']:.0f} V",
+        add("59-Stufung 59-2 >= 59-1", "Überspannung-Schnellstufe über Warnstufe",
+            f"59-2={de(f2759['U59_2'], 0)} V >= 59-1={de(f2759['U59_1'], 0)} V",
             "OK" if ov_ok else "Prüfen!",
-            "Schnellstufe 59-2 (Adr.5005) muss bei hoeherer Spannung ansprechen als die "
+            "Schnellstufe 59-2 (Adr.5005) muss bei höherer Spannung ansprechen als die "
             "Warnstufe 59-1 (Adr.5002).",
-            f"Regler '59-2 U>> [V sek.]' (Adr.5005) von {f2759['U59_2']:.0f} V auf mindestens "
-            f"59-1 ({f2759['U59_1']:.0f} V) ERHOEHEN.")
+            f"Regler '59-2 U>> [V sek.]' (Adr.5005) von {de(f2759['U59_2'], 0)} V auf mindestens "
+            f"59-1 ({de(f2759['U59_1'], 0)} V) ERHOEHEN.")
         uv_ok = f2759["U27_1"] >= f2759["U27_2"]
-        add("27-Stufung 27-1 >= 27-2", "Unterspannung oberes Element ueber unterem",
-            f"27-1={f2759['U27_1']:.0f} V >= 27-2={f2759['U27_2']:.0f} V",
+        add("27-Stufung 27-1 >= 27-2", "Unterspannung oberes Element über unterem",
+            f"27-1={de(f2759['U27_1'], 0)} V >= 27-2={de(f2759['U27_2'], 0)} V",
             "OK" if uv_ok else "Prüfen!",
-            "Oberes Element 27-1 (Warnstufe, laenger verzoegert) liegt ueber dem unteren "
-            "Element 27-2 (Aus, kurz verzoegert) (7SJ66 Hdb. 2.6).",
-            f"Regler '27-1 U< (Warnstufe) [V sek.]' (Adr.5102) von {f2759['U27_1']:.0f} V auf "
-            f"mindestens 27-2 ({f2759['U27_2']:.0f} V) ERHOEHEN.")
+            "Oberes Element 27-1 (Warnstufe, länger verzögert) liegt über dem unteren "
+            "Element 27-2 (Aus, kurz verzögert) (7SJ66 Hdb. 2.6).",
+            f"Regler '27-1 U< (Warnstufe) [V sek.]' (Adr.5102) von {de(f2759['U27_1'], 0)} V auf "
+            f"mindestens 27-2 ({de(f2759['U27_2'], 0)} V) ERHOEHEN.")
         # kein Ueberlappen: hoechste 27-Schwelle unter niedrigster 59-Schwelle
         gap_ok = f2759["U27_1"] < f2759["U59_1"]
-        add("Kein Ueberlappen 27 / 59", "27-1 < 59-1",
-            f"27-1={f2759['U27_1']:.0f} V < 59-1={f2759['U59_1']:.0f} V",
+        add("Kein Überlappen 27 / 59", "27-1 < 59-1",
+            f"27-1={de(f2759['U27_1'], 0)} V < 59-1={de(f2759['U59_1'], 0)} V",
             "OK" if gap_ok else "Prüfen!",
-            "Unter- und Ueberspannungsbereich duerfen sich nicht ueberschneiden.",
-            f"Regler '27-1 U< (Warnstufe) [V sek.]' (akt. {f2759['U27_1']:.0f} V) unter "
-            f"'59-1 U>' (akt. {f2759['U59_1']:.0f} V) bringen: 27-1 SENKEN oder 59-1 ANHEBEN, "
+            "Unter- und Überspannungsbereich dürfen sich nicht überschneiden.",
+            f"Regler '27-1 U< (Warnstufe) [V sek.]' (akt. {de(f2759['U27_1'], 0)} V) unter "
+            f"'59-1 U>' (akt. {de(f2759['U59_1'], 0)} V) bringen: 27-1 SENKEN oder 59-1 ANHEBEN, "
             f"bis 27-1 < 59-1.")
         # 27 plausibler Bereich
         u27_ok = K.U27_min_pct <= f2759["U27_1_pct"] <= K.U27_max_pct
-        add(f"27-1 im Bereich [{K.U27_min_pct:.0f} ... {K.U27_max_pct:.0f} %] UnS", "27-1 (% UnS)",
-            f"{f2759['U27_1_pct']:.0f} %", "OK" if u27_ok else "Hinweis",
-            "Motoren werden typ. bei 70 ... 80 % UN abgeworfen (Kippschutz, Wiederanlaufstoss).",
-            f"27-1 (Adr.5102) in [{K.U27_min_pct:.0f} ... {K.U27_max_pct:.0f} %] UnS legen.")
+        add(f"27-1 im Bereich [{de(K.U27_min_pct, 0)} ... {de(K.U27_max_pct, 0)} %] UnS", "27-1 (% UnS)",
+            f"{de(f2759['U27_1_pct'], 0)} %", "OK" if u27_ok else "Hinweis",
+            "Motoren werden typ. bei 70 ... 80 % UN abgeworfen (Kippschutz, Wiederanlaufstoß).",
+            f"27-1 (Adr.5102) in [{de(K.U27_min_pct, 0)} ... {de(K.U27_max_pct, 0)} %] UnS legen.")
         # 59 plausibler Bereich
         u59_ok = K.U59_min_pct <= f2759["U59_2_pct"] <= K.U59_max_pct
-        add(f"59-2 im Bereich [{K.U59_min_pct:.0f} ... {K.U59_max_pct:.0f} %] UnS", "59-2 (% UnS)",
-            f"{f2759['U59_2_pct']:.0f} %", "OK" if u59_ok else "Hinweis",
-            "Ueberspannungs-Schnellstufe typ. ~130 % UN (7SJ66 Hdb. 2.6).",
-            f"59-2 (Adr.5005) in [{K.U59_min_pct:.0f} ... {K.U59_max_pct:.0f} %] UnS legen.")
+        add(f"59-2 im Bereich [{de(K.U59_min_pct, 0)} ... {de(K.U59_max_pct, 0)} %] UnS", "59-2 (% UnS)",
+            f"{de(f2759['U59_2_pct'], 0)} %", "OK" if u59_ok else "Hinweis",
+            "Überspannungs-Schnellstufe typ. ~130 % UN (7SJ66 Hdb. 2.6).",
+            f"59-2 (Adr.5005) in [{de(K.U59_min_pct, 0)} ... {de(K.U59_max_pct, 0)} %] UnS legen.")
     # Ohne Spannungswandler ist 27/59/47-Spannungsschutz schlicht nicht projektiert;
     # das ist kein Maengel und wird daher NICHT als Hinweis/Warnung gemeldet.
 
     # ── 47 Phasenfolge ────────────────────────────────────────────────────────
     add("Erwartete Phasenfolge (47) festgelegt", "Adr.209",
         f47["phase_seq"], "OK",
-        "Drehfeldrichtung definiert; Abweichung loest 'Fail Ph. Seq.' aus (Schutz vor "
-        "Drehrichtungsumkehr). Pruefung ab |U| > 40 V bzw. |I| > 0,5 IN (7SJ66 Hdb. 2.12).")
+        "Drehfeldrichtung definiert. Abweichung löst 'Fail Ph. Seq.' aus (Schutz vor "
+        "Drehrichtungsumkehr). Prüfung ab |U| > 40 V bzw. |I| > 0,5 IN (7SJ66 Hdb. 2.12).")
 
     return checks
 
 def reserveschutz(g: dict, umz: dict, b49: dict, b46: dict, b50N: dict, f2759: dict) -> list:
     rows = [
         {"funktion": "Hochstromstufe 50-2 (Adr.1201)", "ziel": "Motorabgang",
-         "I_sek": f"{umz['I_50_2_sek']:.4f}", "t": f"{umz['t_50_2']:.2f}",
+         "I_sek": f"{de(umz['I_50_2_sek'], 4)}", "t": f"{de(umz['t_50_2'], 2)}",
          "adresse": "50-2 1202; T 1203"},
         {"funktion": "UMZ 50-1 (Adr.1201)", "ziel": "Motorabgang",
-         "I_sek": f"{umz['I_50_1_sek']:.4f}", "t": f"{umz['t_50_1']:.2f}",
+         "I_sek": f"{de(umz['I_50_1_sek'], 4)}", "t": f"{de(umz['t_50_1'], 2)}",
          "adresse": "50-1 1204; T 1205"},
         {"funktion": "AMZ 51 (Adr.1201)", "ziel": "Motorabgang",
-         "I_sek": f"{umz['I_51_sek']:.4f}", "t": f"{umz['T_51']:.2f}",
+         "I_sek": f"{de(umz['I_51_sek'], 4)}", "t": f"{de(umz['T_51'], 2)}",
          "adresse": "51 1207; TD 1208; Kennl. 1211"},
         {"funktion": "Schieflast 46 (Adr.4001)", "ziel": "Motor",
-         "I_sek": f"{b46['I2_dauer_sek']:.4f}", "t": f"{b46['t_46_1']:.2f}",
+         "I_sek": f"{de(b46['I2_dauer_sek'], 4)}", "t": f"{de(b46['t_46_1'], 2)}",
          "adresse": "46-1 4002; T 4003; 46-2 4004; T 4005"},
-        {"funktion": "Ueberlast 49 (Adr.4201)", "ziel": "Motor",
-         "I_sek": f"{b49['I_max_zul_sek']:.4f}", "t": f"{b49['tau_min']:.0f} min",
+        {"funktion": "Überlast 49 (Adr.4201)", "ziel": "Motor",
+         "I_sek": f"{de(b49['I_max_zul_sek'], 4)}", "t": f"{de(b49['tau_min'], 0)} min",
          "adresse": "k 4202; τ 4203 (MINUTEN!); Θ 4204; I-Alarm 4205"},
     ]
     if b50N["niederohmig"]:
         rows.append(
-            {"funktion": "Erdueberstrom 50N/51N (Adr.1301)", "ziel": "Motorabgang (Erde)",
-             "I_sek": f"{b50N['f_50N1_sek']:.4f}", "t": f"{b50N['t_50N1']:.2f}",
+            {"funktion": "Erdüberstrom 50N/51N (Adr.1301)", "ziel": "Motorabgang (Erde)",
+             "I_sek": f"{de(b50N['f_50N1_sek'], 4)}", "t": f"{de(b50N['t_50N1'], 2)}",
              "adresse": "50N-2 1302; 50N-1 1304; 51N 1307; T 1303/1305/1308"})
     else:
         rows.append(
             {"funktion": "Empfindl. Erdschluss 50Ns/67Ns (Adr.3101)", "ziel": "Motorabgang (Erde)",
-             "I_sek": f"{b50N['f_50Ns1_sek']:.4f}", "t": f"{b50N['t_50Ns2']:.2f}",
+             "I_sek": f"{de(b50N['f_50Ns1_sek'], 4)}", "t": f"{de(b50N['t_50Ns2'], 2)}",
              "adresse": "VN 3109; 50Ns-2 3113; 50Ns-1 3117; 67Ns 3115"})
     if f2759["aktiv"]:
         rows.append(
             {"funktion": "Unterspannung 27 (Adr.5101)", "ziel": "Sammelschiene/Klemmen",
-             "I_sek": f"{f2759['U27_2']:.0f} V", "t": f"{f2759['t_27_2']:.2f}",
+             "I_sek": f"{de(f2759['U27_2'], 0)} V", "t": f"{de(f2759['t_27_2'], 2)}",
              "adresse": "27-1 5102; T 5106; 27-2 5110; T 5112"})
         rows.append(
-            {"funktion": "Ueberspannung 59 (Adr.5001)", "ziel": "Sammelschiene/Klemmen",
-             "I_sek": f"{f2759['U59_2']:.0f} V", "t": f"{f2759['t_59_2']:.2f}",
+            {"funktion": "Überspannung 59 (Adr.5001)", "ziel": "Sammelschiene/Klemmen",
+             "I_sek": f"{de(f2759['U59_2'], 0)} V", "t": f"{de(f2759['t_59_2'], 2)}",
              "adresse": "59-1 5002; T 5004; 59-2 5005; T 5007"})
     return rows
 
@@ -727,34 +731,34 @@ def geraeteempfehlung(p: dict) -> dict:
 
     if stp == "Isoliert":
         erd = ("Isoliertes Netz: Erdschluss erzeugt keinen nennenswerten Fehlerstrom. "
-               "Empfindliche, gerichtete Erdschlusserfassung 67Ns ueber Verlagerungs"
+               "Empfindliche, gerichtete Erdschlusserfassung 67Ns über Verlagerungs"
                "spannung U0 und kapazitiven Erdstrom (sin-φ-Auswertung). Der Phasen"
-               "ueberstromschutz 50/51 erfasst nur mehrpolige Fehler.")
+               "überstromschutz 50/51 erfasst nur mehrpolige Fehler.")
     elif "Kompensiert" in stp:
-        erd = ("Kompensiertes Netz (Petersen-Spule): Erdschluss ueber wattmetrische bzw. "
+        erd = ("Kompensiertes Netz (Petersen-Spule): Erdschluss über wattmetrische bzw. "
                "cos-φ-Auswertung des Wirkreststroms (67Ns), da der induktive Spulenstrom "
                "den kapazitiven Erdstrom weitgehend kompensiert.")
     else:
-        erd = ("Niederohmig geerdetes Netz: definierter Erdfehlerstrom — Erdschluss ueber "
+        erd = ("Niederohmig geerdetes Netz: definierter Erdfehlerstrom, Erdschluss über "
                "Stromkriterium 50N/51N direkt erfassbar.")
 
     if "Pumpe" in antrieb:
-        ant = ("Pumpe/Luefter (quadratisches Lastmoment): vergleichsweise kurzer Anlauf. "
+        ant = ("Pumpe/Lüfter (quadratisches Lastmoment): vergleichsweise kurzer Anlauf. "
                "Unterstrom 37-1< sinnvoll als Trockenlauf-/Lastverlusterkennung.")
     elif "Kompressor" in antrieb:
-        ant = ("Kompressor/Muehle (konstantes Lastmoment): hoeheres Anlaufmoment, "
-               "Load-Jam-Schutz (51M) gegen ploetzliche Laeuferblockierung relevant.")
+        ant = ("Kompressor/Mühle (konstantes Lastmoment): höheres Anlaufmoment, "
+               "Load-Jam-Schutz (51M) gegen plötzliche Läuferblockierung relevant.")
     else:
-        ant = ("Schweranlauf (hohes Traegheitsmoment): lange Anlaufzeit nahe der zul. "
-               "Blockierzeit — Anlaufueberwachung 48 und Wiedereinschaltsperre 66 sorgfaeltig "
-               "parametrieren; ggf. Drehzahlwaechter (Binaereingang) ergaenzen.")
+        ant = ("Schweranlauf (hohes Trägheitsmoment): lange Anlaufzeit nahe der zul. "
+               "Blockierzeit, Anlaufüberwachung 48 und Wiedereinschaltsperre 66 sorgfältig "
+               "parametrieren. Ggf. Drehzahlwächter (Binäreingang) ergänzen.")
 
     if "Fremd" in kuehl:
-        kue = ("Fremdbelueftung: Kuehlung lastunabhaengig — Kτ bei Stillstand nahe 1,0 "
-               "(Adr.4207A), thermisches Abbild gilt naeherungsweise auch im Stillstand.")
+        kue = ("Fremdbelüftung: Kühlung lastunabhängig, Kτ bei Stillstand nahe 1,0 "
+               "(Adr.4207A), thermisches Abbild gilt näherungsweise auch im Stillstand.")
     else:
-        kue = ("Eigenbelueftung: im Stillstand keine Luefterkuehlung — Zeitkonstante mit "
-               "Kτ > 1 verlaengern (Adr.4207A/4308), damit die Abkuehlung realistisch "
+        kue = ("Eigenbelüftung: im Stillstand keine Lüfterkühlung, Zeitkonstante mit "
+               "Kτ > 1 verlängern (Adr.4207A/4308), damit die Abkühlung realistisch "
                "nachgebildet wird.")
 
     return {"erdschluss": erd, "antrieb": ant, "kuehlung": kue}

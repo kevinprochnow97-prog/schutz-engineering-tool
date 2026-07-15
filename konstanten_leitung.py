@@ -2,7 +2,8 @@
 konstanten_leitung.py — Voreinstellungen, Adressen und Plausibilitaets-Schwellwerte (Leitung)
 Herstellerneutrales Schutz-Engineering-Tool | HSU Hamburg
 
-Single Source of Truth fuer alle SIPROTEC-Werksvoreinstellungen, Engineering-Margen
+Single Source of Truth fuer die SIPROTEC-Voreinstellungen des Tools (Werksvor-
+einstellungen, abweichende Tool-Vorgaben sind gekennzeichnet), Engineering-Margen
 und Plausibilitaetsgrenzen des Leitungs-Tabs. Alle Werte sind frei aenderbar.
 
 Zwei Leitgeraete werden abgebildet:
@@ -387,9 +388,9 @@ DIFF_aktiv_def      = True
 i_diff_def          = 0.30    # Adr.1210 I-DIFF> (x IN_Ltg)               [-]
 i_diff_zusch_def    = 0.30    # Adr.1213 I-DIF> ZUSCH. (x IN_Ltg)         [-]
 t_i_diff_def        = 0.00    # Adr.1217A T-I-DIF> Ausloeseverzoegerung   [s]
-i_freig_diff_def    = 0.20    # Adr.1219A I> FREIG. DIFF (x IN_Ltg)       [-]
-i_diff_hh_def       = 8.00    # Adr.1233 I-DIFF>> (x IN_Ltg, unstabil.)   [-]
-i_diff_hh_zusch_def = 8.00    # Adr.1235 I-DIF>> ZUSCH. (x IN_Ltg)        [-]
+i_freig_diff_def    = 0.20    # Adr.1219A I> FREIG. DIFF Tool-Vorgabe (Werk 0,00) [-]
+i_diff_hh_def       = 8.00    # Adr.1233 I-DIFF>> Tool-Vorgabe (Werk 1,2) [-]
+i_diff_hh_zusch_def = 8.00    # Adr.1235 I-DIF>> ZUSCH. Tool-Vorgabe (Werk 1,2) [-]
 
 ic_komp_def         = "Aus"   # Adr.1221 Ladestromkompensation
 icstab_icn_def      = 1.5     # Adr.1224 IcSTAB/IcN (Siemens-Empf. 1,5)   [-]
@@ -445,6 +446,7 @@ t_transblock_def    = 0.04    # Adr.2110 T TRANSBLOCK (transiente Blockierzeit) 
 # wirkt. Ansprechwerte als Vielfaches von IN_Ltg.
 uebs_betriebsart_def = "Ein: bei U-Ausfall"   # Adr.2601
 iph_hh_def          = 2.00    # Adr.2610 Iph>> (x IN_Ltg)                 [-]
+gamma_Ikmin         = 1.5     # Empfindlichkeit: Ik_min >= gamma x Iph>   [-]
 t_iph_hh_def        = 0.10    # Adr.2611 T Iph>>                          [s]
 iph_h_def           = 1.20    # Adr.2620 Iph> (x IN_Ltg)                  [-]
 t_iph_h_def         = 0.50    # Adr.2621 T Iph>                           [s]
@@ -519,7 +521,7 @@ t_f4_def            = 0.10    # Adr.3634 T f4                             [s]
 # Sekunden. Diese Geraeteabhaengigkeit ist zu beachten.
 ueberlastschutz_def = "Ein"
 k_faktor_def        = 1.10    # Adr.4202 K-FAKTOR (I_dauer / IN)          [-]
-zeitkonstante_def   = 45      # Adr.4203 ZEITKONSTANTE tau_th             [min]
+zeitkonstante_def   = 45      # Adr.4203 ZEITKONSTANTE Tool-Vorgabe (Werk 100,0) [min]
 theta_warn_def      = 90      # Adr.4204 Thermische Warnstufe             [%]
 i_warn_def          = 1.00    # Adr.4205 Strommaessige Warnstufe (x IN)   [-]
 
@@ -555,65 +557,65 @@ HERST = {
         "range": "0,80 ... 0,90 x XL  (Voreinst. 0,85)",
         "adr":   "X(Z1) Adr.1303 (7SA6) / 1603 (7SD5)",
         "grund": ("Unterreichweite der 1. Zone. 85 % der Leitungsreaktanz stellt sicher, "
-                  "dass die schnelle, unverzoegerte Zone Z1 wegen Mess- und "
-                  "Wandlertoleranzen nicht ueber das Leitungsende hinausreicht "
+                  "dass die schnelle, unverzögerte Zone Z1 wegen Mess- und "
+                  "Wandlertoleranzen nicht über das Leitungsende hinausreicht "
                   "(7SA6 Hdb. 2.2.1, X1prim = 0,85 * XL)."),
     },
     "f_Z1B": {
         "range": ">= 1,20 x XL  (Voreinst. 1,20)",
         "adr":   "X(Z1B) Adr.1353 (7SA6) / 1653 (7SD5)",
-        "grund": ("Uebergreifzone fuer das Signalvergleichsverfahren (Teleschutz). "
-                  "Reicht bewusst ueber das Leitungsende hinaus (>= 120 %), wird aber "
-                  "nur bei Freigabe durch die Gegenstelle ausgeloest (7SA6 Hdb. 2.2.2)."),
+        "grund": ("Übergreifzone für das Signalvergleichsverfahren (Teleschutz). "
+                  "Reicht bewusst über das Leitungsende hinaus (>= 120 %), wird aber "
+                  "nur bei Freigabe durch die Gegenstelle ausgelöst (7SA6 Hdb. 2.2.2)."),
     },
     "f_Z2": {
         "range": ">= 1,20 x XL  (Voreinst. 1,20)",
         "adr":   "X(Z2) Adr.1313 (7SA6) / 1613 (7SD5)",
-        "grund": ("Zeitgestaffelte Uebergreifzone als Reserve fuer die Gegenleitung. "
-                  "Mindestens 120 % der eigenen Leitung, verzoegert mit T2 "
-                  "(7SA6 Hdb. 2.2.1, Uebergreifzone >= 120 %)."),
+        "grund": ("Zeitgestaffelte Übergreifzone als Reserve für die Gegenleitung. "
+                  "Mindestens 120 % der eigenen Leitung, verzögert mit T2 "
+                  "(7SA6 Hdb. 2.2.1, Übergreifzone >= 120 %)."),
     },
     "t_Z2": {
         "range": "0,2 ... 0,5 s  (Voreinst. 0,30)",
         "adr":   "T2 Adr.1315/1316 (7SA6) / 1615/1616 (7SD5)",
-        "grund": ("Staffelzeit der 2. Zone gegenueber der schnellen Zone der "
-                  "nachgelagerten Leitung (Selektivitaet, ein Staffelschritt)."),
+        "grund": ("Staffelzeit der 2. Zone gegenüber der schnellen Zone der "
+                  "nachgelagerten Leitung (Selektivität, ein Staffelschritt)."),
     },
     "f_Z3": {
         "range": "1,2 ... 2,0 x XL  (Voreinst. 1,50)",
         "adr":   "X(Z3) Adr.1323 (7SA6) / 1623 (7SD5)",
-        "grund": ("Vorwaerts-Reservezone. Reicht in die Folgeleitung; die exakte "
-                  "Reichweite haengt von der Netzstaffelung ab (ausserhalb des "
+        "grund": ("Vorwärts-Reservezone. Reicht in die Folgeleitung. Die exakte "
+                  "Reichweite hängt von der Netzstaffelung ab (außerhalb des "
                   "komponentenbezogenen Scope dieses Tools)."),
     },
     "reserve_zonen": {
-        "range": "Z4/Z5/Z6 frei staffelbar: vorwaerts, rueckwaerts, ungerichtet",
+        "range": "Z4/Z5/Z6 frei staffelbar: vorwärts, rückwärts, ungerichtet",
         "adr":   "MODUS Z4/Z5/Z6 Adr.1331/1341/1361 (7SA6) bzw. 1631/1641/1661 (7SD5)",
-        "grund": ("Zusaetzliche Staffelstufen. Z5 und Z6 besitzen getrennte Adressen fuer "
-                  "Vorwaerts- und Rueckwaertsreichweite (X(Z5)+ Adr.1343 / X(Z5)- Adr.1346 "
+        "grund": ("Zusätzliche Staffelstufen. Z5 und Z6 besitzen getrennte Adressen für "
+                  "Vorwärts- und Rückwärtsreichweite (X(Z5)+ Adr.1343 / X(Z5)- Adr.1346 "
                   "bzw. X(Z6)+ Adr.1363 / X(Z6)- Adr.1366), Z4 nutzt eine gemeinsame "
-                  "Reichweite (Adr.1333) mit ueber MODUS gewaehlter Richtung. Eine "
-                  "rueckwaerts gerichtete Zone dient als Reserve fuer die Sammelschiene "
+                  "Reichweite (Adr.1333) mit über MODUS gewählter Richtung. Eine "
+                  "rückwärts gerichtete Zone dient als Reserve für die Sammelschiene "
                   "oder im Signalvergleichsverfahren (7SA6 Hdb. 2.2.1)."),
     },
     "RX_Z1": {
         "range": "<= 1,0  (Voreinst. 1,00)",
         "adr":   "R(Z1) Adr.1302 (7SA6) / 1602 (7SD5)",
-        "grund": ("R-Abschnitt der Z1 fuer Lichtbogen-/Fehlerwiderstand. Der "
-                  "Staffelfaktor 85 % gilt nur bis R/X <= 1 (7SA6 Hdb. 2.2.2), darueber "
+        "grund": ("R-Abschnitt der Z1 für Lichtbogen-/Fehlerwiderstand. Der "
+                  "Staffelfaktor 85 % gilt nur bis R/X <= 1 (7SA6 Hdb. 2.2.2), darüber "
                   "ist die Reichweite zu reduzieren."),
     },
     "RE_RL": {
         "range": "0,5 ... 8,0 (skalar)  bzw. K0 = 1,0 e^0 Grad",
-        "adr":   "RE/RL Adr.1116 / K0 Adr.1120 (beide Geraete)",
+        "adr":   "RE/RL Adr.1116 / K0 Adr.1120 (beide Geräte)",
         "grund": ("Erdimpedanzanpassung der Leitung. Bestimmt die korrekte "
                   "Schleifenimpedanz bei Erdkurzschluss. Aus den Leitungskonstanten "
-                  "zu berechnen, nicht aus dem Gedaechtnis (7SA6 Hdb. 2.1.4, Adr.237 "
-                  "waehlt das Format RE/RL,XE/XL oder K0)."),
+                  "zu berechnen, nicht aus dem Gedächtnis (7SA6 Hdb. 2.1.4, Adr.237 "
+                  "wählt das Format RE/RL,XE/XL oder K0)."),
     },
     "phi_Ltg": {
         "range": "60 ... 88 Grad  (Voreinst. 80)",
-        "adr":   "PHI LTG Adr.1105 (beide Geraete)",
+        "adr":   "PHI LTG Adr.1105 (beide Geräte)",
         "grund": ("Leitungswinkel arctan(X'/R'). Geht in die Erdimpedanzanpassung "
                   "und die Richtungsbestimmung ein (7SA6 Hdb. 2.1.4)."),
     },
@@ -622,14 +624,14 @@ HERST = {
         "adr":   "I-DIFF> Adr.1210 (nur 7SD5)",
         "grund": ("Ansprechwert der stabilisierten Differentialstufe. Muss oberhalb des "
                   "kapazitiven Ladestroms liegen. Siemens empfiehlt mindestens 2,5 x IcN als "
-                  "Ansprechwert; mit Ladestromkompensation (Adr.1221) kann er kleiner gewaehlt "
+                  "Ansprechwert. Mit Ladestromkompensation (Adr.1221) kann er kleiner gewählt "
                   "werden (7SD5 Hdb. 2.2.1)."),
     },
     "i_diff_hh": {
-        "range": "5 ... 12 x IN  (Voreinst. 8,0)",
+        "range": "5 ... 12 x IN (Tool-Vorgabe 8,0, Werksvoreinst. 1,2 x In)",
         "adr":   "I-DIFF>> Adr.1233 (nur 7SD5)",
-        "grund": ("Ansprechwert der unstabilisierten Hochstrom-/Ladungsvergleichsstufe fuer "
-                  "die schnelle Ausloesung bei schweren inneren Fehlern. Muss deutlich ueber "
+        "grund": ("Ansprechwert der unstabilisierten Hochstrom-/Ladungsvergleichsstufe für "
+                  "die schnelle Auslösung bei schweren inneren Fehlern. Muss deutlich über "
                   "I-DIFF> liegen (7SD5 Hdb. 2.2.1)."),
     },
     "icstab_icn": {
@@ -637,139 +639,139 @@ HERST = {
         "adr":   "IcSTAB/IcN Adr.1224 (nur 7SD5)",
         "grund": ("Stabilisierungsstrom als Vielfaches des Nennladestroms. Mit 1,5 x IcN wird "
                   "die Siemens-Empfehlung eines minimalen Ansprechwerts von 2,5 x IcN der "
-                  "I-DIFF>-Stufe erfuellt (7SD5 Hdb. 2.2.1)."),
+                  "I-DIFF>-Stufe erfüllt (7SD5 Hdb. 2.2.1)."),
     },
     "anzahl_geraete": {
         "range": "2 (Zweiendenleitung) oder 3 (Dreiendenleitung)",
         "adr":   "ANZAHL GERAETE Adr.147 (nur 7SD5)",
         "grund": ("Anzahl der Messstellen an den Grenzen des Schutzobjekts. Muss mit der Zahl "
-                  "der Leitungsenden uebereinstimmen. Die Wirkschnittstelle (Adr.4501/4502) "
-                  "verbindet die Geraete kommunikativ (7SD5 Hdb. 2.1.2)."),
+                  "der Leitungsenden übereinstimmen. Die Wirkschnittstelle (Adr.4501/4502) "
+                  "verbindet die Geräte kommunikativ (7SD5 Hdb. 2.1.2)."),
     },
     "i_3I0H": {
         "range": "0,1 ... 0,5 x IN (empfindliche Stufe)",
-        "adr":   "3I0> Adr.3131 (beide Geraete)",
-        "grund": ("Empfindlichste Erdstromstufe. Muss oberhalb des betriebsmaessigen "
+        "adr":   "3I0> Adr.3131 (beide Geräte)",
+        "grund": ("Empfindlichste Erdstromstufe. Muss oberhalb des betriebsmäßigen "
                   "Unsymmetriestroms (Erdstrom im fehlerfreien Betrieb) liegen, aber den "
                   "minimalen Erdkurzschlussstrom sicher erfassen (7SA6 Hdb. 2.5)."),
     },
     "i_3I0HHH": {
         "range": "1,0 ... 4,0 x IN (Hochstromstufe)",
-        "adr":   "3I0>>> Adr.3111 (beide Geraete)",
-        "grund": ("Schnelle Hochstromstufe fuer hohe Erdkurzschlussstroeme nahe der "
-                  "Einspeisung. Oberhalb der mittleren Stufe einzustellen, kurze Verzoegerung."),
+        "adr":   "3I0>>> Adr.3111 (beide Geräte)",
+        "grund": ("Schnelle Hochstromstufe für hohe Erdkurzschlussströme nahe der "
+                  "Einspeisung. Oberhalb der mittleren Stufe einzustellen, kurze Verzögerung."),
     },
     "phi_komp": {
         "range": "ca. 45 Grad  (Symmetrieachse der Richtungskennlinie)",
-        "adr":   "PHI KOMP Adr.3168 (beide Geraete)",
+        "adr":   "PHI KOMP Adr.3168 (beide Geräte)",
         "grund": ("Kompensationswinkel der Richtungsbestimmung. Legt die Symmetrieachse der "
                   "Richtungskennlinie fest und richtet sie am Nullsystem-Quellwinkel des "
                   "Netzes aus (7SA6 Hdb. 2.5, Richtungsbestimmung)."),
     },
     "signalv": {
         "range": "Mitnahme / Signalvergleich / Blocking / Unblocking",
-        "adr":   "SIGNALZUSATZ Adr.2101 (beide Geraete)",
-        "grund": ("Signaluebertragungsverfahren des Distanzschutzes. Beschleunigt die "
-                  "Ausloesung ueber die Uebergreifzone Z1B durch Austausch eines Freigabe- oder "
+        "adr":   "SIGNALZUSATZ Adr.2101 (beide Geräte)",
+        "grund": ("Signalübertragungsverfahren des Distanzschutzes. Beschleunigt die "
+                  "Auslösung über die Übergreifzone Z1B durch Austausch eines Freigabe- oder "
                   "Blockiersignals mit der Gegenstelle. Voraussetzung ist ein "
-                  "Kommunikationskanal; Z1 und Z1B muessen vorwaerts gerichtet sein "
+                  "Kommunikationskanal; Z1 und Z1B müssen vorwärts gerichtet sein "
                   "(7SA6 Hdb. 2.6)."),
     },
     "t_transblock": {
         "range": "> Dauer transienter Signale  (Voreinst. 0,04 s)",
-        "adr":   "T TRANSBLOCK Adr.2110 (beide Geraete)",
-        "grund": ("Transiente Blockierzeit nach Richtungsumkehr. Muss laenger sein als die "
-                  "Dauer transienter Vorgaenge bei Fehlerrichtungsumkehr, um Fehlfreigaben zu "
+        "adr":   "T TRANSBLOCK Adr.2110 (beide Geräte)",
+        "grund": ("Transiente Blockierzeit nach Richtungsumkehr. Muss länger sein als die "
+                  "Dauer transienter Vorgänge bei Fehlerrichtungsumkehr, um Fehlfreigaben zu "
                   "verhindern (7SA6 Hdb. 2.6)."),
     },
     "iph_h": {
         "range": "1,1 ... 1,5 x IN (oberhalb Maximallast)",
-        "adr":   "Iph> Adr.2620 (beide Geraete)",
-        "grund": ("Grundstufe des Not-Ueberstromzeitschutzes. Muss oberhalb des maximal "
-                  "auftretenden Betriebsstroms liegen, damit keine Fehlausloesung im "
+        "adr":   "Iph> Adr.2620 (beide Geräte)",
+        "grund": ("Grundstufe des Not-Überstromzeitschutzes. Muss oberhalb des maximal "
+                  "auftretenden Betriebsstroms liegen, damit keine Fehlauslösung im "
                   "Normalbetrieb erfolgt (7SA6 Hdb. 2.7)."),
     },
     "uebs_betriebsart": {
         "range": "Aus / immer aktiv / bei U-Ausfall",
-        "adr":   "BETRIEBSART Adr.2601 (beide Geraete)",
-        "grund": ("Der Not-Ueberstromzeitschutz ist Reserveschutz. Ueblich ist die Einstellung "
-                  "'bei U-Ausfall': er uebernimmt nur, wenn der Distanzschutz wegen "
+        "adr":   "BETRIEBSART Adr.2601 (beide Geräte)",
+        "grund": ("Der Not-Überstromzeitschutz ist Reserveschutz. Üblich ist die Einstellung "
+                  "'bei U-Ausfall': er übernimmt nur, wenn der Distanzschutz wegen "
                   "Messspannungsausfall nicht messen kann (7SA6 Hdb. 2.7)."),
     },
     "we_tp_aus1pol": {
         "range": "ca. 1,0 ... 1,5 s (1-polige Pause)",
-        "adr":   "1.WE TP AUS1Po Adr.3456 (beide Geraete)",
-        "grund": ("Spannungslose Pause nach 1-poliger Abschaltung. Muss lang genug fuer das "
-                  "Verloeschen des Lichtbogens (Sekundaerlichtbogen) sein, aber kurz genug "
-                  "fuer die Netzstabilitaet (7SA6 Hdb. 2.13)."),
+        "adr":   "1.WE TP AUS1Po Adr.3456 (beide Geräte)",
+        "grund": ("Spannungslose Pause nach 1-poliger Abschaltung. Muss lang genug für das "
+                  "Verlöschen des Lichtbogens (Sekundärlichtbogen) sein, aber kurz genug "
+                  "für die Netzstabilität (7SA6 Hdb. 2.13)."),
     },
     "i_svs": {
-        "range": "ca. 0,1 x IN (Stromflussueberwachung)",
-        "adr":   "I> SVS Adr.3902 (beide Geraete)",
-        "grund": ("Stromschwelle der Schalterversagerueberwachung. Erkennt, ob nach dem "
-                  "AUS-Kommando noch Strom fliesst. Empfindlich, aber oberhalb des "
+        "range": "ca. 0,1 x IN (Stromflussüberwachung)",
+        "adr":   "I> SVS Adr.3902 (beide Geräte)",
+        "grund": ("Stromschwelle der Schalterversagerüberwachung. Erkennt, ob nach dem "
+                  "AUS-Kommando noch Strom fließt. Empfindlich, aber oberhalb des "
                   "Ladestroms einzustellen (7SA6 Hdb. 2.14)."),
     },
     "t2_svs": {
         "range": "Eigenzeit LS + Sicherheitsmarge",
-        "adr":   "T2 SVS Adr.3906 (beide Geraete)",
-        "grund": ("Verzoegerung der 2. Stufe (umliegende Leistungsschalter). Muss laenger sein "
-                  "als die Ausschalteigenzeit des eigenen Schalters plus Ruecksetzzeit, damit "
+        "adr":   "T2 SVS Adr.3906 (beide Geräte)",
+        "grund": ("Verzögerung der 2. Stufe (umliegende Leistungsschalter). Muss länger sein "
+                  "als die Ausschalteigenzeit des eigenen Schalters plus Rücksetzzeit, damit "
                   "nur bei echtem Schalterversagen die Sammelschiene abgeschaltet wird "
                   "(7SA6 Hdb. 2.14)."),
     },
     "zeitkonstante": {
-        "range": "geraetespezifisch, in MINUTEN  (Voreinst. 45)",
-        "adr":   "ZEITKONSTANTE Adr.4203 (beide Geraete)",
-        "grund": ("Erwaermungszeitkonstante tau_th des thermischen Abbilds. ACHTUNG: bei "
+        "range": "1,0 ... 999,9 min, in MINUTEN (Tool-Vorgabe 45, Werksvoreinst. 100,0)",
+        "adr":   "ZEITKONSTANTE Adr.4203 (beide Geräte)",
+        "grund": ("Erwärmungszeitkonstante tau_th des thermischen Abbilds. ACHTUNG: bei "
                   "7SA6/7SD5 in Minuten einzustellen (anders als z.B. 7UM62 in Sekunden). "
                   "Aus der t6-Zeit ergibt sich tau_th = t6 * 6^2 (7SA6 Hdb. 2.15)."),
     },
     "k_faktor": {
         "range": "1,0 ... 1,2 (I_dauer / IN)",
-        "adr":   "K-FAKTOR Adr.4202 (beide Geraete)",
-        "grund": ("Verhaeltnis des thermisch dauernd zulaessigen Stroms zum Bemessungsstrom. "
+        "adr":   "K-FAKTOR Adr.4202 (beide Geräte)",
+        "grund": ("Verhältnis des thermisch dauernd zulässigen Stroms zum Bemessungsstrom. "
                   "Bestimmt den Endwert des thermischen Abbilds (7SA6 Hdb. 2.15)."),
     },
     "uph_l": {
         "range": "0,7 ... 0,8 x UN  (Unterspannung)",
-        "adr":   "Uph< Adr.3752 (beide Geraete)",
+        "adr":   "Uph< Adr.3752 (beide Geräte)",
         "grund": ("Ansprechwert des Unterspannungsschutzes. Muss unterhalb der niedrigsten "
-                  "betrieblichen Spannung liegen, um Fehlausloesungen bei Lastschwankungen zu "
+                  "betrieblichen Spannung liegen, um Fehlauslösungen bei Lastschwankungen zu "
                   "vermeiden (7SA6 Hdb. 2.10)."),
     },
     "anschluss": {
         "range": "1 Gegenende (Zweienden, Voreinst.) / 2 Gegenenden (Dreienden)",
-        "adr":   "ANSCHLUSS Adr.2102 (beide Geraete)",
+        "adr":   "ANSCHLUSS Adr.2102 (beide Geräte)",
         "grund": ("Konfiguriert, ob der Teleschutz mit einem oder zwei Gegenenden arbeitet. "
-                  "Bei einer normalen Zweienden-Leitung '1 Gegenende' waehlen. Bei einer "
+                  "Bei einer normalen Zweienden-Leitung '1 Gegenende' wählen. Bei einer "
                   "T-Einspeisung (drei Leitungsenden) '2 Gegenenden' (7SA6 Hdb. 2.6)."),
     },
     "aus_1pol_svs": {
         "range": "Ja (Voreinst.) / Nein",
-        "adr":   "AUS 1POL (T1) Adr.3903 (beide Geraete)",
-        "grund": ("Legt fest, ob nach 1-poligem Ausloesen ein Wiederholungskommando (T1 1POL) "
+        "adr":   "AUS 1POL (T1) Adr.3903 (beide Geräte)",
+        "grund": ("Legt fest, ob nach 1-poligem Auslösen ein Wiederholungskommando (T1 1POL) "
                   "an den eigenen Schalter gegeben wird. Bei Netzen mit einpoliger "
                   "Wiedereinschaltung auf Ja setzen (7SA6 Hdb. 2.14)."),
     },
     "theta_warn": {
         "range": "80 ... 100 %  (Voreinst. 90)",
-        "adr":   "THETA WARN Adr.4204 (beide Geraete)",
-        "grund": ("Thermische Warnschwelle des Ueberlastschutzes als Prozentsatz des "
-                  "Ausloesewerts (100 %). Ein Vorwarnsignal bei 90 % gibt dem Betreiber Zeit, "
-                  "die Last zu reduzieren, bevor die Ausloesung erfolgt (7SA6 Hdb. 2.15)."),
+        "adr":   "THETA WARN Adr.4204 (beide Geräte)",
+        "grund": ("Thermische Warnschwelle des Überlastschutzes als Prozentsatz des "
+                  "Auslösewerts (100 %). Ein Vorwarnsignal bei 90 % gibt dem Betreiber Zeit, "
+                  "die Last zu reduzieren, bevor die Auslösung erfolgt (7SA6 Hdb. 2.15)."),
     },
     "i_warn": {
         "range": "ca. 0,9 ... 1,0 x IN  (Voreinst. 1,00)",
-        "adr":   "I WARN Adr.4205 (beide Geraete)",
-        "grund": ("Strommaessige Warnschwelle parallel zur thermischen Warnschwelle. Spricht "
-                  "bei Dauerstrom nahe dem Nennstrom an und warnt vor thermischer Ueberlastung, "
-                  "bevor das thermische Abbild vollstaendig aufgefuellt ist (7SA6 Hdb. 2.15)."),
+        "adr":   "I WARN Adr.4205 (beide Geräte)",
+        "grund": ("Strommäßige Warnschwelle parallel zur thermischen Warnschwelle. Spricht "
+                  "bei Dauerstrom nahe dem Nennstrom an und warnt vor thermischer Überlastung, "
+                  "bevor das thermische Abbild vollständig aufgefüllt ist (7SA6 Hdb. 2.15)."),
     },
     "f1": {
-        "range": "Unterfrequenz ca. 49,5 / 49,0 Hz, Ueberfrequenz 50,5 / 51,0 Hz",
+        "range": "Unterfrequenz ca. 49,5 / 49,0 Hz, Überfrequenz 50,5 / 51,0 Hz",
         "adr":   "FREQUENZ f1 Adr.3602 (50 Hz) / 3603 (60 Hz)",
-        "grund": ("Frequenzstufen f1 ... f4 fuer Unter- und Ueberfrequenz. Die Adresse haengt "
+        "grund": ("Frequenzstufen f1 ... f4 für Unter- und Überfrequenz. Die Adresse hängt "
                   "von der Nennfrequenz ab (50 oder 60 Hz). Staffelung nach Netzlastabwurf-Plan "
                   "(7SA6 Hdb. 2.11)."),
     },
@@ -777,29 +779,29 @@ HERST = {
     # ── Distanzschutz allgemein: Charakteristik und Anregeverfahren ──────────
     "DIS_charakt": {
         "range": "Polygon (Voreinst.) oder Kreis (MHO)",
-        "adr":   "DIS-CHARAKT. Adr.115 (beide Geraete)",
-        "grund": ("Auswahl der Ausloesecharakteristik. Die polygonale Charakteristik erlaubt eine "
+        "adr":   "DIS-CHARAKT. Adr.115 (beide Geräte)",
+        "grund": ("Auswahl der Auslösecharakteristik. Die polygonale Charakteristik erlaubt eine "
                   "getrennte Einstellung von R- und X-Abschnitt und damit eine optimale Anpassung "
-                  "an Leitungswinkel und Lichtbogenwiderstand; sie ist die uebliche Wahl. Die "
+                  "an Leitungswinkel und Lichtbogenwiderstand. Sie ist die übliche Wahl. Die "
                   "Kreis-(MHO-)Charakteristik bildet je Zone einen gemeinsamen Impedanzkreis "
                   "(7SA6 Hdb. 2.2.1/2.2.2)."),
     },
     "DIS_anr": {
         "range": "IMPEDANZ / I-ANR. / U-I-ANR. / U-I-φ-ANR",
-        "adr":   "DIS ANR Adr.114 (beide Geraete)",
-        "grund": ("Anregeverfahren des Distanzschutzes. I-ANR. (Ueberstromanregung), wenn die Hoehe "
+        "adr":   "DIS ANR Adr.114 (beide Geräte)",
+        "grund": ("Anregeverfahren des Distanzschutzes. I-ANR. (Überstromanregung), wenn die Höhe "
                   "des Kurzschlussstroms allein Kurzschluss und Last sicher trennt; U-I-ANR. "
-                  "(spannungsabhaengige Stromanregung), wenn zusaetzlich der Spannungseinbruch als "
-                  "Kriterium noetig ist; U-I-φ-ANR fuer hochbelastbare Hoch- und Hoechstspannungs"
+                  "(spannungsabhängige Stromanregung), wenn zusätzlich der Spannungseinbruch als "
+                  "Kriterium nötig ist; U-I-φ-ANR für hochbelastbare Hoch- und Höchstspannungs"
                   "leitungen; IMPEDANZ nutzt die am weitesten eingestellten R/X-Abschnitte als "
                   "Anregekriterium (7SA6 Hdb. 2.2.1)."),
     },
     "alpha_polyg": {
         "range": "0 ... 45 Grad  (Voreinst. 0)",
         "adr":   "ALPHA POLYG Adr.1307 (7SA6) / 1607 (7SD5)",
-        "grund": ("Neigung der R-Achse des Ausloesepolygons. Eine Neigung dreht den oberen R-Rand "
+        "grund": ("Neigung der R-Achse des Auslösepolygons. Eine Neigung dreht den oberen R-Rand "
                   "der Zone, um den Einfluss des Lastwinkels und des Fehlerwiderstands zu "
-                  "beruecksichtigen. Voreinstellung 0 Grad (keine Neigung) ist fuer die meisten "
+                  "berücksichtigen. Voreinstellung 0 Grad (keine Neigung) ist für die meisten "
                   "Leitungen ausreichend (7SA6 Hdb. 2.2.2)."),
     },
 
@@ -807,21 +809,21 @@ HERST = {
     "RX_Z1B": {
         "range": "ca. 1,0 ... 2,0  (Voreinst. 1,50)",
         "adr":   "R(Z1B) Adr.1352 (7SA6) / 1652 (7SD5)",
-        "grund": ("R-Abschnitt der Uebergreifzone Z1B fuer den Teleschutz. Etwas breiter als Z1, "
+        "grund": ("R-Abschnitt der Übergreifzone Z1B für den Teleschutz. Etwas breiter als Z1, "
                   "damit auch Erdfehler mit Lichtbogenwiderstand am Leitungsende sicher erfasst "
                   "werden. Die R-Aufweitung darf nicht in den Lastbereich reichen (7SA6 Hdb. 2.2.2)."),
     },
     "RX_Z2": {
         "range": "ca. 1,5 ... 2,5  (Voreinst. 2,00)",
         "adr":   "R(Z2) Adr.1312 (7SA6) / 1612 (7SD5)",
-        "grund": ("R-Abschnitt der zeitgestaffelten Uebergreifzone Z2. Breiter gewaehlt, da Z2 als "
-                  "Reserve fuer die Gegenleitung auch hochohmige Fehler erfassen soll, jedoch "
+        "grund": ("R-Abschnitt der zeitgestaffelten Übergreifzone Z2. Breiter gewählt, da Z2 als "
+                  "Reserve für die Gegenleitung auch hochohmige Fehler erfassen soll, jedoch "
                   "weiterhin unterhalb der minimalen Lastimpedanz bleiben muss (7SA6 Hdb. 2.2.2)."),
     },
     "RX_Z3": {
         "range": "ca. 2,0 ... 3,0  (Voreinst. 2,50)",
         "adr":   "R(Z3) Adr.1322 (7SA6) / 1622 (7SD5)",
-        "grund": ("R-Abschnitt der Vorwaerts-Reservezone Z3. Am breitesten der Hauptzonen, um "
+        "grund": ("R-Abschnitt der Vorwärts-Reservezone Z3. Am breitesten der Hauptzonen, um "
                   "entfernte hochohmige Fehler als Fernreserve zu erfassen. Die Lastausblendung "
                   "(Lastkegel bzw. Anregekennlinie) verhindert ein Eingreifen im Lastbetrieb "
                   "(7SA6 Hdb. 2.2.2)."),
@@ -829,26 +831,26 @@ HERST = {
 
     # ── Staffelzeiten der Distanzzonen ───────────────────────────────────────
     "t_Z1": {
-        "range": "0,00 s (unverzoegert)  (Voreinst. 0,00)",
+        "range": "0,00 s (unverzögert)  (Voreinst. 0,00)",
         "adr":   "T1 Adr.1305 (1-pol.) / 1306 (mehrpol.), 7SA6 (7SD5 1605/1606)",
-        "grund": ("Ausloeseverzoegerung der schnellen Unterreichweitenzone Z1. Da Z1 sicher "
-                  "innerhalb der eigenen Leitung liegt (85 %), loest sie unverzoegert aus. Eine "
-                  "Verzoegerung > 0 ist nur in Sonderfaellen (z.B. Kurzschlussfestigkeit) noetig "
+        "grund": ("Auslöseverzögerung der schnellen Unterreichweitenzone Z1. Da Z1 sicher "
+                  "innerhalb der eigenen Leitung liegt (85 %), löst sie unverzögert aus. Eine "
+                  "Verzögerung > 0 ist nur in Sonderfällen (z.B. Kurzschlussfestigkeit) nötig "
                   "(7SA6 Hdb. 2.2.1)."),
     },
     "t_Z1B": {
         "range": "0,00 s (signalgesteuert)  (Voreinst. 0,00)",
         "adr":   "T1B Adr.1355 (1-pol.) / 1356 (mehrpol.), 7SA6 (7SD5 1655/1656)",
-        "grund": ("Verzoegerung der Uebergreifzone Z1B. Im Teleschutz loest Z1B nach Empfang des "
-                  "Freigabesignals unverzoegert aus (T1B = 0). Ohne Signal wirkt Z1B erst nach der "
-                  "uebergeordneten Staffelzeit; T1B steuert die Eigenzeit der signalgesteuerten "
+        "grund": ("Verzögerung der Übergreifzone Z1B. Im Teleschutz löst Z1B nach Empfang des "
+                  "Freigabesignals unverzögert aus (T1B = 0). Ohne Signal wirkt Z1B erst nach der "
+                  "übergeordneten Staffelzeit; T1B steuert die Eigenzeit der signalgesteuerten "
                   "Stufe (7SA6 Hdb. 2.2.1/2.6)."),
     },
     "t_Z3": {
         "range": "ca. 0,6 ... 1,0 s  (Voreinst. 0,60)",
         "adr":   "T3 Adr.1325 (7SA6) / 1625 (7SD5)",
-        "grund": ("Staffelzeit der Vorwaerts-Reservezone Z3, ein bis zwei Staffelschritte hinter T2. "
-                  "Die genaue Zeit ergibt sich aus dem netzweiten Staffelplan, der ausserhalb des "
+        "grund": ("Staffelzeit der Vorwärts-Reservezone Z3, ein bis zwei Staffelschritte hinter T2. "
+                  "Die genaue Zeit ergibt sich aus dem netzweiten Staffelplan, der außerhalb des "
                   "komponentenbezogenen Scope dieses Tools liegt (7SA6 Hdb. 2.2.1)."),
     },
 
@@ -856,64 +858,64 @@ HERST = {
     "i_diff_zusch": {
         "range": "= I-DIFF> (Voreinst. 0,30 x IN)",
         "adr":   "I-DIF> ZUSCH. Adr.1213 (nur 7SD5)",
-        "grund": ("Erhoehter Ansprechwert der stabilisierten Stufe waehrend der Zuschalterkennung "
-                  "(manuelles Zuschalten auf einen Fehler). Verhindert Fehlausloesungen durch "
-                  "Einschaltstroeme; ueblicherweise gleich oder etwas ueber I-DIFF> "
+        "grund": ("Erhöhter Ansprechwert der stabilisierten Stufe während der Zuschalterkennung "
+                  "(manuelles Zuschalten auf einen Fehler). Verhindert Fehlauslösungen durch "
+                  "Einschaltströme. Üblicherweise gleich oder etwas über I-DIFF> "
                   "(7SD5 Hdb. 2.2.1)."),
     },
     "t_i_diff": {
-        "range": "0,00 s (unverzoegert)  (Voreinst. 0,00)",
+        "range": "0,00 s (unverzögert)  (Voreinst. 0,00)",
         "adr":   "T-I-DIF> Adr.1217A (nur 7SD5)",
-        "grund": ("Ausloeseverzoegerung der stabilisierten Differentialstufe. Als schneller "
-                  "Hauptschutz arbeitet 87L unverzoegert (T = 0); eine Verzoegerung wird nur in "
-                  "Sonderfaellen gesetzt (7SD5 Hdb. 2.2.1)."),
+        "grund": ("Auslöseverzögerung der stabilisierten Differentialstufe. Als schneller "
+                  "Hauptschutz arbeitet 87L unverzögert (T = 0). Eine Verzögerung wird nur in "
+                  "Sonderfällen gesetzt (7SD5 Hdb. 2.2.1)."),
     },
     "i_freig_diff": {
-        "range": "ca. 0,15 ... 0,25 x IN  (Voreinst. 0,20)",
+        "range": "ca. 0,15 ... 0,25 x IN (Tool-Vorgabe 0,20, Werksvoreinst. 0,00)",
         "adr":   "I> FREIG. DIFF Adr.1219A (nur 7SD5)",
         "grund": ("Stromschwelle zur Freigabe der Differentialmessung. Unterhalb dieses Werts wird "
-                  "die empfindliche Diffstufe blockiert, um Fehlmessungen bei kleinen Stroemen und "
+                  "die empfindliche Diffstufe blockiert, um Fehlmessungen bei kleinen Strömen und "
                   "Messrauschen zu vermeiden (7SD5 Hdb. 2.2.1)."),
     },
     "i_diff_hh_zusch": {
-        "range": ">= I-DIFF>>  (Voreinst. 8,0 x IN)",
+        "range": ">= I-DIFF>> (Tool-Vorgabe 8,0 x IN, Werksvoreinst. 1,2 x In)",
         "adr":   "I-DIF>> ZUSCH. Adr.1235 (nur 7SD5)",
-        "grund": ("Zuschaltschwelle der unstabilisierten Hochstromstufe. Wird vom Geraet "
-                  "automatisch auf I-DIFF>> angehoben, falls kleiner eingestellt; sollte daher "
-                  ">= I-DIFF>> gewaehlt werden (7SD5 Hdb. 2.2.1)."),
+        "grund": ("Zuschaltschwelle der unstabilisierten Hochstromstufe. Wird vom Gerät "
+                  "automatisch auf I-DIFF>> angehoben, falls kleiner eingestellt. Sie sollte daher "
+                  ">= I-DIFF>> gewählt werden (7SD5 Hdb. 2.2.1)."),
     },
     "ic_komp": {
         "range": "Aus (Voreinst.) / Ein",
         "adr":   "Ic-KOMP. Adr.1221 (nur 7SD5)",
         "grund": ("Ladestromkompensation. Bei langen Kabeln oder Leitungen mit hohem kapazitiven "
-                  "Ladestrom rechnet das Geraet den Ladestrom aus dem Differenzstrom heraus. Dann "
+                  "Ladestrom rechnet das Gerät den Ladestrom aus dem Differenzstrom heraus. Dann "
                   "kann I-DIFF> empfindlicher als 2,5 x IcN eingestellt werden (7SD5 Hdb. 2.2.1)."),
     },
     "ws_verbindung": {
         "range": "LWL direkt / Kommunikationsumsetzer / LWL-Modul",
         "adr":   "WS1 Verbindung Adr.4502 (nur 7SD5)",
-        "grund": ("Art der Wirkschnittstelle 1 zwischen den Leitungsenden. LWL direkt fuer kurze "
-                  "Distanzen, Kommunikationsumsetzer fuer Strecken ueber Kommunikationsnetze. Die "
+        "grund": ("Art der Wirkschnittstelle 1 zwischen den Leitungsenden. LWL direkt für kurze "
+                  "Distanzen, Kommunikationsumsetzer für Strecken über Kommunikationsnetze. Die "
                   "Verbindung ist Projektierung, kein Schutz-Ansprechwert (7SD5 Hdb. 2.1.2)."),
     },
 
     # ── 85 Teleschutz: Zeitparameter ─────────────────────────────────────────
     "t_sendverl": {
         "range": "ca. 0,05 s  (Voreinst. 0,05)",
-        "adr":   "T SENDVERL. Adr.2103 (beide Geraete)",
-        "grund": ("Sendesignalverlaengerung. Haelt das Sendesignal nach Ruecknahme der Anregung "
-                  "kurz aufrecht, damit die Gegenstelle das Freigabesignal sicher empfaengt "
+        "adr":   "T SENDVERL. Adr.2103 (beide Geräte)",
+        "grund": ("Sendesignalverlängerung. Hält das Sendesignal nach Rücknahme der Anregung "
+                  "kurz aufrecht, damit die Gegenstelle das Freigabesignal sicher empfängt "
                   "(7SA6 Hdb. 2.6)."),
     },
     "tv_dis": {
-        "range": "0,00 s (unverzoegert)  (Voreinst. 0,00)",
-        "adr":   "TV Adr.2108 (beide Geraete)",
-        "grund": ("Freigabeverzoegerung der Z1B im Vergleichsverfahren. Im Normalfall 0, damit die "
-                  "Ausloesung nach Signalempfang nicht zusaetzlich verzoegert wird (7SA6 Hdb. 2.6)."),
+        "range": "0,00 s (unverzögert)  (Voreinst. 0,00)",
+        "adr":   "TV Adr.2108 (beide Geräte)",
+        "grund": ("Freigabeverzögerung der Z1B im Vergleichsverfahren. Im Normalfall 0, damit die "
+                  "Auslösung nach Signalempfang nicht zusätzlich verzögert wird (7SA6 Hdb. 2.6)."),
     },
     "t_warte_rueckw": {
         "range": "ca. 0,04 ... 0,05 s  (Voreinst. 0,05)",
-        "adr":   "T WARTE RUECKW. Adr.2109 (beide Geraete)",
+        "adr":   "T WARTE RUECKW. Adr.2109 (beide Geräte)",
         "grund": ("Wartezeit vor dem Wirksamwerden der transienten Blockierung bei "
                   "Fehlerrichtungsumkehr. Verhindert Fehlfreigaben bei kurzzeitiger "
                   "Richtungsumkehr (7SA6 Hdb. 2.6)."),
@@ -922,57 +924,57 @@ HERST = {
     # ── 67N Gerichteter Erdkurzschlussschutz: Stufen-Zeiten und Stabilisierung ──
     "t_3I0HHH": {
         "range": "ca. 0,1 s (schnell)  (Voreinst. 0,10)",
-        "adr":   "T 3I0>>> Adr.3112 (beide Geraete)",
-        "grund": ("Kurze Verzoegerung der schnellen Hochstromstufe 3I0>>>. Erfasst hohe "
-                  "Erdkurzschlussstroeme nahe der Einspeisung mit minimaler Zeit (7SA6 Hdb. 2.5)."),
+        "adr":   "T 3I0>>> Adr.3112 (beide Geräte)",
+        "grund": ("Kurze Verzögerung der schnellen Hochstromstufe 3I0>>>. Erfasst hohe "
+                  "Erdkurzschlussströme nahe der Einspeisung mit minimaler Zeit (7SA6 Hdb. 2.5)."),
     },
     "i_3I0HH": {
         "range": "ca. 0,3 ... 0,8 x IN  (Voreinst. 0,50)",
-        "adr":   "3I0>> Adr.3121 (beide Geraete)",
+        "adr":   "3I0>> Adr.3121 (beide Geräte)",
         "grund": ("Ansprechwert der mittleren Erdstromstufe, zwischen empfindlicher Stufe 3I0> und "
                   "Hochstromstufe 3I0>>> gestaffelt (7SA6 Hdb. 2.5)."),
     },
     "t_3I0HH": {
         "range": "ca. 0,3 s  (Voreinst. 0,30)",
-        "adr":   "T 3I0>> Adr.3122 (beide Geraete)",
+        "adr":   "T 3I0>> Adr.3122 (beide Geräte)",
         "grund": ("Staffelzeit der mittleren Erdstromstufe, zeitlich zwischen 3I0>>> und 3I0> "
-                  "(inverse Staffelung: hoeherer Ansprechwert loest schneller aus, 7SA6 Hdb. 2.5)."),
+                  "(inverse Staffelung: höherer Ansprechwert löst schneller aus, 7SA6 Hdb. 2.5)."),
     },
     "t_3I0H": {
         "range": "ca. 0,6 s  (Voreinst. 0,60)",
-        "adr":   "T 3I0> Adr.3132 (beide Geraete)",
-        "grund": ("Staffelzeit der empfindlichen Erdstromstufe. Laengste Zeit der drei Stufen, da "
-                  "sie den kleinsten Erdstrom erfasst und gegen die naeher liegenden Stufen "
+        "adr":   "T 3I0> Adr.3132 (beide Geräte)",
+        "grund": ("Staffelzeit der empfindlichen Erdstromstufe. Längste Zeit der drei Stufen, da "
+                  "sie den kleinsten Erdstrom erfasst und gegen die näher liegenden Stufen "
                   "selektiv gestaffelt ist (7SA6 Hdb. 2.5)."),
     },
     "i3i0_iph_stab": {
         "range": "ca. 0,1 x Iph  (Voreinst. 0,10)",
-        "adr":   "3I0 IPH STAB Adr.3104 (beide Geraete)",
+        "adr":   "3I0 IPH STAB Adr.3104 (beide Geräte)",
         "grund": ("Stabilisierung des Erdstromschutzes gegen den Phasenstrom. Verhindert "
-                  "Fehlanregungen durch Stromwandlerfehler bei hohen Phasenstroemen, indem die "
-                  "Erdstromschwelle stromabhaengig angehoben wird (7SA6 Hdb. 2.5)."),
+                  "Fehlanregungen durch Stromwandlerfehler bei hohen Phasenströmen, indem die "
+                  "Erdstromschwelle stromabhängig angehoben wird (7SA6 Hdb. 2.5)."),
     },
 
     # ── 50/51 Not-Ueberstromzeitschutz: Stufen-Zeiten und Hochstromstufe ─────
     "iph_hh": {
         "range": "ca. 1,5 ... 2,5 x IN  (Voreinst. 2,00)",
-        "adr":   "Iph>> Adr.2610 (beide Geraete)",
-        "grund": ("Hochstromstufe des Not-Ueberstromschutzes. Spricht auf hohe Kurzschlussstroeme "
-                  "an und loest schneller aus als die Grundstufe Iph>; oberhalb des maximalen "
-                  "durchfliessenden Kurzschlussstroms bei Fehlern hinter der Leitung "
+        "adr":   "Iph>> Adr.2610 (beide Geräte)",
+        "grund": ("Hochstromstufe des Not-Überstromschutzes. Spricht auf hohe Kurzschlussströme "
+                  "an und löst schneller aus als die Grundstufe Iph>. Bemessung oberhalb des maximalen "
+                  "durchfließenden Kurzschlussstroms bei Fehlern hinter der Leitung "
                   "(7SA6 Hdb. 2.7)."),
     },
     "t_iph_hh": {
         "range": "ca. 0,1 s  (Voreinst. 0,10)",
-        "adr":   "T Iph>> Adr.2611 (beide Geraete)",
-        "grund": ("Kurze Verzoegerung der Hochstromstufe. Da der Not-Ueberstromschutz nur bei "
+        "adr":   "T Iph>> Adr.2611 (beide Geräte)",
+        "grund": ("Kurze Verzögerung der Hochstromstufe. Da der Not-Überstromschutz nur bei "
                   "Ausfall der Distanzmessung wirkt, ist eine schnelle Hochstromstufe zur "
                   "Begrenzung der Fehlerdauer sinnvoll (7SA6 Hdb. 2.7)."),
     },
     "t_iph_h": {
         "range": "ca. 0,3 ... 0,6 s  (Voreinst. 0,50)",
-        "adr":   "T Iph> Adr.2621 (beide Geraete)",
-        "grund": ("Verzoegerung der Grundstufe Iph>. Zeitlich hinter der Hochstromstufe gestaffelt, "
+        "adr":   "T Iph> Adr.2621 (beide Geräte)",
+        "grund": ("Verzögerung der Grundstufe Iph>. Zeitlich hinter der Hochstromstufe gestaffelt, "
                   "damit die Reserve selektiv zu den nachgelagerten Schutzeinrichtungen bleibt "
                   "(7SA6 Hdb. 2.7)."),
     },
@@ -980,117 +982,117 @@ HERST = {
     # ── 79 Wiedereinschaltautomatik: Zyklen, 3-pol. Pause, Sperrzeit ─────────
     "awe_anzahl": {
         "range": "1 (Voreinst.) ... 4 Unterbrechungszyklen",
-        "adr":   "Anzahl WE-Zyklen (AWE-Projektierung, beide Geraete)",
-        "grund": ("Anzahl der Wiedereinschaltversuche. In Hoch- und Hoechstspannungsnetzen ist "
-                  "meist eine schnelle einmalige WE ueblich; mehrere Zyklen werden im "
+        "adr":   "Anzahl WE-Zyklen (AWE-Projektierung, beide Geräte)",
+        "grund": ("Anzahl der Wiedereinschaltversuche. In Hoch- und Höchstspannungsnetzen ist "
+                  "meist eine schnelle einmalige WE üblich. Mehrere Zyklen werden im "
                   "Verteilnetz eingesetzt (7SA6 Hdb. 2.13)."),
     },
     "we_tp_aus3pol": {
         "range": "ca. 0,3 ... 0,5 s  (Voreinst. 0,50)",
-        "adr":   "1.WE TP nach 3-pol. AUS Adr.3457 (beide Geraete)",
-        "grund": ("Spannungslose Pause nach 3-poliger Abschaltung. Kuerzer als die 1-polige Pause, "
-                  "da kein Sekundaerlichtbogen ueber die gesunden Phasen gespeist wird; die Laenge "
-                  "richtet sich nach der Netzstabilitaet (7SA6 Hdb. 2.13)."),
+        "adr":   "1.WE TP nach 3-pol. AUS Adr.3457 (beide Geräte)",
+        "grund": ("Spannungslose Pause nach 3-poliger Abschaltung. Kürzer als die 1-polige Pause, "
+                  "da kein Sekundärlichtbogen über die gesunden Phasen gespeist wird. Die Länge "
+                  "richtet sich nach der Netzstabilität (7SA6 Hdb. 2.13)."),
     },
     "t_sperrzeit": {
         "range": "ca. 3,0 s  (Voreinst. 3,00)",
-        "adr":   "T SPERRZEIT Adr.3403 (beide Geraete)",
-        "grund": ("Sperrzeit (Reclaim Time) nach erfolgreicher Wiedereinschaltung. Muss laenger "
-                  "sein als die Pausenzeiten, damit ein WE-Zyklus vollstaendig abgeschlossen ist, "
+        "adr":   "T SPERRZEIT Adr.3403 (beide Geräte)",
+        "grund": ("Sperrzeit (Reclaim Time) nach erfolgreicher Wiedereinschaltung. Muss länger "
+                  "sein als die Pausenzeiten, damit ein WE-Zyklus vollständig abgeschlossen ist, "
                   "bevor ein neuer Fehler einen neuen Zyklus startet (7SA6 Hdb. 2.13)."),
     },
 
     # ── 50BF Schalterversagerschutz: Erdstromschwelle und Zeiten ─────────────
     "i3i0_svs": {
         "range": "ca. 0,1 x IN  (Voreinst. 0,10)",
-        "adr":   "3I0> SVS Adr.3912 (beide Geraete)",
-        "grund": ("Erdstromschwelle der Schalterversagerueberwachung. Empfindlich eingestellt, um "
-                  "auch kleine Reststroeme nach dem AUS-Kommando zu erkennen, aber oberhalb des "
-                  "betriebsmaessigen Erdstroms (7SA6 Hdb. 2.14)."),
+        "adr":   "3I0> SVS Adr.3912 (beide Geräte)",
+        "grund": ("Erdstromschwelle der Schalterversagerüberwachung. Empfindlich eingestellt, um "
+                  "auch kleine Restströme nach dem AUS-Kommando zu erkennen, aber oberhalb des "
+                  "betriebsmäßigen Erdstroms (7SA6 Hdb. 2.14)."),
     },
     "t1_1pol_svs": {
         "range": "ca. 0,12 ... 0,2 s  (Voreinst. 0,15)",
-        "adr":   "T1 1POL Adr.3904 (beide Geraete)",
-        "grund": ("Verzoegerung der 1. Stufe nach 1-poligem AUS (Wiederholungskommando an den "
-                  "eigenen Schalter). Muss laenger sein als die Ausschalteigenzeit des Schalters "
-                  "plus Ruecksetzzeit der Stromueberwachung (7SA6 Hdb. 2.14)."),
+        "adr":   "T1 1POL Adr.3904 (beide Geräte)",
+        "grund": ("Verzögerung der 1. Stufe nach 1-poligem AUS (Wiederholungskommando an den "
+                  "eigenen Schalter). Muss länger sein als die Ausschalteigenzeit des Schalters "
+                  "plus Rücksetzzeit der Stromüberwachung (7SA6 Hdb. 2.14)."),
     },
     "t1_3pol_svs": {
         "range": "ca. 0,12 ... 0,2 s  (Voreinst. 0,15)",
-        "adr":   "T1 3POL Adr.3905 (beide Geraete)",
-        "grund": ("Verzoegerung der 1. Stufe nach 3-poligem AUS. Wie T1 1POL bemessen aus "
-                  "Schalter-Eigenzeit und Ruecksetzzeit; Wiederholungskommando an den eigenen "
-                  "Schalter vor Ausloesung der umliegenden Schalter (7SA6 Hdb. 2.14)."),
+        "adr":   "T1 3POL Adr.3905 (beide Geräte)",
+        "grund": ("Verzögerung der 1. Stufe nach 3-poligem AUS. Wie T1 1POL bemessen aus "
+                  "Schalter-Eigenzeit und Rücksetzzeit; Wiederholungskommando an den eigenen "
+                  "Schalter vor Auslösung der umliegenden Schalter (7SA6 Hdb. 2.14)."),
     },
 
     # ── 68/78 Pendelerfassung ────────────────────────────────────────────────
     "pendelerfassung": {
         "range": "Vorhanden (Voreinst.) / Nicht vorhanden",
-        "adr":   "PENDELERFASSUNG Adr.120 (beide Geraete)",
-        "grund": ("Funktionsumfang der Pendelerfassung. Bei vermaschten Netzen mit moeglichen "
+        "adr":   "PENDELERFASSUNG Adr.120 (beide Geräte)",
+        "grund": ("Funktionsumfang der Pendelerfassung. Bei vermaschten Netzen mit möglichen "
                   "Leistungspendelungen vorzusehen, damit der Distanzschutz Pendelungen nicht als "
                   "Kurzschluss fehlinterpretiert (7SA6 Hdb. 2.3)."),
     },
     "pen_ausloes": {
-        "range": "Nein (nur Sperre, Voreinst.) / Ja (Aussertrittauslösung)",
-        "adr":   "PEN-AUSLOES Adr.2006 (beide Geraete)",
-        "grund": ("Legt fest, ob bei instabiler Pendelung (Aussertrittfall) gezielt ausgeloest wird. "
+        "range": "Nein (nur Sperre, Voreinst.) / Ja (Außertrittauslösung)",
+        "adr":   "PEN-AUSLOES Adr.2006 (beide Geräte)",
+        "grund": ("Legt fest, ob bei instabiler Pendelung (Außertrittfall) gezielt ausgelöst wird. "
                   "Voreinstellung Nein: die Funktion wirkt nur als Pendelsperre. Eine "
-                  "Aussertrittauslösung nur bei entsprechender Netzanforderung aktivieren "
+                  "Außertrittauslösung nur bei entsprechender Netzanforderung aktivieren "
                   "(7SA6 Hdb. 2.3)."),
     },
 
     # ── 27/59 Spannungsschutz: Ansprechwerte und Zeiten ──────────────────────
     "uph_h": {
         "range": "ca. 1,10 ... 1,15 x UN  (Voreinst. 1,15)",
-        "adr":   "Uph> Adr.3702 (beide Geraete)",
-        "grund": ("Erste Ueberspannungsstufe. Oberhalb der hoechsten betrieblichen Spannung, mit "
-                  "laengerer Verzoegerung als die Hochstufe Uph>> (7SA6 Hdb. 2.10)."),
+        "adr":   "Uph> Adr.3702 (beide Geräte)",
+        "grund": ("Erste Überspannungsstufe. Oberhalb der höchsten betrieblichen Spannung, mit "
+                  "längerer Verzögerung als die Hochstufe Uph>> (7SA6 Hdb. 2.10)."),
     },
     "t_uph_h": {
         "range": "ca. 1,5 ... 3,0 s  (Voreinst. 2,00)",
-        "adr":   "T Uph> Adr.3703 (beide Geraete)",
-        "grund": ("Verzoegerung der ersten Ueberspannungsstufe. Laenger als T Uph>>, damit "
-                  "kurzzeitige Spannungsanstiege nicht zur Ausloesung fuehren (7SA6 Hdb. 2.10)."),
+        "adr":   "T Uph> Adr.3703 (beide Geräte)",
+        "grund": ("Verzögerung der ersten Überspannungsstufe. Länger als T Uph>>, damit "
+                  "kurzzeitige Spannungsanstiege nicht zur Auslösung führen (7SA6 Hdb. 2.10)."),
     },
     "uph_hh": {
         "range": "ca. 1,20 ... 1,30 x UN  (Voreinst. 1,25)",
-        "adr":   "Uph>> Adr.3704 (beide Geraete)",
-        "grund": ("Zweite (hoehere) Ueberspannungsstufe fuer schnelle Abschaltung bei deutlicher "
-                  "Ueberspannung. Hoeher als Uph>, mit kuerzerer Verzoegerung (7SA6 Hdb. 2.10)."),
+        "adr":   "Uph>> Adr.3704 (beide Geräte)",
+        "grund": ("Zweite (höhere) Überspannungsstufe für schnelle Abschaltung bei deutlicher "
+                  "Überspannung. Höher als Uph>, mit kürzerer Verzögerung (7SA6 Hdb. 2.10)."),
     },
     "t_uph_hh": {
         "range": "ca. 0,3 ... 0,5 s  (Voreinst. 0,50)",
-        "adr":   "T Uph>> Adr.3705 (beide Geraete)",
-        "grund": ("Kurze Verzoegerung der hohen Ueberspannungsstufe. Begrenzt die Dauer hoher "
-                  "Ueberspannungen, ohne auf transiente Spitzen anzusprechen (7SA6 Hdb. 2.10)."),
+        "adr":   "T Uph>> Adr.3705 (beide Geräte)",
+        "grund": ("Kurze Verzögerung der hohen Überspannungsstufe. Begrenzt die Dauer hoher "
+                  "Überspannungen, ohne auf transiente Spitzen anzusprechen (7SA6 Hdb. 2.10)."),
     },
     "t_uph_l": {
         "range": "ca. 1,5 ... 3,0 s  (Voreinst. 2,00)",
-        "adr":   "T Uph< Adr.3753 (beide Geraete)",
-        "grund": ("Verzoegerung der ersten Unterspannungsstufe. Lang genug, um kurzzeitige "
-                  "Spannungseinbruechen (z.B. Anlaufvorgaenge) nicht zu folgen (7SA6 Hdb. 2.10)."),
+        "adr":   "T Uph< Adr.3753 (beide Geräte)",
+        "grund": ("Verzögerung der ersten Unterspannungsstufe. Lang genug, um kurzzeitige "
+                  "Spannungseinbrüchen (z.B. Anlaufvorgänge) nicht zu folgen (7SA6 Hdb. 2.10)."),
     },
     "uph_ll": {
         "range": "ca. 0,5 ... 0,65 x UN  (Voreinst. 0,60)",
-        "adr":   "Uph<< Adr.3754 (beide Geraete)",
-        "grund": ("Zweite (tiefere) Unterspannungsstufe fuer schnellere Abschaltung bei starkem "
-                  "Spannungseinbruch. Tiefer als Uph<, mit kuerzerer Verzoegerung "
+        "adr":   "Uph<< Adr.3754 (beide Geräte)",
+        "grund": ("Zweite (tiefere) Unterspannungsstufe für schnellere Abschaltung bei starkem "
+                  "Spannungseinbruch. Tiefer als Uph<, mit kürzerer Verzögerung "
                   "(7SA6 Hdb. 2.10)."),
     },
     "t_uph_ll": {
         "range": "ca. 0,5 ... 1,0 s  (Voreinst. 1,00)",
-        "adr":   "T Uph<< Adr.3755 (beide Geraete)",
-        "grund": ("Kurze Verzoegerung der tiefen Unterspannungsstufe. Begrenzt die Dauer starker "
-                  "Spannungseinbruechen (7SA6 Hdb. 2.10)."),
+        "adr":   "T Uph<< Adr.3755 (beide Geräte)",
+        "grund": ("Kurze Verzögerung der tiefen Unterspannungsstufe. Begrenzt die Dauer starker "
+                  "Spannungseinbrüchen (7SA6 Hdb. 2.10)."),
     },
 
     # ── 81 Frequenzschutz: Stufenzeit ────────────────────────────────────────
     "t_f": {
         "range": "ca. 0,1 s je Stufe  (Voreinst. 0,10)",
-        "adr":   "T f1...f4 Adr.3604 / 3614 / 3624 / 3634 (beide Geraete)",
-        "grund": ("Ausloeseverzoegerung je Frequenzstufe. Kurze Zeiten fuer einen schnellen "
-                  "Lastabwurf bei Unterfrequenz; die Staffelung der Stufen folgt dem "
+        "adr":   "T f1...f4 Adr.3604 / 3614 / 3624 / 3634 (beide Geräte)",
+        "grund": ("Auslöseverzögerung je Frequenzstufe. Kurze Zeiten für einen schnellen "
+                  "Lastabwurf bei Unterfrequenz. Die Staffelung der Stufen folgt dem "
                   "Lastabwurfplan des Netzbetreibers (7SA6 Hdb. 2.11)."),
     },
 }
