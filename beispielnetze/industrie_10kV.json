@@ -90,7 +90,8 @@
         "phi_Ltg": 28.1,
         "IN_Ltg": 300,
         "CT_Prim": 200,
-        "CT_Sek": 1
+        "CT_Sek": 1,
+        "uebs_betriebsart": "Ein: immer aktiv"
       }
     },
     {
@@ -106,7 +107,8 @@
         "phi_Ltg": 28.1,
         "IN_Ltg": 300,
         "CT_Prim": 200,
-        "CT_Sek": 1
+        "CT_Sek": 1,
+        "uebs_betriebsart": "Ein: immer aktiv"
       }
     },
     {
@@ -139,7 +141,9 @@
         "Schaltgruppe": "Dyn5",
         "Stufensteller_pm": 0,
         "CT_OS_Prim": 100,
-        "CT_OS_Sek": 1
+        "CT_OS_Sek": 1,
+        "CT_US_Prim": 2500,
+        "CT_US_Sek": 1
       }
     }
   ]
