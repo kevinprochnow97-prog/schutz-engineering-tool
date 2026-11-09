@@ -27,7 +27,7 @@ from streamlit.testing.v1 import AppTest
 import calc_trafo
 
 # ── Referenzinventur (Stand Masterarbeit, Abschnitt 9.2) ─────────────────────
-REF_TABS      = 6
+REF_TABS      = 7   # 6 aus der Masterarbeit + Netz-Tab (Selektivitaet)
 REF_EXPANDER  = 86
 REF_TABELLEN  = 53
 
@@ -103,13 +103,14 @@ def test_leerstart():
     assert len(at.exception) == 0, (
         f"{len(at.exception)} Ausnahme(n) beim Leerstart: "
         + "; ".join(str(e.value)[:120] for e in at.exception))
-    assert len(at.info) == 5, (
-        f"Erwartet 1 Ausfuell-Hinweis je Betriebsmittel (5), gefunden {len(at.info)}.")
+    assert len(at.info) == 6, (
+        f"Erwartet 1 Ausfuell-Hinweis je Betriebsmittel (5) plus Netz-Tab (1), "
+        f"gefunden {len(at.info)}.")
     counts = _inventur(at)
     assert counts.get("dataframe", 0) == 0, (
         "Im Leerstart darf keine Ergebnistabelle gerendert werden, gefunden "
         f"{counts.get('dataframe', 0)}.")
-    print(f"Leerstart OK: 5 Ausfuell-Hinweise, 0 Tabellen, 0 Ausnahmen.")
+    print(f"Leerstart OK: 6 Ausfuell-Hinweise (5 Betriebsmittel + Netz), 0 Tabellen, 0 Ausnahmen.")
 
 
 def test_struktur():

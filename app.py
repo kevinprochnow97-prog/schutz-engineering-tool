@@ -14,6 +14,7 @@ import tab_gen
 import tab_motor
 import tab_leitung
 import tab_sb
+import tab_netz
 
 st.set_page_config(
     page_title="Schutz-Engineering-Tool | HSU Hamburg",
@@ -49,13 +50,14 @@ footer {visibility: hidden;}
 """, unsafe_allow_html=True)
 
 # ── Tab-Navigation (Info zuerst, dann Betriebsmittel) ─────────────────────────
-tab_info, tab_trafo_ui, tab_gen_ui, tab_motor_ui, tab_leitung_ui, tab_sb_ui = st.tabs([
+tab_info, tab_trafo_ui, tab_gen_ui, tab_motor_ui, tab_leitung_ui, tab_sb_ui, tab_netz_ui = st.tabs([
     "ℹ️  Info & Anleitung",
     "🔧  Transformator",
     "⚡  Generator",
     "⚙️  Motor",
     "📏  Leitung",
     "🛤️  Sammelschiene",
+    "🕸️  Netz",
 ])
 
 with tab_info:
@@ -159,3 +161,6 @@ with tab_leitung_ui:
 
 with tab_sb_ui:
     tab_sb.show()
+
+with tab_netz_ui:
+    tab_netz.show()
