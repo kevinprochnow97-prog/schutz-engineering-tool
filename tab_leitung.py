@@ -461,6 +461,8 @@ def show():
         theta_warn=theta_warn, i_warn=i_warn,
         erdimp_format=erdimp_format, RE_RL=RE_RL, XE_XL=XE_XL, K0=K0, PHI_K0=PHI_K0,
     )
+    # Parametersatz fuer "In Netz übernehmen" im Netz-Tab ablegen (Kopie, keine Rueckwirkung)
+    st.session_state["netz_p_leitung"] = dict(p)
     r = berechne_alle(p)
     g, d21, d87, d67, d85 = r["grund"], r["21"], r["87L"], r["67N"], r["85"]
     d50, d79, dbf = r["50/51"], r["79"], r["50BF"]

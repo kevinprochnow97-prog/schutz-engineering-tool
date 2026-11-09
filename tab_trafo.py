@@ -271,6 +271,8 @@ def show():
         BF_aktiv=bf_aktiv, BF_zweistufig=bf_zwei,
         I_BF=I_BF_v, t_LS_aus=tLS_v, t_RF_strom=tRF_v, t_sich_BF=tSi_v,
     )
+    # Parametersatz fuer "In Netz übernehmen" im Netz-Tab ablegen (Kopie, keine Rueckwirkung)
+    st.session_state["netz_p_trafo"] = dict(p)
     e = berechne_alle(p)
     g = e["grund"]
 

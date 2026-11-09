@@ -334,6 +334,8 @@ def show():
         U59_1=u59_1, U59_2=u59_2, U27_1=u27_1, U27_2=u27_2,
         phase_seq=phase_seq, U59_V2_1=u59v2_1, U59_V2_2=u59v2_2,
     )
+    # Parametersatz fuer "In Netz übernehmen" im Netz-Tab ablegen (Kopie, keine Rueckwirkung)
+    st.session_state["netz_p_motor"] = dict(p)
     e = berechne_alle(p)
     g = e["grund"]
 
