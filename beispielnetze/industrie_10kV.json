@@ -1,0 +1,146 @@
+{
+  "format_version": 1,
+  "name": "Industrie 10 kV (Beispielnetz, Tool-Vorgaben)",
+  "netzform": "strahl",
+  "knoten": [
+    {
+      "id": "K1",
+      "name": "Übergabe 110 kV",
+      "UN_kV": 110.0,
+      "sternpunkt": "direkt",
+      "Ik_max_kA": 15.7,
+      "Ik_min_kA": 6.8
+    },
+    {
+      "id": "K2",
+      "name": "MS-Hauptverteilung 10 kV",
+      "UN_kV": 10.0,
+      "sternpunkt": "isoliert",
+      "Ik_max_kA": 10.0,
+      "Ik_min_kA": 7.5
+    },
+    {
+      "id": "K3",
+      "name": "Motorabgang 10 kV",
+      "UN_kV": 10.0,
+      "sternpunkt": "isoliert",
+      "Ik_max_kA": 9.1,
+      "Ik_min_kA": 6.8
+    },
+    {
+      "id": "K4",
+      "name": "Unterverteilung 10 kV",
+      "UN_kV": 10.0,
+      "sternpunkt": "isoliert",
+      "Ik_max_kA": 7.9,
+      "Ik_min_kA": 5.8
+    },
+    {
+      "id": "K5",
+      "name": "NS-Verteilung 0,4 kV",
+      "UN_kV": 0.4,
+      "sternpunkt": "direkt",
+      "Ik_max_kA": 35.0,
+      "Ik_min_kA": null
+    }
+  ],
+  "elemente": [
+    {
+      "id": "E1",
+      "name": "Netzeinspeisung 110 kV",
+      "typ": "einspeisung",
+      "von": null,
+      "nach": "K1",
+      "zustand": "ein",
+      "p": {
+        "Sk_max_MVA": 3000,
+        "Sk_min_MVA": 1500,
+        "I_gt_NB_A": 160,
+        "t_gt_NB_s": 1.2
+      }
+    },
+    {
+      "id": "T1",
+      "name": "Trafo 110/10 kV",
+      "typ": "trafo",
+      "von": "K1",
+      "nach": "K2",
+      "zustand": "ein",
+      "p": {
+        "Sn_MVA": 20,
+        "uk_pct": 12,
+        "Schaltgruppe": "YNd5",
+        "Stufensteller_pm": 16,
+        "CT_OS_Prim": 150,
+        "CT_OS_Sek": 1,
+        "CT_US_Prim": 1250,
+        "CT_US_Sek": 1
+      }
+    },
+    {
+      "id": "L1",
+      "name": "Kabel K2-K3",
+      "typ": "leitung",
+      "von": "K2",
+      "nach": "K3",
+      "zustand": "ein",
+      "p": {
+        "L_km": 0.5,
+        "X_Belag": 0.11,
+        "phi_Ltg": 28.1,
+        "IN_Ltg": 300,
+        "CT_Prim": 200,
+        "CT_Sek": 1
+      }
+    },
+    {
+      "id": "L2",
+      "name": "Kabel K2-K4",
+      "typ": "leitung",
+      "von": "K2",
+      "nach": "K4",
+      "zustand": "ein",
+      "p": {
+        "L_km": 1.2,
+        "X_Belag": 0.11,
+        "phi_Ltg": 28.1,
+        "IN_Ltg": 300,
+        "CT_Prim": 200,
+        "CT_Sek": 1
+      }
+    },
+    {
+      "id": "M1",
+      "name": "Motor 2 MW",
+      "typ": "motor",
+      "von": "K3",
+      "nach": null,
+      "zustand": "ein",
+      "p": {
+        "Pn_kW": 2000,
+        "cos_phi": 0.88,
+        "eta": 0.96,
+        "I_Anlauf_Verh": 5.5,
+        "t_Anlauf": 8,
+        "CT_Prim": 150,
+        "CT_Sek": 1
+      }
+    },
+    {
+      "id": "T2",
+      "name": "Trafo 10/0,4 kV",
+      "typ": "trafo",
+      "von": "K4",
+      "nach": "K5",
+      "zustand": "ein",
+      "p": {
+        "Sn_MVA": 1.6,
+        "uk_pct": 6,
+        "Schaltgruppe": "Dyn5",
+        "Stufensteller_pm": 0,
+        "CT_OS_Prim": 100,
+        "CT_OS_Sek": 1
+      }
+    }
+  ]
+}
