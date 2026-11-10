@@ -225,10 +225,22 @@ def schutz_5051_phase(g: dict, p: dict) -> dict:
       - OS (Speiseseite): Default automatisch aus 1,2/uk bzw. Ik_max_US.
       - US: gegen die nachgelagerte Staffelung (eigener Faktor).
     Eingaben f_I_Ph_HH_OS / f_I_Ph_HH_US überschreiben die Defaults.
+
+    Zeiten: t_I_Ph / t_I_Ph_HH gelten für die OS-Seite (Adr.2016 / 2013) und,
+    solange nichts anderes vorgegeben ist, auch für die US-Seite. Mit den
+    optionalen Eingaben t_I_Ph_US / t_I_Ph_HH_US erhält die US-Seite eigene
+    Zeiten (Adr.2116 / 2113, U/AMZ-Phase 2). Das braucht die netzweite
+    Staffelung: die OS-Stufe muss einen Staffelabstand über der US-Stufe liegen.
+    Ohne diese Eingaben ist das Ergebnis identisch zum bisherigen Stand.
     """
     f_I    = p.get("f_I_Ph",  K.f_I_Ph_def)
     t_I    = p.get("t_I_Ph",  K.t_I_Ph_def)
     t_IHH  = p.get("t_I_Ph_HH", K.t_I_Ph_HH_def)
+    # None bedeutet "nicht vorgegeben" (leeres Feld im Tab) -> wie OS
+    t_I_US   = p.get("t_I_Ph_US")
+    t_IHH_US = p.get("t_I_Ph_HH_US")
+    t_I_US   = t_I if t_I_US is None else t_I_US
+    t_IHH_US = t_IHH if t_IHH_US is None else t_IHH_US
 
     f_IHH_OS_emp = empfehlung_IHH_OS(g, p)
     f_IHH_OS = p.get("f_I_Ph_HH_OS", f_IHH_OS_emp)
@@ -244,12 +256,14 @@ def schutz_5051_phase(g: dict, p: dict) -> dict:
             "I_prim":  round(f_I      * g["IN_OS_prim"], 4),
             "IHH_sek": round(f_IHH_OS * g["IN_OS_sek"], 4),
             "IHH_prim":round(f_IHH_OS * g["IN_OS_prim"], 4),
+            "t_I": t_I, "t_IHH": t_IHH,
         },
         "US": {
             "I_sek":   round(f_I      * g["IN_US_sek"], 4),
             "I_prim":  round(f_I      * g["IN_US_prim"], 4),
             "IHH_sek": round(f_IHH_US * g["IN_US_sek"], 4),
             "IHH_prim":round(f_IHH_US * g["IN_US_prim"], 4),
+            "t_I": t_I_US, "t_IHH": t_IHH_US,
         },
     }
 

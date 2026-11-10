@@ -162,6 +162,17 @@ HERST = {
         "grund": ("Verzögerung I>. Ergibt sich aus dem netzweiten Staffelplan "
                   "(reine Zusatzverzögerung, ohne Eigenzeit)."),
     },
+    "t_I_Ph_US": {
+        "range": "leer = wie OS, sonst aus Staffelplan (t OS minus Staffelabstand)",
+        "grund": ("Eigene Verzögerung I> der US-Seite (U/AMZ-Phase 2). Für die netzweite "
+                  "Staffelung liegt die US-Stufe einen Staffelabstand unter der OS-Stufe. "
+                  "Leer gelassen gilt die Zeit der OS-Seite (Tool-Vorgabe)."),
+    },
+    "t_I_Ph_HH_US": {
+        "range": "leer = wie OS, sonst aus Staffelplan",
+        "grund": ("Eigene Verzögerung I>> der US-Seite (U/AMZ-Phase 2). Leer gelassen gilt "
+                  "die Zeit der OS-Seite (Tool-Vorgabe)."),
+    },
     "f_I_Ph_HH_OS": {
         "range": "1,2/uk bzw. über Durchgangsfehler (auto aus uk/Ik_max_US)",
         "grund": ("Hochstromstufe Speiseseite (OS). Muss für Fehler bis in den Trafo "
@@ -302,6 +313,7 @@ _EINTRAG_ADRESSEN = {
     "Harm_2": "Adr.1271",
     "f_I_Ph": "Adr.2014", "t_I_Ph": "Adr.2016",
     "f_I_Ph_HH_OS": "Adr.2011", "f_I_Ph_HH_US": "Adr.2111 (U/AMZ-Phase 2)", "t_I_Ph_HH": "Adr.2013",
+    "t_I_Ph_US": "Adr.2116 (U/AMZ-Phase 2)", "t_I_Ph_HH_US": "Adr.2113 (U/AMZ-Phase 2)",
     "k_Faktor": "Adr.4202", "tau_min": "Adr.4203", "I2_zul": "Adr.4032",
     "U_lt": "Adr.5212 (bez.) / 5211 (V)", "U_gt": "Adr.5312 (bez.) / 5311 (V)",
     "U_gtgt": "Adr.5315 (bez.) / 5314 (V)", "f_lt": "Adr.5611",

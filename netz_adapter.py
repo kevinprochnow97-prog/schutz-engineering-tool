@@ -78,7 +78,8 @@ PFLICHT = {
 # Motor-Rechenkern zum Absturz bringen.
 OPTIONAL_ZAHL = {
     "trafo":   ("Stufensteller_pm", "Ik_max_OS_kA", "Ik_max_US_kA", "k_S_IGG",
-                "f_I_Ph", "t_I_Ph", "t_I_Ph_HH", "f_I_Ph_HH_OS", "f_I_Ph_HH_US"),
+                "f_I_Ph", "t_I_Ph", "t_I_Ph_HH", "f_I_Ph_HH_OS", "f_I_Ph_HH_US",
+                "t_I_Ph_US", "t_I_Ph_HH_US"),
     "leitung": ("L_km", "X_Belag", "phi_Ltg", "Ik_max_kA", "Ik_min_kA",
                 "iph_h", "t_iph_h", "iph_hh", "t_iph_hh"),
     "motor":   ("Pn_kW", "IN_direkt", "cos_phi", "eta", "I_Anlauf_Verh", "t_Anlauf",
@@ -185,9 +186,9 @@ def _stufen_trafo(eid, e, p, kn) -> list:
     for seite, ort in (("OS", e.von), ("US", e.nach)):
         UN = kn[ort].UN_kV
         stufen.append(Schutzstufe(eid, f"I> {seite}", "51", ort, UN, r[seite]["I_prim"],
-                                  UMZ, r["t_I"], None, True, f"{q} ({seite})"))
+                                  UMZ, r[seite]["t_I"], None, True, f"{q} ({seite})"))
         stufen.append(Schutzstufe(eid, f"I>> {seite}", "50", ort, UN, r[seite]["IHH_prim"],
-                                  UMZ, r["t_IHH"], None, True, f"{q} ({seite})"))
+                                  UMZ, r[seite]["t_IHH"], None, True, f"{q} ({seite})"))
     return stufen
 
 
