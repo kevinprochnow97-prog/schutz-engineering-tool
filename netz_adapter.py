@@ -86,6 +86,17 @@ OPTIONAL_ZAHL = {
                 "f_50_2", "t_50_2", "f_50_1", "t_50_1", "f_51", "T_51"),
 }
 
+# Anzeigename der Stufe -> Schluessel der Verzoegerung im Element-Parametersatz.
+# Damit kann ein Staffelvorschlag (netz_selektivitaet) ins Netzmodell zurueck-
+# geschrieben werden, ohne die Rechenkerne zu kennen. Ein Test prueft, dass jeder
+# Schluessel in OPTIONAL_ZAHL steht und den Rechenkern erreicht.
+ZEIT_PARAMETER = {
+    "trafo":   {"I> OS": "t_I_Ph", "I>> OS": "t_I_Ph_HH",
+                "I> US": "t_I_Ph_US", "I>> US": "t_I_Ph_HH_US"},
+    "leitung": {"Iph>": "t_iph_h", "Iph>>": "t_iph_hh"},
+    "motor":   {"I> (50-1)": "t_50_1", "I>> (50-2)": "t_50_2"},
+}
+
 
 @dataclass(frozen=True)
 class Schutzstufe:

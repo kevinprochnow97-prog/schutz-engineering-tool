@@ -62,3 +62,9 @@ AMZ_KENNLINIEN = {
 AMZ_Anregefaktor = 1.10
 # Stuetzstellen je Pruefung, wenn eine AMZ-Stufe beteiligt ist (logarithmisch verteilt)
 AMZ_Stuetzstellen = 60
+
+# ── Staffelvorschlag ─────────────────────────────────────────────────────────
+# Kleinste Verzoegerung, die der Vorschlag einer UMZ-Stufe gibt (Tool-Vorgabe).
+# Entspricht der Werksvoreinstellung der Hochstromstufen (7UT613 Adr.2013,
+# 7SA6 Adr.2611: 0,10 s) und haelt Einschaltvorgaenge und Wandler-Transienten fern.
+t_Vorschlag_min = 0.10

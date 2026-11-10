@@ -17,6 +17,8 @@ Prueft:
 10. Ring: Ketten folgen dem Schaltzustand.
 11. Unvollstaendige Daten und Fehlerfaelle: Meldung statt Absturz.
 12. Zufallsnetze: das Modul wirft nie, das Sicherheitsnetz greift nie.
+13. Staffelvorschlag: Referenznetz gegen Handrechnung, Endpunkte unveraendert,
+    Uebernahme ins Netz, Obergrenze Netzbetreiber, Zeitparameter erreichen die Kerne.
 """
 
 from pathlib import Path
@@ -408,15 +410,75 @@ def test_zufallsnetze():
         for kid in rnd.sample(sorted(n.knoten), 2):
             n.knoten_aendern(kid, Ik_max_kA=rnd.choice([None, 0.5, 1.0, 50.0]), Ik_min_kA=None)
         erg = S.pruefe_selektivitaet(n, U_bezug_kV=rnd.choice([None, 0.4, 10.0, 110.0]))
+        vor = S.staffelvorschlag(n, dt_soll=rnd.choice([0.2, 0.3, 0.5]))
         # Das Sicherheitsnetz darf nie greifen muessen
-        versteckt = [m.text for m in erg.meldungen if "abgebrochen" in m.text]
+        versteckt = [m.text for m in erg.meldungen + vor.meldungen if "abgebrochen" in m.text]
         assert not versteckt, versteckt
+        for v in vor.vorschlaege:
+            assert v.t_neu_s != v.t_neu_s or v.t_neu_s >= 0
         for p in erg.pruefungen:
             assert p.status in (S.OK, S.GELB, S.ROT) and p.text
             assert p.dt_s is None or p.dt_s == p.dt_s           # kein NaN
         geprueft += bool(erg.pruefungen)
     assert geprueft > 100, geprueft
     print(f"Zufallsnetze OK: 300 Netze ohne Absturz, {geprueft} davon mit Staffelprüfung.")
+
+
+# ── 13. Staffelvorschlag ─────────────────────────────────────────────────────
+def test_staffelvorschlag():
+    n = _ref()
+    vor = S.staffelvorschlag(n)
+    assert vor.ok, vor.meldungen
+    neu = {(v.element, v.stufe): v.t_neu_s for v in vor.vorschlaege}
+    # Handrechnung (gleiche Zeiten wie in _gestaffelt(), dort von Hand gefunden):
+    assert neu[("L1", "Iph>")] == 0.8 and neu[("L1", "Iph>>")] == 0.3      # M1 50-1 0,5 s / 50-2 0 s
+    assert neu[("T2", "I> OS")] == 0.8 and neu[("T2", "I>> OS")] == 0.1    # I>> OS ueber Ik K5: frei
+    assert neu[("L2", "Iph>")] == 1.1 and neu[("L2", "Iph>>")] == 1.1      # Iph>> 600 A < T2 I>> OS 1680 A
+    assert neu[("T1", "I> US")] == 1.4 and neu[("T1", "I> OS")] == 1.7
+    # Endpunkte und Netzbetreiber bleiben unveraendert
+    for k in (("M1", "I> (50-1)"), ("M1", "I>> (50-2)"), ("T2", "I> US"), ("T2", "I>> US"), ("E1", "I> NB")):
+        v = [x for x in vor.vorschlaege if (x.element, x.stufe) == k][0]
+        assert not v.geaendert and v.t_alt_s == v.t_neu_s
+    assert "E1" not in vor.parameter_je_element()
+    # Gegenpruefung: alles gruen bis auf die Obergrenze des Netzbetreibers (1,7 s > 1,2 s)
+    assert vor.pruefung.status == S.ROT
+    rot = [p for p in vor.pruefung.pruefungen if p.status != S.OK]
+    assert [(p.unten, p.oben) for p in rot] == [("T1 (OS)", "E1")]
+    _hat(vor, WARNUNG, "passt nicht unter den Schutz des Netzbetreibers")
+
+    # Uebernahme ins Netz: dieselbe Pruefung aus dem Modell liefert dasselbe Ergebnis
+    for eid, p_neu in vor.parameter_je_element().items():
+        _p_aendern(n, eid, **p_neu)
+    erg = S.pruefe_selektivitaet(n)
+    assert [(p.unten, p.oben, p.status, p.dt_s) for p in erg.pruefungen] == \
+        [(p.unten, p.oben, p.status, p.dt_s) for p in vor.pruefung.pruefungen]
+    # Mit 2,0 s beim Netzbetreiber ist der Vorschlag vollstaendig gruen und idempotent
+    _p_aendern(n, "E1", t_gt_NB_s=2.0)
+    assert S.pruefe_selektivitaet(n).status == S.OK
+    vor2 = S.staffelvorschlag(n)
+    assert vor2.pruefung.status == S.OK and vor2.geaendert == []
+
+    # Groesserer Sollabstand und hoehere Mindestzeit wirken
+    vor3 = S.staffelvorschlag(_ref(), dt_soll=0.5, t_min=0.2)
+    neu3 = {(v.element, v.stufe): v.t_neu_s for v in vor3.vorschlaege}
+    assert neu3[("L1", "Iph>")] == 1.0 and neu3[("T2", "I>> OS")] == 0.2
+
+    # Jeder Zeitparameter des Adapters erreicht den Rechenkern (Zeit aendert die Stufe)
+    for typ, zuordnung in A.ZEIT_PARAMETER.items():
+        for stufe, key in zuordnung.items():
+            assert key in A.OPTIONAL_ZAHL[typ], (typ, key)
+            eid = {"trafo": "T1", "leitung": "L1", "motor": "M1"}[typ]
+            m = _ref()
+            _p_aendern(m, eid, **{key: 0.77})
+            assert {s.stufe: s.t_s for s in A.erzeuge_schutzstufen(m).stufen_von(eid)}[stufe] == 0.77
+
+    # Fehlerfaelle: Meldung statt Absturz
+    m = _ref()
+    m.element_aendern("E1", zustand="aus")
+    v = S.staffelvorschlag(m)
+    assert not v.ok and v.pruefung is None
+    assert not S.staffelvorschlag(_ref(), dt_soll=-1).ok
+    print("Staffelvorschlag OK: Handrechnung, Endpunkte fest, Übernahme konsistent, Obergrenze gemeldet.")
 
 
 if __name__ == "__main__":
@@ -432,4 +494,5 @@ if __name__ == "__main__":
     test_ring()
     test_unvollstaendig_und_fehler()
     test_zufallsnetze()
+    test_staffelvorschlag()
     print("\nAlle Prüfungen bestanden.")

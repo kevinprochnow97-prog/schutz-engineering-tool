@@ -15,6 +15,7 @@ Ablauf:
   5. Schutzstufen aus den Betriebsmittel-Tabs (Adapter)
   6. Zeitstaffelung: Pfade, Ampel je benachbartem Paar, Meldungen
      (netz_selektivitaet.py)
+  7. Staffelvorschlag: neue Zeiten je Stufe, Gegenpruefung, Uebernahme ins Modell
 
 Bezug zu test_app.py: Bei leerem Netz zeigt die Seite genau einen st.info,
 keine Expander und keine Tabellen. Dadurch aendern sich in der Inventur nur
@@ -348,6 +349,55 @@ def _staffelung(netz: Netz, adapter) -> None:
                "anregen. Ströme auf die Bezugsspannung umgerechnet. Grün ab Soll, gelb zwischen "
                "Mindestwert und Soll, rot darunter. Nur Phasenstufen 50/51, Erdfehler und "
                "Stromverteilung über die Schaltgruppe folgen mit der Stromstaffelung.")
+    _vorschlag(netz, adapter, float(dt_soll))
+
+
+# ── 7. Staffelvorschlag ──────────────────────────────────────────────────────
+def _vorschlag(netz: Netz, adapter, dt_soll: float) -> None:
+    """
+    Zeiten vorschlagen (reine Zeitstaffelung von der Last zur Quelle) und auf Wunsch
+    ins Netzmodell schreiben. Der Vorschlag wird bei jedem Lauf neu aus dem Modell
+    gerechnet, es gibt keinen Zwischenstand im Session-State (Modell ist die Wahrheit).
+    """
+    grphead("Staffelvorschlag (reine Zeitstaffelung)")
+    if not st.toggle("Staffelvorschlag berechnen", key="netz_vorschlag_an",
+                     help="Jede UMZ-Stufe so schnell wie möglich, aber einen Staffelabstand "
+                          "über allem, was darunter bei demselben Strom auslöst. Endpunkte "
+                          "(Motor, unterste Trafoseite) und Netzbetreiber bleiben unverändert."):
+        return
+    vor = netz_selektivitaet.staffelvorschlag(netz, adapter, dt_soll=dt_soll)
+    _meldungen(vor.meldungen)
+    if vor.pruefung is None:
+        return
+    st.dataframe(pd.DataFrame([{
+        "Element": v.element, "Stufe": v.stufe,
+        "Parameter": v.parameter or "–",
+        "t bisher [s]": "–" if v.t_alt_s != v.t_alt_s else de(v.t_alt_s, 2),
+        "t Vorschlag [s]": "–" if v.t_neu_s != v.t_neu_s else de(v.t_neu_s, 2),
+        "Änderung": "✏️" if v.geaendert else "",
+        "Bestimmt durch": v.grund,
+    } for v in vor.vorschlaege]), width="stretch", hide_index=True)
+
+    p = vor.pruefung
+    anz = {k: sum(1 for x in p.pruefungen if x.status == k)
+           for k in (netz_selektivitaet.OK, netz_selektivitaet.GELB, netz_selektivitaet.ROT)}
+    st.markdown(f"{AMPEL_EMOJI[p.status]} **Gegenprüfung mit den vorgeschlagenen Zeiten: "
+                f"{p.status}** &nbsp; " + " ".join(pill(k, n) for k, n in anz.items() if n),
+                unsafe_allow_html=True)
+    geaendert = vor.geaendert
+    if not geaendert:
+        st.caption("Keine Änderung nötig, die Zeiten im Netz entsprechen bereits dem Vorschlag.")
+        return
+    st.caption(f"{len(geaendert)} Zeiten würden geändert. Die Übernahme schreibt die Zeiten in "
+               "die Element-Parameter des Netzes (nicht in die Betriebsmittel-Tabs). Die Werte "
+               "erscheinen danach in der Schutzstufen-Tabelle und in der Staffelprüfung oben.")
+    if st.button("✅ Vorschlag ins Netz übernehmen", key="netz_vorschlag_uebernehmen"):
+        for eid, p_neu in vor.parameter_je_element().items():
+            p_alt = dict(netz.elemente[eid].p)
+            p_alt.update(p_neu)
+            netz.parameter_setzen(eid, p_alt)
+        _erfolg(f"Staffelvorschlag übernommen: {len(geaendert)} Zeiten in "
+                f"{len(vor.parameter_je_element())} Elementen gesetzt.")
 
 
 # ── Einstieg ─────────────────────────────────────────────────────────────────
