@@ -13,10 +13,13 @@ Ablauf:
   3. Baumeingabe: Knoten anlegen, Element anlegen (Parameter aus den Tabs)
   4. Netz bearbeiten: schalten, Parameter uebernehmen, entfernen
   5. Schutzstufen aus den Betriebsmittel-Tabs (Adapter)
+  6. Zeitstaffelung: Pfade, Ampel je benachbartem Paar, Meldungen
+     (netz_selektivitaet.py)
 
 Bezug zu test_app.py: Bei leerem Netz zeigt die Seite genau einen st.info,
 keine Expander und keine Tabellen. Dadurch aendern sich in der Inventur nur
-die Zahl der Tabs (6 -> 7) und der Hinweise (5 -> 6).
+die Zahl der Tabs (6 -> 7) und der Hinweise (5 -> 6). Mit geladenem Netz
+zeigt der Tab vier Tabellen (Knoten, Elemente, Schutzstufen, Staffelung).
 """
 
 from pathlib import Path
@@ -24,12 +27,14 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
+import konstanten_netz as KN
 import netz_adapter
 import netz_bild
+import netz_selektivitaet
 import netz_topologie
 from netz_modell import ELEMENTTYPEN, STERNPUNKTE, ModellFehler, Netz
-from ui import grphead, inject_css
-from utils import de
+from ui import grphead, inject_css, pill
+from utils import AMPEL_EMOJI, de
 
 SCHLUESSEL = "netz_modell"
 BEISPIELNETZ = Path(__file__).parent / "beispielnetze" / "industrie_10kV.json"
@@ -260,18 +265,19 @@ def _bearbeiten(netz: Netz) -> None:
 
 
 # ── 5. Schutzstufen ──────────────────────────────────────────────────────────
-def _schutzstufen(netz: Netz, topo) -> None:
+def _schutzstufen(netz: Netz, topo):
+    """Schutzstufen anzeigen. Liefert das Adapter-Ergebnis fuer die Staffelung (oder None)."""
     grphead("Schutzstufen aus den Betriebsmittel-Tabs")
     if not topo.ok:
         st.caption("Erst die Topologie-Fehler oben beheben, dann werden die Schutzstufen erzeugt.")
-        return
+        return None
     erg = netz_adapter.erzeuge_schutzstufen(netz, topo)
     _meldungen(erg.meldungen)
     if not erg.stufen:
         st.caption("Noch keine Schutzstufen. Elemente brauchen Parameter aus den Tabs.")
-        return
+        return None
     st.caption("Werte aus den Rechenkernen der Tabs (Werksvoreinstellung, sofern im Tab nicht "
-               "geändert). Die Staffelung über das Netz folgt im nächsten Ausbauschritt.")
+               "geändert). Die Zeiten werden im nächsten Abschnitt gegeneinander gestaffelt.")
     st.dataframe(pd.DataFrame([{
         "Element": s.element, "Stufe": s.stufe, "ANSI": s.ansi, "Messort": s.messort,
         "UN [kV]": de(s.UN_kV, 1), "I prim. [A]": de(s.I_prim_A, 1), "Kennlinie": s.kennlinie,
@@ -280,6 +286,68 @@ def _schutzstufen(netz: Netz, topo) -> None:
         "aktiv": "ja" if s.aktiv else "nein", "Herkunft": s.quelle,
     } for s in sorted(erg.stufen, key=lambda s: (-s.UN_kV, s.element, s.stufe))]),
         width="stretch", hide_index=True)
+    return erg
+
+
+# ── 6. Zeitstaffelung ────────────────────────────────────────────────────────
+def _zeit(t) -> str:
+    return "–" if t is None else de(t, 2)
+
+
+def _staffelung(netz: Netz, adapter) -> None:
+    """
+    Ergebnis von netz_selektivitaet.pruefe_selektivitaet anzeigen.
+    Der Sollabstand ist hier einstellbar (Tool-Vorgabe 0,30 s), der technische
+    Mindestwert bleibt fest, damit die rote Ampel nicht weggeregelt werden kann.
+    """
+    grphead("Zeitstaffelung entlang der Versorgungspfade")
+    if adapter is None:
+        st.caption("Die Staffelprüfung läuft, sobald Schutzstufen vorhanden sind.")
+        return
+    a, b = st.columns([1, 3])
+    dt_soll = a.number_input("Staffelabstand Soll [s]", min_value=KN.dt_Staffel_min,
+                             max_value=1.0, value=KN.dt_Staffel_soll, step=0.05,
+                             format="%.2f", key="netz_dt_soll",
+                             help="Tool-Vorgabe, Herleitung in docs/tool_vorgabe_staffelabstand.md. "
+                                  f"Technischer Mindestwert {de(KN.dt_Staffel_min, 2)} s "
+                                  "(Schalterzeit, Rückfallzeit, Toleranzen, Sicherheitszuschlag).")
+    erg = netz_selektivitaet.pruefe_selektivitaet(netz, adapter, dt_soll=float(dt_soll))
+    _meldungen(erg.meldungen)
+    if not erg.pruefungen:
+        if erg.ok:
+            st.caption("Keine Paare zu prüfen: es gibt nur einen Schutzort je Pfad.")
+        return
+
+    anz = {k: sum(1 for p in erg.pruefungen if p.status == k)
+           for k in (netz_selektivitaet.OK, netz_selektivitaet.GELB, netz_selektivitaet.ROT)}
+    with b:
+        st.markdown(
+            f'<div style="margin-top:28px">{AMPEL_EMOJI[erg.status]} <b>Gesamt: {erg.status}</b> &nbsp; '
+            + " ".join(pill(k, n) for k, n in anz.items() if n)
+            + f'<br><span style="font-size:0.8rem;color:#5d6b82">Bezugsspannung '
+            f'{de(erg.U_bezug_kV, 1)} kV · Soll {de(erg.dt_soll_s, 2)} s · '
+            f'Mindestwert {de(erg.dt_min_s, 2)} s · {len(erg.pruefungen)} Paare</span></div>',
+            unsafe_allow_html=True)
+    for pfad in erg.pfade:
+        st.caption("🔗 " + " → ".join(pfad))
+
+    # Reihenfolge wie in den Pfaden (von der Last zur Quelle), nicht nach Element-ID
+    rang = {}
+    for pfad in erg.pfade:
+        for i, name in enumerate(pfad):
+            rang.setdefault(name, (len(rang), i))
+    pruefungen = sorted(erg.pruefungen, key=lambda p: rang.get(p.unten, (99, 99)))
+    st.dataframe(pd.DataFrame([{
+        "Ampel": AMPEL_EMOJI[p.status], "unten (Last)": p.unten, "Stufe unten": p.stufe_unten or "–",
+        "t unten [s]": _zeit(p.t_unten_s), "oben (Quelle)": p.oben, "Stufe oben": p.stufe_oben or "–",
+        "t oben [s]": _zeit(p.t_oben_s), "Δt [s]": _zeit(p.dt_s),
+        "I [A bez.]": "–" if p.I_bez_A is None else de(p.I_bez_A, 0),
+        "Bewertung": p.text,
+    } for p in pruefungen]), width="stretch", hide_index=True)
+    st.caption("Je Paar der kleinste Zeitabstand über alle Ströme, bei denen beide Schutzorte "
+               "anregen. Ströme auf die Bezugsspannung umgerechnet. Grün ab Soll, gelb zwischen "
+               "Mindestwert und Soll, rot darunter. Nur Phasenstufen 50/51, Erdfehler und "
+               "Stromverteilung über die Schaltgruppe folgen mit der Stromstaffelung.")
 
 
 # ── Einstieg ─────────────────────────────────────────────────────────────────
@@ -311,4 +379,6 @@ def show():
     _form_element(netz)
     if not leer:
         _bearbeiten(netz)
-        _schutzstufen(netz, topo)
+        adapter = _schutzstufen(netz, topo)
+        if topo.ok:
+            _staffelung(netz, adapter)

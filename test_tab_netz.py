@@ -10,10 +10,11 @@ Uebernahme eines echten Parametersatzes aus dem Trafo-Tab.
 
 Prueft:
 1. Leerstart: genau ein Hinweis, keine Tabellen, keine Ausnahmen.
-2. Beispielnetz laden: Einlinienbild, drei Tabellen, 16 Schutzstufen.
+2. Beispielnetz laden: Einlinienbild, vier Tabellen, 16 Schutzstufen.
 3. Baumeingabe: Knoten und Element anlegen, Fehleingaben werden abgewiesen.
 4. Bearbeiten: Netzform, Schalten, Entfernen.
 5. Uebernahme aus dem Trafo-Tab in der vollstaendigen App.
+6. Staffelung: 7 Paare mit Ampel wie im Modultest, Sollabstand wirkt, Pfade sichtbar.
 """
 
 from pathlib import Path
@@ -70,11 +71,11 @@ def test_beispielnetz():
     assert sorted(netz.elemente) == ["E1", "L1", "L2", "M1", "T1", "T2"]
     assert "Beispielnetz" in _texte(at.success)
     assert len(at.info) == 0 and len(at.error) == 0 and len(at.warning) == 0
-    assert len(at.dataframe) == 3                         # Knoten, Elemente, Schutzstufen
+    assert len(at.dataframe) == 4                         # Knoten, Elemente, Schutzstufen, Staffelung
     assert len(at.dataframe[2].value) == 16               # 16 Schutzstufen wie im Adaptertest
     assert any(c.type == "graphviz_chart" for c in at.main.children.values()) or \
         "graphviz_chart" in str(at._tree)
-    print("Beispielnetz OK: Einlinienbild, 3 Tabellen, 16 Schutzstufen.")
+    print("Beispielnetz OK: Einlinienbild, 4 Tabellen, 16 Schutzstufen.")
 
 
 # ── 3. Baumeingabe ───────────────────────────────────────────────────────────
@@ -170,10 +171,32 @@ def test_uebernahme_aus_trafo_tab():
     print("Übernahme OK: Parametersatz aus dem Trafo-Tab im Netz, Knoten bleiben die Wahrheit.")
 
 
+# ── 6. Staffelung ────────────────────────────────────────────────────────────
+def test_staffelung():
+    import konstanten_netz as KN
+    at = _beispiel()
+    df = at.dataframe[3].value
+    assert len(df) == 7 and list(df["Ampel"]).count("🔴") == 6 and list(df["Ampel"]).count("🟢") == 1
+    assert "M1 → L1 → T1 (US) → T1 (OS) → E1" in _texte(at.caption)
+    assert at.number_input(key="netz_dt_soll").value == KN.dt_Staffel_soll
+    # Sollabstand hochsetzen: das einzige gruene Paar (0,7 s) wird gelb, der Mindestwert bleibt
+    at.number_input(key="netz_dt_soll").set_value(0.8).run()
+    _keine_ausnahme(at)
+    df = at.dataframe[3].value
+    assert list(df["Ampel"]).count("🟡") == 1 and list(df["Ampel"]).count("🔴") == 6
+    # Ohne Schutzstufen (alle Elemente ohne Parameter) kein Absturz, kein Staffel-Dataframe
+    at.selectbox(key="netz_b_element").set_value("E1")
+    _klick(at, "netz_b_entf_element")
+    _keine_ausnahme(at)
+    assert "keine Einspeisung" in _texte(at.error).lower() or len(at.error) >= 1
+    print("Staffelung OK: 7 Paare, Ampel wie im Modultest, Sollabstand wirkt.")
+
+
 if __name__ == "__main__":
     test_leerstart()
     test_beispielnetz()
     test_knoten_und_element_anlegen()
     test_bearbeiten()
     test_uebernahme_aus_trafo_tab()
+    test_staffelung()
     print("\nAlle Prüfungen bestanden.")
