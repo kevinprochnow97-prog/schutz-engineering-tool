@@ -423,10 +423,14 @@ def _pruefe_strom(netz, adapter, U_bezug_kV, k_S, gamma, erg) -> StromPruefErgeb
             if I_bez is not None:
                 soll = k_S * I_bez
                 ik_eigen = _eigenes_ik_bez(netz, o, U)
+                I_anl_bez = None
+                if art == ART_MOTOR:
+                    I_anl = netz_adapter.anlaufstrom_A(ad.p_voll.get(u.element, {}))
+                    I_anl_bez = None if I_anl is None else S.auf_bezug(I_anl, u.UN_kV, U)
                 for s in hh:
                     ist = S.anregestrom_bez(s, U)
                     erg.pruefungen.append(_urteil_staffel(u, o, s, ist, soll, I_bez, text, art,
-                                                          ik_eigen, k_S))
+                                                          ik_eigen, I_anl_bez))
         # 2. Empfindlichkeit des empfindlichsten Ansprechwerts von o
         fern = _fernknoten(netz, zusp, u)
         if fern is None:
@@ -449,12 +453,12 @@ def _pruefe_strom(netz, adapter, U_bezug_kV, k_S, gamma, erg) -> StromPruefErgeb
     return erg
 
 
-def _urteil_staffel(u, o, s, ist, soll, I_bez, text, art, ik_eigen, k_S) -> Stromstufenpruefung:
+def _urteil_staffel(u, o, s, ist, soll, I_bez, text, art, ik_eigen, I_anl_bez) -> Stromstufenpruefung:
     kopf = f"{o.name} {s.stufe} {de(ist, 0)} A bez., nötig {de(soll, 0)} A bez. ({text})."
     if ist >= soll * (1 - KN.EPS_STROM):
         return Stromstufenpruefung("Stromstaffel", u.name, o.name, s.stufe, S.OK, soll, ist,
                                    kopf + " Stromstaffelung erfüllt.")
-    if art == ART_MOTOR and ist < I_bez:
+    if I_anl_bez is not None and ist < I_anl_bez * (1 - KN.EPS_STROM):
         return Stromstufenpruefung("Stromstaffel", u.name, o.name, s.stufe, S.ROT, soll, ist,
                                    kopf + " Unter dem Anlaufstrom: die Stufe löst beim Motoranlauf aus.")
     if ik_eigen is not None and soll > ik_eigen * (1 + KN.EPS_STROM):

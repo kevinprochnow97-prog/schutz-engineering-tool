@@ -73,7 +73,7 @@ def _gestaffelt() -> Netz:
     """
     n = _ref()
     _p_aendern(n, "M1", t_50_1=0.2)
-    _p_aendern(n, "L1", t_iph_hh=0.3)                            # Iph> bleibt 0,5 s
+    _p_aendern(n, "L1", iph_hh=4.82, t_iph_hh=0.3)               # Iph>> 1446 A ueber I>> von M1 (1204 A)
     _p_aendern(n, "T2", t_I_Ph=0.8, t_I_Ph_US=0.5)                # OS 0,8 s, US 0,5 s
     _p_aendern(n, "L2", t_iph_h=1.1, iph_hh=6.0, t_iph_hh=0.4)    # Iph>> ueber I>> von T2 OS
     _p_aendern(n, "T1", t_I_Ph=1.7, t_I_Ph_US=1.4, t_I_Ph_HH_US=0.7)
@@ -184,8 +184,8 @@ def test_referenznetz_werkseinstellung():
 
     # Handrechnung, alle Stroeme auf 10 kV:
     erwartet = {
-        # M1 50-1 (341,7 A, 0,5 s) gegen L1 Iph> (360 A, 0,5 s)
-        ("M1", "L1"):            (S.ROT, 0.0, 360.0),
+        # M1 50-1 (341,7 A, 0,5 s, bis 1204 A) gegen L1 Iph>> (600 A, 0,1 s): -0,4 s bei 600 A
+        ("M1", "L1"):            (S.ROT, -0.4, 600.0),
         # L1 Iph>> (600 A, 0,1 s) gegen T1 I>> US (8083 A, 0,1 s), Ik max K2 = 10 kA
         ("L1", "T1 (US)"):       (S.ROT, 0.0, 8082.9),
         ("L2", "T1 (US)"):       (S.ROT, 0.0, 8082.9),
@@ -431,7 +431,8 @@ def test_staffelvorschlag():
     assert vor.ok, vor.meldungen
     neu = {(v.element, v.stufe): v.t_neu_s for v in vor.vorschlaege}
     # Handrechnung (gleiche Zeiten wie in _gestaffelt(), dort von Hand gefunden):
-    assert neu[("L1", "Iph>")] == 0.8 and neu[("L1", "Iph>>")] == 0.3      # M1 50-1 0,5 s / 50-2 0 s
+    # L1 Iph>> (600 A) liegt unter I>> von M1 (1204 A): dort loest M1 mit 50-1 nach 0,5 s aus
+    assert neu[("L1", "Iph>")] == 0.8 and neu[("L1", "Iph>>")] == 0.8
     assert neu[("T2", "I> OS")] == 0.8 and neu[("T2", "I>> OS")] == 0.1    # I>> OS ueber Ik K5: frei
     assert neu[("L2", "Iph>")] == 1.1 and neu[("L2", "Iph>>")] == 1.1      # Iph>> 600 A < T2 I>> OS 1680 A
     assert neu[("T1", "I> US")] == 1.4 and neu[("T1", "I> OS")] == 1.7

@@ -44,6 +44,7 @@ F) Leitungen L1, L2 (beide NA2XS2Y 3x1x150 Al)
 G) Motor M1
    Pn 2000 kW | 10 kV | cos φ 0,88 | η 0,96 | I_A/IN 5,5 | t_Anlauf 8 s
    CT 150/1 A   (IN ≈ 137 A)
+   50-2: 8,81 x IN = 1204 A (1,6 x Anlaufstrom 752 A, aufgerundet, Tool-Vorgabe)
 
 H) Keine Eigenerzeugung. Generator als spaetere Erweiterung.
 ```

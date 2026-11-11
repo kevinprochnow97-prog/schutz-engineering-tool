@@ -58,6 +58,7 @@ from dataclasses import dataclass, field, replace
 
 import konstanten_netz as KN
 import netz_adapter
+import netz_umrechnung
 from netz_adapter import UMZ, Schutzstufe
 from netz_modell import Netz
 from netz_topologie import FEHLER, HINWEIS, WARNUNG, Meldung
@@ -101,6 +102,7 @@ class Staffelpruefung:
     t_oben_s: float | None = None
     I_grenz_bez_A: float | None = None    # Ik max am unteren Messort, None = unbekannt
     text: str = ""
+    f_stufensteller: float | None = None  # ungünstigste Stufenstellerlage (Strom oben = f * unten), None = Nennlage
 
 
 @dataclass
@@ -297,11 +299,63 @@ def _pruefstroeme(unten: Schutzort, oben: Schutzort, U: float, I_grenz) -> list:
     return sorted(punkte)
 
 
+def oben_in_stromlage_unten(oben: Schutzort, f: float) -> Schutzort:
+    """
+    Schutzort oben so beschreiben, wie er vom Strom am unteren Messort aus erscheint,
+    wenn dazwischen der Stufensteller den Strom um den Faktor f aendert (Strom oben = f * unten).
+    Eine Stufe mit Ansprechwert I regt dann schon bei I/f unten an. Fuer AMZ gilt dasselbe,
+    weil t nur von I_oben/Ip abhaengt.
+    """
+    if f == 1.0:
+        return oben
+    return replace(oben, stufen=tuple(replace(s, I_prim_A=s.I_prim_A / f) for s in oben.stufen))
+
+
+def stufensteller_faktoren(tap) -> list:
+    """Zu pruefende Faktoren: Nennlage zuerst, dann die beiden Extremlagen (nur wenn verschieden)."""
+    if not tap:
+        return [1.0]
+    f_lo, f_hi = tap
+    return [1.0] + [f for f in (f_lo, f_hi) if abs(f - 1.0) > 1e-9]
+
+
 def pruefe_paar(unten: Schutzort, oben: Schutzort, U_bezug_kV: float,
                 I_grenz_bez_A: float | None = None,
                 dt_soll: float = KN.dt_Staffel_soll,
-                dt_min: float = KN.dt_Staffel_min) -> Staffelpruefung:
-    """Zeitstaffelung zwischen zwei benachbarten Schutzorten pruefen."""
+                dt_min: float = KN.dt_Staffel_min,
+                tap: tuple | None = None) -> Staffelpruefung:
+    """
+    Zeitstaffelung zwischen zwei benachbarten Schutzorten pruefen.
+    tap = (f_min, f_max): Einfluss eines Stufenstellers zwischen beiden Messorten
+    (netz_umrechnung.tap_spanne). Geprueft wird in Nennlage und in beiden Extremlagen,
+    es gilt das schlechteste Ergebnis. Eine Luecke der Ansprechwerte zaehlt nur in
+    der Nennlage (in den Extremlagen ist sie eine Folge der Stufenstellerlage).
+    """
+    schlecht = None
+    for f in stufensteller_faktoren(tap):
+        p = _pruefe_paar_f(unten, oben_in_stromlage_unten(oben, f), U_bezug_kV, I_grenz_bez_A,
+                           dt_soll, dt_min, luecke_bewerten=(f == 1.0))
+        if f != 1.0:
+            p = replace(p, f_stufensteller=f,
+                        text=f"Bei Stufensteller-Lage ×{de(f, 3)}: {p.text}")
+        if schlecht is None or _schlechter(p, schlecht):
+            schlecht = p
+    return schlecht
+
+
+def _schlechter(a: Staffelpruefung, b: Staffelpruefung) -> bool:
+    """True, wenn Ergebnis a strenger zu bewerten ist als b (Ampel, dann kleinerer Abstand)."""
+    if _RANG[a.status] != _RANG[b.status]:
+        return _RANG[a.status] > _RANG[b.status]
+    da = math.inf if a.dt_s is None else a.dt_s
+    db = math.inf if b.dt_s is None else b.dt_s
+    return da < db - KN.EPS_ZEIT
+
+
+def _pruefe_paar_f(unten: Schutzort, oben: Schutzort, U_bezug_kV: float,
+                    I_grenz_bez_A: float | None, dt_soll: float, dt_min: float,
+                    luecke_bewerten: bool = True) -> Staffelpruefung:
+    """Eine Pruefung in einer festen Stufenstellerlage (siehe pruefe_paar)."""
     U = U_bezug_kV
     ohne_grenze = ("" if I_grenz_bez_A is not None else
                    f" Ohne Ik max an {unten.messort} wurde ohne obere Stromgrenze geprüft.")
@@ -329,6 +383,8 @@ def pruefe_paar(unten: Schutzort, oben: Schutzort, U_bezug_kV: float,
             schlecht = (dt, I, t_u, s_u, t_o, s_o)
 
     text_luecke = ""
+    if luecke is not None and not luecke_bewerten:
+        luecke = None
     if luecke is not None:
         text_luecke = (f" {oben.name} ({luecke[1].stufe}) regt ab {de(luecke[0], 0)} A an, "
                        f"{unten.name} dort noch nicht. Ansprechwerte prüfen (Stromstaffelung).")
@@ -443,8 +499,10 @@ def _struktur(netz, ad, U_bezug_kV, meldungen) -> dict | None:
         meldungen.append(Meldung(
             HINWEIS, "Ohne Schutz des Netzbetreibers an der Einspeisung endet die "
                      "Staffelprüfung am obersten eigenen Schutz."))
+    tap = {(u.schluessel, o.schluessel): netz_umrechnung.tap_spanne(netz, topo, u.messort, o.messort)
+           for u, o in paare}
     return {"U": U, "orte": [o for eid in sorted(orte) for o in orte[eid]],
-            "pfade": pfade, "paare": paare}
+            "pfade": pfade, "paare": paare, "tap": tap}
 
 
 def _pruefe(netz, adapter, U_bezug_kV, dt_soll, dt_min, erg) -> SelektivitaetErgebnis:
@@ -464,7 +522,8 @@ def _pruefe(netz, adapter, U_bezug_kV, dt_soll, dt_min, erg) -> SelektivitaetErg
         return erg
     U = st["U"]
     erg.U_bezug_kV, erg.orte, erg.pfade = U, st["orte"], st["pfade"]
-    erg.pruefungen = [pruefe_paar(u, o, U, _grenzstrom_bez(netz.knoten, u, U), dt_soll, dt_min)
+    erg.pruefungen = [pruefe_paar(u, o, U, _grenzstrom_bez(netz.knoten, u, U), dt_soll, dt_min,
+                                  st["tap"].get((u.schluessel, o.schluessel)))
                       for u, o in st["paare"]]
     return erg
 
@@ -542,7 +601,7 @@ def _vorschlag(netz, adapter, U_bezug_kV, dt_soll, t_min, erg,
                         stufen.append(s)
                         continue
                     t_neu, grund = _zeit_fuer_stufe(ort, s, [neu[u.schluessel] for u in unter[k]],
-                                                    U, knoten, dt_soll, t_min)
+                                                    U, knoten, dt_soll, t_min, st["tap"])
                     _merke(erg, elemente, ort, s, t_neu, grund)
                     stufen.append(replace(s, t_s=t_neu))
                 neu[k] = replace(ort, stufen=tuple(stufen))
@@ -579,18 +638,27 @@ def _merke(erg, elemente, ort, s, t_neu, grund) -> None:
     erg.vorschlaege.append(Zeitvorschlag(ort.element, s.stufe, key, t_alt, t_neu, grund))
 
 
-def _zeit_fuer_stufe(ort, s, darunter, U, knoten, dt_soll, t_min) -> tuple:
-    """Kleinste Zeit der Stufe s, die ueber allen Schutzorten darunter liegt."""
-    I_an = anregestrom_bez(s, U)
+def _zeit_fuer_stufe(ort, s, darunter, U, knoten, dt_soll, t_min, tap=None) -> tuple:
+    """
+    Kleinste Zeit der Stufe s, die ueber allen Schutzorten darunter liegt.
+    Mit Stufensteller zwischen den Messorten (tap) gilt die Zeit, die in allen
+    Stufenstellerlagen passt.
+    """
     bedarf, wegen = t_min, "Mindestzeit (Tool-Vorgabe)"
     for u in darunter:
         I_grenz = _grenzstrom_bez(knoten, u, U)
-        for I in _pruefstroeme(u, ort, U, I_grenz):
-            if I < I_an * (1 - KN.EPS_STROM):
-                continue
-            t_u, s_u = ausloesezeit(u, I, U)
-            if t_u is not None and t_u + dt_soll > bedarf + KN.EPS_ZEIT:
-                bedarf, wegen = t_u + dt_soll, f"{u.name} {s_u.stufe} {de(t_u, 2)} s bei {de(I, 0)} A"
+        for f in stufensteller_faktoren((tap or {}).get((u.schluessel, ort.schluessel))):
+            ort_f = oben_in_stromlage_unten(ort, f)
+            s_f = ort_f.stufen[ort.stufen.index(s)]
+            I_an = anregestrom_bez(s_f, U)
+            lage = "" if f == 1.0 else f" (Stufensteller ×{de(f, 3)})"
+            for I in _pruefstroeme(u, ort_f, U, I_grenz):
+                if I < I_an * (1 - KN.EPS_STROM):
+                    continue
+                t_u, s_u = ausloesezeit(u, I, U)
+                if t_u is not None and t_u + dt_soll > bedarf + KN.EPS_ZEIT:
+                    bedarf = t_u + dt_soll
+                    wegen = f"{u.name} {s_u.stufe} {de(t_u, 2)} s bei {de(I, 0)} A{lage}"
     return _aufrunden(bedarf, KN.dt_Raster), wegen
 
 

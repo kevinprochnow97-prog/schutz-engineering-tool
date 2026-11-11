@@ -161,7 +161,9 @@ def _form_knoten(netz: Netz) -> None:
                           key="netz_k_stp")
         ikmax = e.number_input("Ik″ max [kA]", min_value=0.0, value=None, step=0.5,
                                key="netz_k_ikmax", placeholder="optional")
-        ikmin = f.number_input("Ik min [kA]", min_value=0.0, value=None, step=0.5,
+        ikmin = f.number_input("Ik min 2-pol. [kA]", min_value=0.0, value=None, step=0.5,
+                               help="Kleinster zweipoliger Kurzschlussstrom (Tool-Vorgabe). "
+                                    "Er geht in die Empfindlichkeitsprüfung ein.",
                                key="netz_k_ikmin", placeholder="optional")
         if st.form_submit_button("➕ Knoten anlegen"):
             try:
@@ -257,7 +259,7 @@ def _bearbeiten(netz: Netz) -> None:
         "Knoten": k.id, "Bezeichnung": k.name, "UN [kV]": de(k.UN_kV, 1),
         "Sternpunkt": STERNPUNKT_TEXT[k.sternpunkt],
         "Ik″ max [kA]": "–" if k.Ik_max_kA is None else de(k.Ik_max_kA, 1),
-        "Ik min [kA]": "–" if k.Ik_min_kA is None else de(k.Ik_min_kA, 1),
+        "Ik min 2-pol. [kA]": "–" if k.Ik_min_kA is None else de(k.Ik_min_kA, 1),
     } for k in sorted(knoten.values(), key=lambda k: k.id)]), width="stretch", hide_index=True)
     if elemente:
         st.dataframe(pd.DataFrame([{

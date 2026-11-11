@@ -120,22 +120,42 @@ mit Hinweis.
 deshalb **Übersetzung und Stufensteller**. Der Schaltgruppenfaktor 2/√3 geht in die
 **Empfindlichkeit** ein (Abschnitt 4), weil dort mit Ik min zweipolig gerechnet wird.
 
+### 3.4 Stufenstellerlage in der Zeitprüfung
+
+Zwischen zwei Messorten mit einem Stufensteller dazwischen (z. B. T1 (US) und T1 (OS)) ist
+das Stromverhältnis nicht fest. Der Strom am oberen Messort ist f-mal der Strom am unteren,
+zusätzlich zur Nennübersetzung, mit f zwischen 1/(1 + s) und 1/(1 − s) (bei s = 16 % also
+0,862 bis 1,190, Funktion `netz_umrechnung.tap_spanne`).
+
+- **Zeitprüfung** (`pruefe_paar`): Je Paar wird in der Nennlage und in beiden Extremlagen
+  geprüft, es gilt das schlechteste Ergebnis. Eine obere Stufe mit Ansprechwert I regt in der
+  Lage f schon bei I/f unten an.
+- **Zeitvorschlag** (`_zeit_fuer_stufe`): Die Zeit muss in allen drei Lagen passen. Der Text
+  „Bestimmt durch“ nennt die Lage, die den Wert bestimmt hat.
+- **Lücken** der Ansprechwerte (oben regt an, unten noch nicht) zählen nur in der Nennlage.
+  In den Extremlagen sind sie eine Folge der Stufenstellerlage und werden nicht bewertet.
+- Ohne Stufensteller oder ohne Trafo zwischen den Messorten ändert sich nichts.
+
+Der I>>-Vorschlag und die Zeitprüfung sind damit konsistent: Der Vorschlag hält I>> OS auch bei
+−16 % um k_S über Ik max der US-Sammelschiene, die Zeitprüfung bestätigt das in der Extremlage.
+
 ## 4. Gegenprüfung
 
 | Prüfung | Bedingung | Ampel |
 |---|---|---|
-| Stromstaffel | I>> oben ≥ k_S · I_Bezug der nächsten Station | grün. Gelb, wenn nicht erfüllt (dann nur über die Zeit selektiv, bei zu kleinem Ik-Gefälle mit entsprechendem Text). Rot, wenn ein Wert unter dem Anlaufstrom des Motors darunter liegt. |
+| Stromstaffel | I>> oben ≥ k_S · I_Bezug der nächsten Station | grün. Gelb, wenn nicht erfüllt (dann nur über die Zeit selektiv, bei zu kleinem Ik-Gefälle mit entsprechendem Text). Rot nur, wenn der Wert unter dem Anlaufstrom des Motors darunter liegt (die Stufe würde beim Anlauf auslösen). |
 | Empfindlichkeit | Ik min hinter der nächsten Station (zweipolig, über Trafos) ≥ γ · kleinster Ansprechwert oben | grün ab γ = 1,5, gelb zwischen 1 und γ, rot darunter |
 
 Fehlt Ik min an einem Knoten, entfällt die Zeile und es gibt einen Hinweis.
 
 ## 5. Ergebnis im Referenznetz „Industrie 10 kV“
 
-Bezugsspannung 10 kV, Werksvoreinstellungen aus den Tabs.
+Bezugsspannung 10 kV, Werksvoreinstellungen aus den Tabs. Einzige Abweichung davon: M1 I>> (50-2) steht im
+Referenznetz auf 8,81 × IN (1204 A), siehe Prüfpunkt 4.
 
 | Stufe | Bisher | Bezug | k_S · Bezug | Vorschlag | Status |
 |---|---|---|---|---|---|
-| L1 Iph>> | 600 A | M1: max(547 A, Anlauf 752 A) = 752 A | 902 A | 3,01 × IN = 903 A | angehoben |
+| L1 Iph>> | 600 A | M1: max(I>> 1204 A, Anlauf 752 A) = 1204 A | 1445 A | 4,82 × IN = 1446 A | angehoben |
 | L2 Iph>> | 600 A | Ik max K5 35 kA über T2 = 1400 A | 1680 A | 5,60 × IN = 1680 A | angehoben |
 | T2 I>> OS | 1680 A | wie L2 | 1680 A | 1680 A | bleibt |
 | T1 I>> OS | 1091 A | Ik max K2 10 kA über T1 mit −16 % = 1082 A bei 110 kV | 1299 A bei 110 kV | 12,38 × IN = 1300 A | angehoben |
@@ -148,10 +168,8 @@ abstand von 0,3 s wird damit noch nicht erreicht.
 ## 6. Grenzen dieses Stands
 
 - Nur Phasenstufen 50/51. Erdfehlerstufen werden nicht gestaffelt.
-- Die **Zeitprüfung** rechnet in Nennübersetzung. Die Lage des Stufenstellers verschiebt die
-  Ansprechwerte der OS-Stufe eines Trafos gegen die US-Stufe um bis zu ±s. Das wirkt in der
-  Zeitprüfung als schmaler Strombereich, in dem nur eine Seite anregt. Es ist heute nicht
-  modelliert.
+- Die Stufenstellerlage wirkt in der Zeitprüfung als Spanne (Abschnitt 3.4). Eine Lage zwischen
+  den Extremen wird nicht einzeln geprüft, Nennlage und beide Extremlagen genügen für UMZ.
 - Ik am Knoten ist ein Eingabewert. Rückspeisung durch Motoren und Generatoren ist darin
   nicht getrennt ausgewiesen. Generatoren werden in der Staffelung noch nicht berücksichtigt.
 - Messung dreiphasig angenommen. Bei Wandlern in nur zwei Phasen kann der größte Leiterstrom
@@ -168,9 +186,9 @@ abstand von 0,3 s wird damit noch nicht erreicht.
 | 1 | Sitz des Stufenstellers auf der OS-Wicklung (Tool-Vorgabe). Bei Stufensteller auf der US-Seite kehrt sich der Faktor um. | Typenschild und Datenblatt der eingesetzten Trafos |
 | 2 | Faktor 2/√3 für den zweipoligen Fehler hinter D/Y: eigene Herleitung, durch Test belegt. Literaturbeleg ergänzen. | Fachliteratur Kurzschlussstromberechnung (Quelle noch zu benennen) |
 | 3 | k_S = 1,2 für die Stromstaffelung stammt aus `konstanten_trafo.k_S_IGG`. Die Herkunft dort (7UT613-Handbuch Kap. 2.4) ist in diesem Schritt nicht neu am Handbuch geprüft. | Handbuch 7UT613, Abschnitt Überstromzeitschutz |
-| 4 | Referenznetz: M1 I>> (50-2) steht mit der Werksvoreinstellung 4,0 × IN bei 547 A und damit unter dem Anlaufstrom 752 A. Das Motor-Tab-Fenster verlangt 1,6 × Anlaufstrom (1203 A). Referenznetzwerte oder Motor-Default prüfen. | `beispielnetze/industrie_10kV.json`, `konstanten_motor.f_50_2_def` |
-| 5 | Ik min am Knoten ist per Tool-Vorgabe zweipolig. Das Eingabefeld heißt im Netz-Tab nur „Ik min [kA]“. Beschriftung ergänzen. | `tab_netz.py`, Knoten-Formular |
-| 6 | Zeitprüfung mit Stufenstellerlage (Abschnitt 6, zweiter Punkt). | `netz_selektivitaet.py` |
+| 4 | **Erledigt 11.11.2026 (Referenznetz).** M1 I>> (50-2) stand mit der Werksvoreinstellung 4,0 × IN bei 547 A unter dem Anlaufstrom 752 A. Im Referenznetz jetzt 8,81 × IN = 1204 A (kleinster Faktor mit ≥ 1,6 × Anlaufstrom = 1203 A, Tool-Vorgabe). **Offen:** Der Motor-Default `konstanten_motor.f_50_2_def` = 4,0 liegt für I_A/IN > 2,5 unter dem eigenen Fenster des Motor-Tabs. Das betrifft den Motor-Tab selbst, nicht den Netz-Tab, und ist mit dem Betreuer zu klären. | `beispielnetze/industrie_10kV.json`, `konstanten_motor.py` |
+| 5 | **Erledigt 11.11.2026.** Das Feld heißt jetzt „Ik min 2-pol. [kA]“ mit Hilfetext. | `tab_netz.py`, Knoten-Formular |
+| 6 | **Erledigt 11.11.2026.** Stufenstellerlage in Zeitprüfung und Zeitvorschlag (Abschnitt 3.4). | `netz_selektivitaet.py` |
 | 7 | Δt-Einzelwerte aus `tool_vorgabe_staffelabstand.md`, Abschnitt 5, sind weiter nicht gegen Handbücher geprüft. | Handbücher 7SJ66, 7UT613, 7SA6 |
 
 ## Quellen

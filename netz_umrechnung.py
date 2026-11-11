@@ -181,3 +181,21 @@ def umrechnen(netz, topo, I_A: float, fernknoten: str, messknoten: str, fall: st
     erg.faktor = faktor
     erg.I_A = I_A * faktor
     return erg
+
+
+def tap_spanne(netz, topo, unten_knoten: str, oben_knoten: str) -> tuple:
+    """
+    Spanne (f_min, f_max) des Stufensteller-Einflusses auf den Strom zwischen zwei
+    Messorten: Strom am oberen Messort = f * Strom am unteren (zusaetzlich zur
+    Nennuebersetzung). (1.0, 1.0), wenn kein Trafo mit Stufensteller dazwischen liegt
+    oder der Weg nicht bestimmbar ist. Mehrere Trafos: Extremwerte der Produkte.
+    """
+    f_lo = f_hi = 1.0
+    weg = pfad_elemente(netz, topo, unten_knoten, oben_knoten)
+    for eid in weg or []:
+        e = netz.elemente[eid]
+        if e.typ != "trafo":
+            continue
+        f_lo *= faktor_stufensteller(e.p.get("Stufensteller_pm"), MIN)[0]
+        f_hi *= faktor_stufensteller(e.p.get("Stufensteller_pm"), MAX)[0]
+    return f_lo, f_hi

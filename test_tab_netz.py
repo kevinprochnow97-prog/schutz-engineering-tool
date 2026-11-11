@@ -214,12 +214,12 @@ def test_staffelvorschlag():
     assert (zeile["t bisher [s]"], zeile["t Vorschlag [s]"]) == ("0,50", "1,00")
     assert len(at.dataframe[6].value) == 10                  # Stromstaffel und Empfindlichkeit
     assert "Stromstaffelung nicht wirksam" in _texte(at.caption)
-    assert "unter dem Motor-Tab-Fenster" in _texte(at.warning)
+    assert "Motor-Tab-Fenster" not in _texte(at.warning)
     assert "passt nicht unter den Schutz des Netzbetreibers" in _texte(at.warning)
     _klick(at, "netz_vorschlag_uebernehmen")
     assert "3 Ansprechwerte und 8 Zeiten in 4 Elementen" in _texte(at.success)
     netz = at.session_state["netz_modell"]
-    assert netz.elemente["L2"].p["iph_hh"] == 5.6 and netz.elemente["L1"].p["iph_hh"] == 3.01
+    assert netz.elemente["L2"].p["iph_hh"] == 5.6 and netz.elemente["L1"].p["iph_hh"] == 4.82
     assert netz.elemente["T1"].p["f_I_Ph_HH_OS"] == 12.38
     assert "f_I_Ph_HH_OS" not in netz.elemente["T2"].p      # unveraendert, nichts festgeschrieben
     assert netz.elemente["T1"].p["t_I_Ph"] == 1.0 and netz.elemente["T1"].p["t_I_Ph_US"] == 0.7

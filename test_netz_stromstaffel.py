@@ -11,11 +11,13 @@ Prueft:
  4. Stufensteller wirkt im Vorschlag (0 % gegen 16 %).
  5. Nie absenken: ein hoeherer Tab-Wert bleibt.
  6. Wirksamkeit als Parametersweep ueber Ik max am Nachbarknoten.
- 7. Gegenpruefung: Anlaufstrom (rot), Empfindlichkeit mit Schaltgruppe (Dyn gegen Yyn).
+ 7. Gegenpruefung: Anlaufstrom (rot), Motor-I>> unter dem Tab-Fenster, Empfindlichkeit mit Schaltgruppe (Dyn gegen Yyn).
  8. Gesamtvorschlag: erst Strom, dann Zeit, gegen Handrechnung und gegen die reine Zeitstaffelung.
  9. Uebernahme ins Netz: zweiter Lauf ohne Aenderung, Parameter erreichen die Rechenkerne.
 10. Fehlerfaelle und Zufallsnetze: Meldung statt Absturz, das Sicherheitsnetz greift nie.
 11. Ring: offen betriebener Ring.
+12. Stufenstellerlage in der Zeitpruefung: Paar gegen Handrechnung, Referenznetz mit
+    knapp bemessenem I>> OS (0 % gegen 16 %), Spanne der Faktoren.
 """
 
 import random
@@ -27,6 +29,7 @@ import konstanten_trafo
 import netz_adapter as A
 import netz_selektivitaet as S
 import netz_stromstaffel as SS
+from netz_adapter import UMZ
 from netz_modell import Netz
 from netz_topologie import FEHLER, HINWEIS, WARNUNG
 
@@ -93,10 +96,10 @@ def test_referenznetz_handrechnung():
     erg = SS.stromvorschlag(_ref())
     assert erg.ok and erg.U_bezug_kV == 10.0
     assert len(erg.vorschlaege) == 7
-    # L1: Motor M1 darunter, kein Ik dahinter. Bezug = max(I>> 546,7 A; Anlauf 751,8 A) = 751,8 A.
-    # 1,2 * 751,8 = 902,2 A, / 300 A = 3,0072 -> aufgerundet 3,01 -> 903 A
+    # L1: Motor M1 darunter, kein Ik dahinter. Bezug = max(I>> 8,81 x IN = 1204,2 A; Anlauf 751,8 A)
+    # = 1204,2 A. 1,2 * 1204,2 = 1445,0 A, / 300 A = 4,8167 -> aufgerundet 4,82 -> 1446 A
     v = _v(erg, "L1", "Iph>>")
-    assert v.status == SS.ANGEHOBEN and v.faktor_neu == 3.01 and abs(v.I_neu_A - 903.0) < 1e-9
+    assert v.status == SS.ANGEHOBEN and v.faktor_neu == 4.82 and abs(v.I_neu_A - 1446.0) < 1e-9
     assert v.I_alt_A == 600.0 and v.parameter == "iph_hh" and "Anlaufstrom" in v.grund
     # L2: T2 (OS) darunter. Ik max K5 35 kA * 0,4/10 = 1400 A, * 1,2 = 1680 A, / 300 A = 5,6
     v = _v(erg, "L2", "Iph>>")
@@ -115,14 +118,14 @@ def test_referenznetz_handrechnung():
     v = _v(erg, "T1", "I>> US")
     assert v.status == SS.NICHT_WIRKSAM and not v.geaendert and v.I_neu_A == v.I_alt_A
     assert "Stromstaffelung nicht wirksam" in _meldungen(erg, HINWEIS)
-    # Endpunkte bleiben, Motor-Tab-Fenster wird gemeldet (4,0 x IN liegt unter 1,6 x Anlaufstrom)
+    # Endpunkte bleiben. M1 liegt mit 8,81 x IN (1204 A) im Motor-Tab-Fenster: keine Warnung
     for e, s in (("M1", "I>> (50-2)"), ("T2", "I>> US")):
         v = _v(erg, e, s)
         assert v.status == SS.ENDPUNKT and not v.geaendert
-    assert "unter dem Motor-Tab-Fenster" in _meldungen(erg, WARNUNG)
+    assert "Motor-Tab-Fenster" not in _meldungen(erg, WARNUNG)
     assert sorted(erg.parameter_je_element()) == ["L1", "L2", "T1"]
     assert erg.parameter_je_element()["T1"] == {"f_I_Ph_HH_OS": 12.38}
-    print("Referenznetz OK: L1 3,01 · L2 5,60 · T1 OS 12,38 · T2 bleibt · T1 US nicht wirksam.")
+    print("Referenznetz OK: L1 4,82 · L2 5,60 · T1 OS 12,38 · T2 bleibt · T1 US nicht wirksam.")
 
 
 # ── 4. Stufensteller wirkt ───────────────────────────────────────────────────
@@ -177,14 +180,34 @@ def test_wirksamkeit_sweep():
 
 # ── 7. Gegenpruefung ─────────────────────────────────────────────────────────
 def test_gegenpruefung_anlaufstrom():
+    """Anlaufstrom M1 751,8 A, I>> M1 1204,2 A. Iph>> von L1 gegen beide Grenzen."""
     n = _ref()
-    ist = SS.pruefe_strom(n)
-    z = [p for p in ist.pruefungen if p.art == "Stromstaffel" and p.unten == "M1"][0]
-    assert z.status == S.ROT and "Anlaufstrom" in z.text           # 600 A liegen unter 751,8 A
-    erg = SS.stromvorschlag(n)
+    ergebnisse = {}
+    for faktor in (2.0, 2.4, 2.6, 4.82):                     # 600 A, 720 A, 780 A, 1446 A
+        _p_aendern(n, "L1", iph_hh=faktor)
+        pr = SS.pruefe_strom(n)
+        ergebnisse[faktor] = [p for p in pr.pruefungen if p.art == "Stromstaffel" and p.unten == "M1"][0]
+    assert ergebnisse[2.0].status == S.ROT and "Anlaufstrom" in ergebnisse[2.0].text
+    assert ergebnisse[2.4].status == S.ROT                    # 720 A < 751,8 A: Anlauf loest aus
+    # 780 A liegt ueber dem Anlaufstrom, aber unter 1,2 x 1204 A: kein Anlaufproblem, nur Zeitstaffelung
+    assert ergebnisse[2.6].status == S.GELB and "löst beim Motoranlauf" not in ergebnisse[2.6].text
+    assert ergebnisse[4.82].status == S.OK
+    erg = SS.stromvorschlag(_ref())
     soll = [p for p in erg.pruefung.pruefungen if p.art == "Stromstaffel" and p.unten == "M1"][0]
     assert soll.status == S.OK
-    print("Gegenprüfung OK: Iph>> 600 A unter dem Anlaufstrom ist rot, mit Vorschlag grün.")
+    print("Gegenprüfung OK: unter 752 A rot, 752 bis 1445 A gelb, ab 1446 A grün.")
+
+
+def test_motor_i_hh_unter_anlaufstrom():
+    """M1 mit Werksvoreinstellung 4,0 x IN (547 A): Warnung, Bezug fuer L1 ist der Anlaufstrom."""
+    n = _ref()
+    _p_aendern(n, "M1", f_50_2=4.0)
+    erg = SS.stromvorschlag(n)
+    assert "unter dem Motor-Tab-Fenster" in _meldungen(erg, WARNUNG)
+    v = _v(erg, "L1", "Iph>>")
+    # Bezug = max(547 A; 751,8 A) = 751,8 A, 1,2 * 751,8 = 902,2 A, / 300 A = 3,0072 -> 3,01 -> 903 A
+    assert v.faktor_neu == 3.01 and abs(v.I_neu_A - 903.0) < 1e-9 and "Anlaufstrom 752 A" in v.grund
+    print("Motor-Warnung OK: I>> 547 A unter dem Fenster, L1 nutzt den Anlaufstrom (3,01 × IN).")
 
 
 def test_gegenpruefung_empfindlichkeit_schaltgruppe():
@@ -328,6 +351,78 @@ def test_ring():
     print("Ring OK: offen betriebener Ring liefert denselben Vorschlag wie das Strahlennetz.")
 
 
+# ── 12. Stufenstellerlage in der Zeitpruefung ───────────────────────────────
+def _stufe_x(name, I, t, element="X"):
+    return A.Schutzstufe(element, name, "51", "K", 10.0, I, UMZ, t, None, True, "Test")
+
+
+def test_stufenstellerlage_paar():
+    """
+    Unten Iph> 1000 A / 1,0 s, oben I>> 5000 A / 0,1 s, Ik max unten 4800 A.
+    Nennlage: oben regt nie an (5000 > 4800), selektiv. Mit Stufensteller ±16 % sieht
+    oben bis zu 1/0,84 = 1,190 mal den Strom: er regt ab 5000/1,190 = 4200 A an,
+    unten loest dort noch erst nach 1,0 s aus -> Abstand -0,9 s.
+    """
+    unten = S.Schutzort("U", "", "K1", 10.0, (_stufe_x("Iph>", 1000.0, 1.0),))
+    oben = S.Schutzort("O", "", "K2", 10.0, (_stufe_x("I>>", 5000.0, 0.1),))
+    ohne = S.pruefe_paar(unten, oben, 10.0, 4800.0)
+    assert ohne.status == S.OK and ohne.f_stufensteller is None
+    f_lo, f_hi = 1 / 1.16, 1 / 0.84
+    mit = S.pruefe_paar(unten, oben, 10.0, 4800.0, tap=(f_lo, f_hi))
+    assert mit.status == S.ROT and abs(mit.f_stufensteller - f_hi) < 1e-12
+    assert abs(mit.dt_s - (0.1 - 1.0)) < 1e-9 and "Stufensteller-Lage ×1,190" in mit.text
+    assert abs(mit.I_bez_A - 5000 / f_hi) < 1e-6
+    # Neutrale Spanne oder keine Angabe: wie ohne Stufensteller
+    for neutral in ((1.0, 1.0), None):
+        assert S.pruefe_paar(unten, oben, 10.0, 4800.0, tap=neutral) == ohne
+    # Ergebnis ist nie besser als die Nennlage
+    for lo, hi in ((0.9, 1.1), (0.7, 1.3), (0.5, 1.0), (1.0, 2.0)):
+        p = S.pruefe_paar(unten, oben, 10.0, 4800.0, tap=(lo, hi))
+        assert S._RANG[p.status] >= S._RANG[ohne.status]
+    print("Stufenstellerlage Paar OK: Nennlage selektiv, Extremlage -0,9 s und rot.")
+
+
+def test_stufenstellerlage_referenznetz():
+    # Gestaffeltes Netz laut Gesamtvorschlag uebernehmen, dann I>> OS von T1 knapp bemessen:
+    # 9,53 x IN_OS = 11 003 A bez. = 1,10 x Ik max K2. Nennlage: regt nie an.
+    ergebnisse = {}
+    for pm in (0, 16):
+        n = _ref()
+        _p_aendern(n, "T1", Stufensteller_pm=pm)
+        for eid, p_neu in SS.gesamtvorschlag(n).parameter_je_element().items():
+            p = dict(n.elemente[eid].p)
+            p.update(p_neu)
+            n.parameter_setzen(eid, p)
+        _p_aendern(n, "T1", f_I_Ph_HH_OS=9.53, t_I_Ph_HH=0.1)
+        pr = S.pruefe_selektivitaet(n)
+        ergebnisse[pm] = pr.pruefung("T1 (US)", "T1 (OS)")
+        vor = S.staffelvorschlag(n)
+        z = [v for v in vor.vorschlaege if v.element == "T1" and v.stufe == "I>> OS"][0]
+        ergebnisse[(pm, "zeit")] = z
+    assert ergebnisse[0].status == S.OK and ergebnisse[0].f_stufensteller is None
+    assert ergebnisse[16].status == S.ROT and abs(ergebnisse[16].f_stufensteller - 1 / 0.84) < 1e-9
+    # Zeitvorschlag: ohne Stufensteller reicht die Mindestzeit, mit +-16 % muss I>> OS
+    # hinter T1 (US) I>> US (0,7 s) abwarten: 0,7 + 0,3 = 1,0 s
+    assert ergebnisse[(0, "zeit")].t_neu_s == 0.1
+    assert ergebnisse[(16, "zeit")].t_neu_s == 1.0 and "Stufensteller" in ergebnisse[(16, "zeit")].grund
+    print("Stufenstellerlage Referenznetz OK: gleicher Aufbau, mit ±16 % rot und 1,0 s statt 0,1 s.")
+
+
+def test_tap_spanne():
+    import netz_topologie
+    import netz_umrechnung as UM
+    n = _ref()
+    topo = netz_topologie.analysiere(n)
+    f_lo, f_hi = UM.tap_spanne(n, topo, "K2", "K1")            # ueber T1 mit ±16 %
+    assert abs(f_lo - 1 / 1.16) < 1e-12 and abs(f_hi - 1 / 0.84) < 1e-12
+    assert UM.tap_spanne(n, topo, "K5", "K4") == (1.0, 1.0)    # T2 ohne Stufensteller
+    assert UM.tap_spanne(n, topo, "K4", "K2") == (1.0, 1.0)    # nur Leitung
+    assert UM.tap_spanne(n, topo, "K1", "K2") == (1.0, 1.0)    # falsche Richtung: neutral
+    f_lo, f_hi = UM.tap_spanne(n, topo, "K5", "K1")            # T2 (0 %) und T1 (±16 %)
+    assert abs(f_hi - 1 / 0.84) < 1e-12
+    print("Tap-Spanne OK.")
+
+
 if __name__ == "__main__":
     test_konstanten()
     test_adapter_stromparameter()
@@ -336,10 +431,14 @@ if __name__ == "__main__":
     test_nie_absenken()
     test_wirksamkeit_sweep()
     test_gegenpruefung_anlaufstrom()
+    test_motor_i_hh_unter_anlaufstrom()
     test_gegenpruefung_empfindlichkeit_schaltgruppe()
     test_gesamtvorschlag()
     test_uebernahme_und_zweiter_lauf()
     test_fehlerfaelle()
     test_zufallsnetze()
     test_ring()
+    test_stufenstellerlage_paar()
+    test_stufenstellerlage_referenznetz()
+    test_tap_spanne()
     print("\nAlle Prüfungen bestanden.")
