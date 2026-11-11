@@ -68,3 +68,23 @@ AMZ_Stuetzstellen = 60
 # Entspricht der Werksvoreinstellung der Hochstromstufen (7UT613 Adr.2013,
 # 7SA6 Adr.2611: 0,10 s) und haelt Einschaltvorgaenge und Wandler-Transienten fern.
 t_Vorschlag_min = 0.10
+
+# ── Stromstaffelung (I>>-Stufen) ─────────────────────────────────────────────
+# Herleitung und Grenzen: docs/tool_vorgabe_stromstaffelung.md
+# Sicherheitsfaktor der I>>-Stufe ueber dem Bezugsstrom. Gleicher Wert wie
+# konstanten_trafo.k_S_IGG (Ausgangspunkt laut Aufgabe, ein Test prueft das).
+k_S_Strom = 1.20
+# Einstellraster des I>>-Faktors (x IN). Der Vorschlag wird auf dieses Raster
+# AUFgerundet, nie abgerundet (ein zu kleiner Wert waere unselektiv).
+Raster_Faktor = 0.01
+# Empfindlichkeit der Reserve: Ik min hinter der naechsten Station muss
+# mindestens gamma * Ansprechwert des oberen Schutzes betragen. Gleicher Wert
+# wie konstanten_trafo.gamma_Ikmin und calc_leitung (ein Test prueft das).
+gamma_Reserve = 1.50
+
+# ── Umrechnung ueber Transformatoren (netz_umrechnung.py) ────────────────────
+# Zweipoliger Fehler hinter einer Wicklungsgruppe mit D<->Y-Wechsel: der groesste
+# Strangstrom auf der anderen Seite ist 2/sqrt(3) * Ik2 / ue (Ik2 = zweipoliger
+# Fehlerstrom). Das ist exakt der Wert des dreipoligen Fehlers, wenn
+# Ik2 = sqrt(3)/2 * Ik3 gilt. Herleitung in docs/tool_vorgabe_stromstaffelung.md.
+f_Sg_2pol_DY = 2.0 / 3.0 ** 0.5

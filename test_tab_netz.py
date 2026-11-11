@@ -15,8 +15,8 @@ Prueft:
 4. Bearbeiten: Netzform, Schalten, Entfernen.
 5. Uebernahme aus dem Trafo-Tab in der vollstaendigen App.
 6. Staffelung: 7 Paare mit Ampel wie im Modultest, Sollabstand wirkt, Pfade sichtbar.
-7. Staffelvorschlag: Tabelle, Gegenpruefung, Uebernahme ins Modell, danach ist die
-   Staffelpruefung bis auf den Netzbetreiber gruen.
+7. Staffelvorschlag (erst Strom, dann Zeit): Tabellen, Gegenpruefungen, Uebernahme ins
+   Modell, danach ist die Staffelpruefung bis auf den Netzbetreiber (gelb) gruen.
 """
 
 from pathlib import Path
@@ -194,28 +194,41 @@ def test_staffelung():
     print("Staffelung OK: 7 Paare, Ampel wie im Modultest, Sollabstand wirkt.")
 
 
-# ── 7. Staffelvorschlag ──────────────────────────────────────────────────────
+# ── 7. Staffelvorschlag (erst Strom, dann Zeit) ──────────────────────────────
 def test_staffelvorschlag():
     at = _beispiel()
     assert len(at.dataframe) == 4                           # ohne Schalter keine Vorschlagstabelle
     at.toggle(key="netz_vorschlag_an").set_value(True).run()
     _keine_ausnahme(at)
-    assert len(at.dataframe) == 5
-    df = at.dataframe[4].value
+    # Knoten, Elemente, Schutzstufen, Staffelung, Strom, Zeit, Gegenpruefung Strom
+    assert len(at.dataframe) == 7
+    strom = at.dataframe[4].value
+    assert len(strom) == 7 and list(strom["Änderung"]).count("✏️") == 3
+    z = strom[(strom["Element"] == "L2") & (strom["Stufe"] == "Iph>>")].iloc[0]
+    assert (z["I bisher [A]"], z["I Vorschlag [A]"], z["Faktor Vorschlag"]) == ("600", "1680", "5,60")
+    z = strom[(strom["Element"] == "T1") & (strom["Stufe"] == "I>> US")].iloc[0]
+    assert z["Status"] == "nicht wirksam" and z["Änderung"] == ""
+    df = at.dataframe[5].value
     assert len(df) == 16 and list(df["Änderung"]).count("✏️") == 8
     zeile = df[(df["Element"] == "T1") & (df["Stufe"] == "I> OS")].iloc[0]
-    assert (zeile["t bisher [s]"], zeile["t Vorschlag [s]"]) == ("0,50", "1,70")
+    assert (zeile["t bisher [s]"], zeile["t Vorschlag [s]"]) == ("0,50", "1,00")
+    assert len(at.dataframe[6].value) == 10                  # Stromstaffel und Empfindlichkeit
+    assert "Stromstaffelung nicht wirksam" in _texte(at.caption)
+    assert "unter dem Motor-Tab-Fenster" in _texte(at.warning)
     assert "passt nicht unter den Schutz des Netzbetreibers" in _texte(at.warning)
     _klick(at, "netz_vorschlag_uebernehmen")
-    assert "Staffelvorschlag übernommen: 8 Zeiten" in _texte(at.success)
+    assert "3 Ansprechwerte und 8 Zeiten in 4 Elementen" in _texte(at.success)
     netz = at.session_state["netz_modell"]
-    assert netz.elemente["T1"].p["t_I_Ph"] == 1.7 and netz.elemente["T1"].p["t_I_Ph_US"] == 1.4
-    assert netz.elemente["T2"].p["t_I_Ph_US"] == 0.5     # US-Endpunkt explizit festgehalten
+    assert netz.elemente["L2"].p["iph_hh"] == 5.6 and netz.elemente["L1"].p["iph_hh"] == 3.01
+    assert netz.elemente["T1"].p["f_I_Ph_HH_OS"] == 12.38
+    assert "f_I_Ph_HH_OS" not in netz.elemente["T2"].p      # unveraendert, nichts festgeschrieben
+    assert netz.elemente["T1"].p["t_I_Ph"] == 1.0 and netz.elemente["T1"].p["t_I_Ph_US"] == 0.7
+    assert netz.elemente["T2"].p["t_I_Ph_US"] == 0.5        # US-Endpunkt explizit festgehalten
     staffel = at.dataframe[3].value
-    assert list(staffel["Ampel"]).count("🟢") == 6 and list(staffel["Ampel"]).count("🔴") == 1
+    assert list(staffel["Ampel"]).count("🟢") == 6 and list(staffel["Ampel"]).count("🟡") == 1
     # Der Vorschlag ist jetzt deckungsgleich mit dem Netz
     assert "Keine Änderung nötig" in _texte(at.caption)
-    print("Staffelvorschlag OK: Tabelle, Übernahme, danach 6 grün und nur der Netzbetreiber rot.")
+    print("Staffelvorschlag OK: Strom und Zeit, Übernahme, danach 6 grün und der Netzbetreiber gelb.")
 
 
 if __name__ == "__main__":

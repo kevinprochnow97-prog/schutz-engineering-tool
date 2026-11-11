@@ -15,7 +15,8 @@ Ablauf:
   5. Schutzstufen aus den Betriebsmittel-Tabs (Adapter)
   6. Zeitstaffelung: Pfade, Ampel je benachbartem Paar, Meldungen
      (netz_selektivitaet.py)
-  7. Staffelvorschlag: neue Zeiten je Stufe, Gegenpruefung, Uebernahme ins Modell
+  7. Staffelvorschlag: erst I>>-Ansprechwerte (Strom), dann Zeiten, Gegenpruefung
+     beider, Uebernahme ins Modell (netz_stromstaffel.py)
 
 Bezug zu test_app.py: Bei leerem Netz zeigt die Seite genau einen st.info,
 keine Expander und keine Tabellen. Dadurch aendern sich in der Inventur nur
@@ -32,6 +33,7 @@ import konstanten_netz as KN
 import netz_adapter
 import netz_bild
 import netz_selektivitaet
+import netz_stromstaffel
 import netz_topologie
 from netz_modell import ELEMENTTYPEN, STERNPUNKTE, ModellFehler, Netz
 from ui import grphead, inject_css, pill
@@ -347,28 +349,45 @@ def _staffelung(netz: Netz, adapter) -> None:
     } for p in pruefungen]), width="stretch", hide_index=True)
     st.caption("Je Paar der kleinste Zeitabstand über alle Ströme, bei denen beide Schutzorte "
                "anregen. Ströme auf die Bezugsspannung umgerechnet. Grün ab Soll, gelb zwischen "
-               "Mindestwert und Soll, rot darunter. Nur Phasenstufen 50/51, Erdfehler und "
-               "Stromverteilung über die Schaltgruppe folgen mit der Stromstaffelung.")
+               "Mindestwert und Soll, rot darunter. Nur Phasenstufen 50/51, Erdfehlerstufen "
+               "werden nicht gestaffelt. Die Zeitprüfung rechnet in Nennübersetzung, Stufensteller "
+               "und Schaltgruppe berücksichtigt die Stromstaffelung im Staffelvorschlag.")
     _vorschlag(netz, adapter, float(dt_soll))
 
 
 # ── 7. Staffelvorschlag ──────────────────────────────────────────────────────
 def _vorschlag(netz: Netz, adapter, dt_soll: float) -> None:
     """
-    Zeiten vorschlagen (reine Zeitstaffelung von der Last zur Quelle) und auf Wunsch
-    ins Netzmodell schreiben. Der Vorschlag wird bei jedem Lauf neu aus dem Modell
-    gerechnet, es gibt keinen Zwischenstand im Session-State (Modell ist die Wahrheit).
+    Vorschlag von der Last zur Quelle: erst die I>>-Ansprechwerte (Stromstaffelung),
+    dann die Zeiten mit diesen Werten, dann Gegenpruefung. Auf Wunsch ins Netzmodell
+    schreiben. Der Vorschlag wird bei jedem Lauf neu aus dem Modell gerechnet, es gibt
+    keinen Zwischenstand im Session-State (Modell ist die Wahrheit).
     """
-    grphead("Staffelvorschlag (reine Zeitstaffelung)")
+    grphead("Staffelvorschlag (erst Strom, dann Zeit)")
     if not st.toggle("Staffelvorschlag berechnen", key="netz_vorschlag_an",
-                     help="Jede UMZ-Stufe so schnell wie möglich, aber einen Staffelabstand "
-                          "über allem, was darunter bei demselben Strom auslöst. Endpunkte "
-                          "(Motor, unterste Trafoseite) und Netzbetreiber bleiben unverändert."):
+                     help="Erst die I>>-Ansprechwerte über Ik max der nächsten Station (mit "
+                          "Stufensteller und Schaltgruppe), dann jede UMZ-Stufe so schnell wie "
+                          "möglich, aber einen Staffelabstand über allem, was darunter bei "
+                          "demselben Strom auslöst. Endpunkte (Motor, unterste Trafoseite) und "
+                          "Netzbetreiber bleiben unverändert. Herleitung: "
+                          "docs/tool_vorgabe_stromstaffelung.md."):
         return
-    vor = netz_selektivitaet.staffelvorschlag(netz, adapter, dt_soll=dt_soll)
+    vor = netz_stromstaffel.gesamtvorschlag(netz, adapter, dt_soll=dt_soll)
     _meldungen(vor.meldungen)
-    if vor.pruefung is None:
+    if vor.zeit is None or vor.zeit.pruefung is None:
         return
+
+    st.markdown("**1. Strom: I>>-Ansprechwerte**")
+    st.dataframe(pd.DataFrame([{
+        "Element": v.element, "Stufe": v.stufe, "Parameter": v.parameter or "–",
+        "I bisher [A]": de(v.I_alt_A, 0), "I Vorschlag [A]": de(v.I_neu_A, 0),
+        "Faktor bisher": "–" if v.faktor_alt is None else de(v.faktor_alt, 2),
+        "Faktor Vorschlag": "–" if v.faktor_neu is None else de(v.faktor_neu, 2),
+        "Änderung": "✏️" if v.geaendert else "", "Status": v.status,
+        "Begründung": v.grund,
+    } for v in vor.strom.vorschlaege]), width="stretch", hide_index=True)
+
+    st.markdown("**2. Zeit** (mit den Ansprechwerten aus Schritt 1)")
     st.dataframe(pd.DataFrame([{
         "Element": v.element, "Stufe": v.stufe,
         "Parameter": v.parameter or "–",
@@ -376,28 +395,46 @@ def _vorschlag(netz: Netz, adapter, dt_soll: float) -> None:
         "t Vorschlag [s]": "–" if v.t_neu_s != v.t_neu_s else de(v.t_neu_s, 2),
         "Änderung": "✏️" if v.geaendert else "",
         "Bestimmt durch": v.grund,
-    } for v in vor.vorschlaege]), width="stretch", hide_index=True)
+    } for v in vor.zeit.vorschlaege]), width="stretch", hide_index=True)
 
-    p = vor.pruefung
+    p = vor.zeit.pruefung
     anz = {k: sum(1 for x in p.pruefungen if x.status == k)
            for k in (netz_selektivitaet.OK, netz_selektivitaet.GELB, netz_selektivitaet.ROT)}
-    st.markdown(f"{AMPEL_EMOJI[p.status]} **Gegenprüfung mit den vorgeschlagenen Zeiten: "
+    st.markdown(f"{AMPEL_EMOJI[p.status]} **Gegenprüfung Zeit mit den vorgeschlagenen Werten: "
                 f"{p.status}** &nbsp; " + " ".join(pill(k, n) for k, n in anz.items() if n),
                 unsafe_allow_html=True)
-    geaendert = vor.geaendert
-    if not geaendert:
-        st.caption("Keine Änderung nötig, die Zeiten im Netz entsprechen bereits dem Vorschlag.")
+    sp = vor.strom.pruefung
+    if sp is not None and sp.pruefungen:
+        st.markdown(f"{AMPEL_EMOJI[sp.status]} **Gegenprüfung Strom (Stromstaffel und "
+                    f"Empfindlichkeit): {sp.status}**")
+        st.dataframe(pd.DataFrame([{
+            "Ampel": AMPEL_EMOJI[x.status], "Prüfung": x.art, "unten (Last)": x.unten,
+            "oben (Quelle)": x.oben, "Stufe oben": x.stufe_oben,
+            "Soll [A bez.]": "–" if x.I_soll_bez_A is None else de(x.I_soll_bez_A, 0),
+            "Ist [A bez.]": "–" if x.I_ist_bez_A is None else de(x.I_ist_bez_A, 0),
+            "Bewertung": x.text,
+        } for x in sp.pruefungen]), width="stretch", hide_index=True)
+        st.caption("Stromstaffel: I>> oben mindestens k_S × Strom hinter der nächsten Station. "
+                   "Empfindlichkeit: Ik min (zweipolig, über Stufensteller und Schaltgruppe) "
+                   "mindestens γ × kleinster Ansprechwert oben. Ströme auf die "
+                   "Bezugsspannung umgerechnet.")
+
+    n_strom, n_zeit = len(vor.strom.geaendert), len(vor.zeit.geaendert)
+    if not (n_strom or n_zeit):
+        st.caption("Keine Änderung nötig, die Werte im Netz entsprechen bereits dem Vorschlag.")
         return
-    st.caption(f"{len(geaendert)} Zeiten würden geändert. Die Übernahme schreibt die Zeiten in "
-               "die Element-Parameter des Netzes (nicht in die Betriebsmittel-Tabs). Die Werte "
-               "erscheinen danach in der Schutzstufen-Tabelle und in der Staffelprüfung oben.")
+    st.caption(f"{n_strom} Ansprechwerte und {n_zeit} Zeiten würden geändert. Die Übernahme "
+               "schreibt sie in die Element-Parameter des Netzes (nicht in die Betriebsmittel-"
+               "Tabs). Die Werte erscheinen danach in der Schutzstufen-Tabelle und in der "
+               "Staffelprüfung oben.")
     if st.button("✅ Vorschlag ins Netz übernehmen", key="netz_vorschlag_uebernehmen"):
-        for eid, p_neu in vor.parameter_je_element().items():
+        je_element = vor.parameter_je_element()
+        for eid, p_neu in je_element.items():
             p_alt = dict(netz.elemente[eid].p)
             p_alt.update(p_neu)
             netz.parameter_setzen(eid, p_alt)
-        _erfolg(f"Staffelvorschlag übernommen: {len(geaendert)} Zeiten in "
-                f"{len(vor.parameter_je_element())} Elementen gesetzt.")
+        _erfolg(f"Staffelvorschlag übernommen: {n_strom} Ansprechwerte und {n_zeit} Zeiten in "
+                f"{len(je_element)} Elementen gesetzt.")
 
 
 # ── Einstieg ─────────────────────────────────────────────────────────────────

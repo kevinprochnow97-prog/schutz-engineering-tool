@@ -97,6 +97,44 @@ ZEIT_PARAMETER = {
     "motor":   {"I> (50-1)": "t_50_1", "I>> (50-2)": "t_50_2"},
 }
 
+# Anzeigename der I>>-Stufe -> Schluessel des Ansprechfaktors (x IN) im Element-
+# Parametersatz. Damit kann ein Stromvorschlag (netz_stromstaffel) ins Netzmodell
+# zurueckgeschrieben werden. Ein Test prueft, dass jeder Schluessel in OPTIONAL_ZAHL
+# steht und den Rechenkern erreicht (primaerer Ansprechwert = Faktor * IN).
+STROM_PARAMETER = {
+    "trafo":   {"I>> OS": "f_I_Ph_HH_OS", "I>> US": "f_I_Ph_HH_US"},
+    "leitung": {"Iph>>": "iph_hh"},
+    "motor":   {"I>> (50-2)": "f_50_2"},
+}
+
+
+def nennstrom_A(typ: str, stufe: str, p: dict):
+    """
+    Bezugsstrom IN [A primaer], mit dem der Rechenkern den Faktor der Stufe
+    multipliziert (I_prim = Faktor * IN). None, wenn nicht ermittelbar.
+    Trafo: IN der jeweiligen Seite, Leitung: IN_Ltg, Motor: IN des Motors.
+    """
+    try:
+        if typ == "trafo":
+            g = calc_trafo.grundgroessen(p)
+            return g["IN_OS_prim"] if stufe.endswith("OS") else g["IN_US_prim"]
+        if typ == "leitung":
+            return calc_leitung.grundgroessen(p)["IN_Ltg"]
+        if typ == "motor":
+            return calc_motor.grundgroessen(p)["IN_prim"]
+    except Exception:
+        return None
+    return None
+
+
+def anlaufstrom_A(p: dict):
+    """Anlaufstrom des Motors [A primaer] aus dem Rechenkern, None wenn nicht ermittelbar."""
+    try:
+        I = calc_motor.grundgroessen(p)["I_Anlauf_prim"]
+    except Exception:
+        return None
+    return I if _ist_zahl(I) and I > 0 else None       # 0 A bedeutet: Rechenkern kennt den Motor nicht
+
 
 @dataclass(frozen=True)
 class Schutzstufe:

@@ -25,9 +25,11 @@ Pruefprinzip (wirksame Ausloesezeit):
   logarithmisch verteilte Stuetzstellen dazu.
 
 Tool-Vorgaben und Grenzen dieses Stands (bewusst, siehe Zeitplan):
-  - Umrechnung mit dem Verhaeltnis der Knoten-Nennspannungen. Stufensteller und
-    die Stromverteilung ueber die Schaltgruppe (z. B. zweipoliger Fehler hinter
-    Dy) bleiben unberuecksichtigt. Das gehoert zur Stromstaffelung (Woche 3).
+  - Umrechnung der Ansprechwerte mit dem Verhaeltnis der Knoten-Nennspannungen
+    (Nennuebersetzung, Stufensteller in Mittelstellung). Die Zeitpruefung selbst
+    bleibt dabei nominal. Stufensteller und Schaltgruppe (zweipoliger Fehler hinter
+    Dy) beruecksichtigt die Stromstaffelung: netz_umrechnung.py und
+    netz_stromstaffel.py, Herleitung in docs/tool_vorgabe_stromstaffelung.md.
   - Nur Phasenstufen 50/51. Erdfehlerstufen werden nicht gestaffelt.
   - Fehlt Ik max am Knoten, wird ohne obere Stromgrenze geprueft (strenger)
     und darauf hingewiesen.
@@ -477,7 +479,8 @@ def _aufrunden(wert: float, raster: float) -> float:
 
 def staffelvorschlag(netz: Netz, adapter=None, U_bezug_kV: float | None = None,
                      dt_soll: float = KN.dt_Staffel_soll,
-                     t_min: float = KN.t_Vorschlag_min) -> VorschlagErgebnis:
+                     t_min: float = KN.t_Vorschlag_min,
+                     strom_beruecksichtigt: bool = False) -> VorschlagErgebnis:
     """
     Zeiten fuer eine reine Zeitstaffelung vorschlagen (siehe Modulkopf).
     Jede UMZ-Stufe erhaelt die kleinste Zeit >= t_min, die bei jedem Strom, bei dem sie
@@ -486,14 +489,15 @@ def staffelvorschlag(netz: Netz, adapter=None, U_bezug_kV: float | None = None,
     """
     erg = VorschlagErgebnis()
     try:
-        return _vorschlag(netz, adapter, U_bezug_kV, dt_soll, t_min, erg)
+        return _vorschlag(netz, adapter, U_bezug_kV, dt_soll, t_min, erg, strom_beruecksichtigt)
     except Exception as exc:
         erg.meldungen.append(Meldung(
             FEHLER, f"Staffelvorschlag abgebrochen ({type(exc).__name__}: {exc})."))
         return erg
 
 
-def _vorschlag(netz, adapter, U_bezug_kV, dt_soll, t_min, erg) -> VorschlagErgebnis:
+def _vorschlag(netz, adapter, U_bezug_kV, dt_soll, t_min, erg,
+               strom_beruecksichtigt: bool = False) -> VorschlagErgebnis:
     if not (_ist_zahl(dt_soll) and dt_soll > 0 and _ist_zahl(t_min) and t_min >= 0):
         erg.meldungen.append(Meldung(FEHLER, "Staffelabstand oder Mindestzeit ungültig."))
         return erg
@@ -553,10 +557,14 @@ def _vorschlag(netz, adapter, U_bezug_kV, dt_soll, t_min, erg) -> VorschlagErgeb
         if p.status != OK and elemente[_element_von_name(p.oben)].typ == "einspeisung":
             detail = (f"{p.unten} braucht {de(p.t_unten_s, 2)} s, {p.oben} löst bei "
                       f"{de(p.t_oben_s, 2)} s aus." if p.dt_s is not None else p.text)
+            abhilfe = ("Abhilfe: weniger Staffelstufen oder kürzere Zeiten an den Endpunkten "
+                       "(die I>>-Stromstaffelung ist bereits berücksichtigt)."
+                       if strom_beruecksichtigt else
+                       "Abhilfe: weniger Staffelstufen, kürzere Zeiten an den Endpunkten "
+                       "oder Stromstaffelung über die I>>-Stufen.")
             erg.meldungen.append(Meldung(
                 WARNUNG, f"Die Kette passt nicht unter den Schutz des Netzbetreibers: {detail} "
-                         f"Abhilfe: weniger Staffelstufen, kürzere Zeiten an den Endpunkten "
-                         f"oder Stromstaffelung über die I>>-Stufen."))
+                         f"{abhilfe}"))
     return erg
 
 
