@@ -58,9 +58,9 @@ im Netz-Tab einstellbar machen.
 
 | Nr. | Was prüfen | Wo |
 |---|---|---|
-| 1 | Zeittoleranz der UMZ-Verzögerung und Rückfallzeit | Technische Daten 7SJ66, 7UT613, 7SA6/7SD5 (jeweils Abschnitt Überstromzeitschutz) |
+| 1 | Zeittoleranz der UMZ-Verzögerung und Rückfallzeit. **Geprüft 16.11.2026:** Zeittoleranz in allen drei Handbüchern 1 % vom Einstellwert bzw. 10 ms, die 25 ms des Tools sind damit konservativ. Rückfallzeit 7SJ66 ca. 30 ms (Grundschwingung), 7SA6 ca. 30 ms, **7UT613 ca. 35 ms** bei 50 Hz. `dt_t_Rueck` = 30 ms liegt für den 7UT613 um 5 ms zu niedrig. Mit 35 ms wäre die Summe 185 ms, der Mindestwert bleibt nach der Rundung 0,20 s. Der Wert im Code ist bewusst noch nicht geändert (Entscheidung offen). 7SD5 nicht geprüft. | 7SJ66 Handbuch C53000-B1140-C383-D (09.2023), Kap. 4.2. 7SA6 Handbuch, Kap. 4.11. 7UT613 Handbuch C53000-G1100-C160-3, Kap. 4.4 |
 | 2 | Ausschaltzeit der eingesetzten MS-Leistungsschalter | Datenblatt des Schalters. Vakuumschalter liegen meist unter 80 ms, dann ist der Wert konservativ. |
-| 3 | Anregeschwelle der AMZ-Stufen (Tool: 1,1 · Ip) | Technische Daten 7SJ66. Für SIPROTEC 5 ist 1,1 · Schwellwert dokumentiert [4]. Achtung: [1] nennt für die Norm 1,3. |
+| 3 | Anregeschwelle der AMZ-Stufen (Tool: 1,1 · Ip). **Bestätigt 16.11.2026:** 7SJ66 nennt für die IEC-Kennlinien eine Anregeschwelle von ca. 1,10 · Ip. | 7SJ66 Handbuch C53000-B1140-C383-D (09.2023), Kap. 4.3. Achtung: [1] nennt für die Norm 1,3. |
 | 4 | Kennlinienkonstanten AMZ (0,14 / 0,02 usw.) | IEC 60255-151 bzw. Handbuch 7SJ66. Stimmen mit [1, Tab. 8.2.1] überein. |
 | 5 | Bei AMZ gegen AMZ reicht ein fester Abstand streng genommen nicht | Nach [1, Gl. 8.2.3] wächst der Abstand mit der Auslösezeit des unteren Schutzes. Im Tool noch nicht umgesetzt, als Erweiterung vorgemerkt. |
 

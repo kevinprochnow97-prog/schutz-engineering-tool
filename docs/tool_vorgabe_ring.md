@@ -111,5 +111,5 @@ Einspeisungen.
 |---|---|---|
 | 1 | Entscheidung mit dem Betreuer: Reicht die Beschränkung auf Ringe ohne gegenläufige Ketten, oder sollen Richtungsstufen mit Schutzgeräten je Leitungsende ins Modell | Aufgabenstellung, Abschnitt Netzformen |
 | 2 | Literaturbeleg zu Staffelung im offenen Ring und zu Richtungsstufen | Fachliteratur Netzschutz (Quelle noch zu benennen) |
-| 3 | Ik max und Ik min je Trennstellenlage, am besten aus den Netzdaten berechnet statt eingegeben | Kurzschlussstromberechnung, Erweiterung des Netzmodells |
+| 3 | **Teilweise erledigt 16.11.2026.** `netz_kurzschluss.py` rechnet Ik max und Ik min je Trennstellenlage und die Oberfläche warnt bei mehr als 10 % Abweichung vom eingegebenen Wert. Die Ringstaffelung rechnet weiter mit den eingegebenen Werten, nur Knoten ohne Eingabewert bekommen den Wert der jeweiligen Lage. Offen: Entscheidung, ob die Staffelung je Lage ganz auf berechnete Werte umgestellt wird (Prüfpunkt 8 in `tool_vorgabe_kurzschluss.md`). | `netz_kurzschluss.py`, `tool_vorgabe_kurzschluss.md` |
 | 4 | Höchstzahl der Runden (12) ist eine Tool-Vorgabe ohne Herleitung. Im Beispielring genügen 2, im Dreileitungsring 3 | `netz_ring.py` |

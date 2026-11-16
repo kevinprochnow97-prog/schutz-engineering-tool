@@ -31,8 +31,10 @@ Modellannahme und Grenzen:
     je Leitungsende eigene Einstellwerte. Eigene Werte je Ende ohne Richtung genuegen
     nicht: das lastseitige Relais fuehrt bei Durchgangsfehlern denselben Strom und
     wuerde mit seinen Werten fuer die andere Lage ausloesen.
-  - Ik max und Ik min an den Knoten sind Eingabewerte und gelten fuer jede Lage gleich.
-    In der Realitaet aendern sie sich mit der Trennstelle.
+  - Eingegebene Ik max und Ik min an den Knoten gelten fuer jede Lage gleich. In der
+    Realitaet aendern sie sich mit der Trennstelle (netz_kurzschluss.py rechnet sie je Lage
+    und zeigt die Abweichung). Mit ik_ergaenzen=True bekommen Knoten OHNE Eingabewert den
+    je Lage berechneten Wert.
   - Genau eine Masche, wie in netz_topologie.py.
 
 Robustheit: Das Modul wirft nie. Fehlende oder fehlerhafte Daten fuehren zu Meldungen.
@@ -45,6 +47,7 @@ from dataclasses import dataclass, field
 
 import konstanten_netz as KN
 import netz_adapter
+import netz_kurzschluss
 import netz_selektivitaet as S
 import netz_stromstaffel as SS
 import netz_topologie
@@ -159,10 +162,12 @@ def _kopie(netz: Netz) -> Netz:
     return Netz.from_dict(netz.to_dict())
 
 
-def erzeuge_lagen(netz: Netz) -> tuple:
+def erzeuge_lagen(netz: Netz, ik_ergaenzen: bool = False) -> tuple:
     """
     Eine Netzkopie je moeglicher Trennstelle (jedes Ringelement). Rueckgabe (Lagen, Meldungen).
     Ohne gueltigen Ring: leere Liste mit Meldung.
+    ik_ergaenzen: Knoten OHNE eingegebenen Ik bekommen in jeder Lage den fuer diese Lage
+    berechneten Wert (netz_kurzschluss.ergaenze_ik). Eingegebene Werte bleiben unveraendert.
     """
     meldungen = []
     try:
@@ -180,6 +185,8 @@ def erzeuge_lagen(netz: Netz) -> tuple:
             for r in topo.ring_elemente:
                 n.element_aendern(r, zustand="ein")
             n.element_aendern(eid, zustand="aus")
+            if ik_ergaenzen:
+                n = netz_kurzschluss.ergaenze_ik(n)[0]
             lagen.append(RingLage(eid, n))
         return lagen, meldungen
     except Exception as exc:
@@ -190,11 +197,12 @@ def erzeuge_lagen(netz: Netz) -> tuple:
 # ── Ist-Pruefung in allen Lagen ──────────────────────────────────────────────
 def pruefe_ringlagen(netz: Netz, U_bezug_kV: float | None = None,
                      dt_soll: float = KN.dt_Staffel_soll,
-                     dt_min: float = KN.dt_Staffel_min) -> RingErgebnis:
+                     dt_min: float = KN.dt_Staffel_min,
+                     ik_ergaenzen: bool = False) -> RingErgebnis:
     """Zeit- und Strompruefung der vorhandenen Einstellwerte in jeder Trennstellenlage."""
     erg = RingErgebnis()
     try:
-        erg.lagen, erg.meldungen = erzeuge_lagen(netz)
+        erg.lagen, erg.meldungen = erzeuge_lagen(netz, ik_ergaenzen)
         for lage in erg.lagen:
             lage.zeit = S.pruefe_selektivitaet(lage.netz, None, U_bezug_kV, dt_soll, dt_min)
             lage.strom = SS.pruefe_strom(lage.netz, None, U_bezug_kV)
@@ -214,8 +222,8 @@ def pruefe_ringlagen(netz: Netz, U_bezug_kV: float | None = None,
 def _hinweis_ik() -> Meldung:
     return Meldung(
         HINWEIS,
-        "Ik max und Ik min an den Knoten gelten für jede Trennstellenlage gleich. "
-        "In der Realität ändern sie sich mit der Lage.")
+        "Eingegebene Ik max und Ik min gelten für jede Trennstellenlage gleich. "
+        "In der Realität ändern sie sich mit der Lage (siehe berechnete Kurzschlussströme).")
 
 
 # ── Vorschlag fuer alle Lagen ────────────────────────────────────────────────
@@ -280,19 +288,20 @@ def _untergrenzen(netz: Netz, stand: dict) -> dict:
 
 def ringvorschlag(netz: Netz, U_bezug_kV: float | None = None,
                   dt_soll: float = KN.dt_Staffel_soll, k_S: float = KN.k_S_Strom,
-                  t_min: float = KN.t_Vorschlag_min) -> RingVorschlag:
+                  t_min: float = KN.t_Vorschlag_min,
+                  ik_ergaenzen: bool = False) -> RingVorschlag:
     """Ein Satz Einstellwerte, der in allen Trennstellenlagen gilt (siehe Modulkopf). Wirft nie."""
     erg = RingVorschlag()
     try:
-        return _ringvorschlag(netz, U_bezug_kV, dt_soll, k_S, t_min, erg)
+        return _ringvorschlag(netz, U_bezug_kV, dt_soll, k_S, t_min, erg, ik_ergaenzen)
     except Exception as exc:
         erg.meldungen.append(Meldung(
             FEHLER, f"Ringvorschlag abgebrochen ({type(exc).__name__}: {exc})."))
         return erg
 
 
-def _ringvorschlag(netz, U_bezug_kV, dt_soll, k_S, t_min, erg) -> RingVorschlag:
-    lagen, meld = erzeuge_lagen(netz)
+def _ringvorschlag(netz, U_bezug_kV, dt_soll, k_S, t_min, erg, ik_ergaenzen=False) -> RingVorschlag:
+    lagen, meld = erzeuge_lagen(netz, ik_ergaenzen)
     erg.meldungen += meld
     if not lagen:
         return erg
@@ -329,7 +338,8 @@ def _ringvorschlag(netz, U_bezug_kV, dt_soll, k_S, t_min, erg) -> RingVorschlag:
 
     if not erg.konvergiert:
         # Kein Satz Werte fuer alle Lagen. Ursache benennen statt weggelaufene Zeiten zu zeigen.
-        paare = gegenlaeufige_paare(pruefe_ringlagen(netz, U_bezug_kV, dt_soll))
+        paare = gegenlaeufige_paare(pruefe_ringlagen(netz, U_bezug_kV, dt_soll,
+                                                     ik_ergaenzen=ik_ergaenzen))
         if paare:
             bsp = "; ".join(f"{o} liegt mit Trennstelle {l1} über {u}, mit Trennstelle {l2} darunter"
                             for o, u, l1, l2 in paare[:3])
@@ -356,7 +366,7 @@ def _ringvorschlag(netz, U_bezug_kV, dt_soll, k_S, t_min, erg) -> RingVorschlag:
     # Gegenpruefung: alle Lagen mit dem fertigen Satz
     kopie = _kopie(netz)
     _setze(kopie, stand)
-    erg.pruefung = pruefe_ringlagen(kopie, U_bezug_kV, dt_soll)
+    erg.pruefung = pruefe_ringlagen(kopie, U_bezug_kV, dt_soll, ik_ergaenzen=ik_ergaenzen)
     if erg.konvergiert:
         # Gegenprobe: ein Fixpunkt muss in jeder Lage selektiv sein (ausser gegen den Netzbetreiber)
         offen = []

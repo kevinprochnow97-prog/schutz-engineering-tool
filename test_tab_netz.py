@@ -280,6 +280,66 @@ def test_ring():
     print("Ring OK: Lagentabelle, Änderungsliste, Übernahme, danach alle Lagen gelb.")
 
 
+# ── 9. Kurzschlussstroeme aus den Netzdaten ──────────────────────────────────
+def test_kurzschluss_anzeige():
+    at = _beispiel()
+    vorher = at.session_state["netz_modell"].to_dict()
+    staffel_vorher = at.dataframe[3].value.to_dict()
+    at.toggle(key="netz_ik_an").set_value(True).run()
+    _keine_ausnahme(at)
+    # zwei Tabellen mehr (Vergleich, Impedanzen im Expander), dahinter alles wie bisher
+    assert len(at.dataframe) == 6 and len(at.expander) == 1
+    assert len(at.error) == 0 and len(at.warning) == 0
+    df = at.dataframe[2].value.set_index("Knoten")
+    assert df.loc["K2", "Ik″ max eingegeben [kA]"] == "10,00"
+    assert df.loc["K2", "Ik″ max berechnet [kA]"] == "10,22" and df.loc["K2", "Abw. max"] == "+2,2 %"
+    assert df.loc["K4", "Ik min berechnet [kA]"] == "5,90"
+    assert df.loc["K3", "Ik″ max mit Motoren [kA]"] == "10,10"
+    assert df.loc["K5", "Ik min eingegeben [kA]"] == "–"
+    assert df.loc["K5", "Staffelung rechnet mit"] == "berechnet: Ik min"
+    assert set(df.drop("K5")["Staffelung rechnet mit"]) == {"eingegeben"}
+    assert "K5 Ik min 24,58 kA" in _texte(at.caption)
+    assert len(at.dataframe[3].value) == 6                           # Impedanzen: E1, L1, L2, M1, T1, T2
+    # Das Modell bleibt auf den eingegebenen Werten, die Zeitstaffelung aendert sich nicht
+    assert at.session_state["netz_modell"].to_dict() == vorher
+    assert at.dataframe[5].value.to_dict() == staffel_vorher
+    # Vorschlag mit eingeschalteter Rechnung: Uebernahme schreibt ins Modell, Ik bleibt
+    at.toggle(key="netz_vorschlag_an").set_value(True).run()
+    _keine_ausnahme(at)
+    _klick(at, "netz_vorschlag_uebernehmen")
+    netz = at.session_state["netz_modell"]
+    assert "Staffelvorschlag übernommen" in _texte(at.success)
+    assert netz.to_dict() != vorher and netz.knoten["K5"].Ik_min_kA is None
+    assert [k.Ik_max_kA for k in netz.knoten.values()] == [15.7, 10.0, 9.1, 7.9, 35.0]
+    print("Kurzschluss-Anzeige OK: eingegeben, berechnet, Abweichung, Modell unverändert.")
+
+
+def test_kurzschluss_ring():
+    at = _start()
+    _klick(at, "netz_btn_beispiel_ring")
+    at.toggle(key="netz_ik_an").set_value(True).run()
+    _keine_ausnahme(at)
+    # Vergleich, Lagen, Impedanzen zusaetzlich zu den fuenf Tabellen des Rings
+    assert len(at.dataframe) == 8 and len(at.expander) == 1
+    lagen = at.dataframe[3].value.set_index("Schaltzustand")
+    assert list(lagen.index)[1:] == ["K34 offen", "L1 offen", "L2 offen", "Ring geschlossen"]
+    assert list(lagen.columns) == ["K3", "K4", "K5"]                 # K1 und K2 aendern sich nicht
+    assert lagen.iloc[0]["K4"] == "7,90 / 5,80"                      # eingegeben
+    assert lagen.loc["L2 offen", "K4"] == "9,27 / 6,95"
+    assert lagen.loc["L1 offen", "K3"] == lagen.loc["L1 offen", "K4"] == "8,00 / 5,90"
+    warn = _texte(at.warning)
+    assert "K4 Ik max in Lage „L2 offen“" in warn and "K3 Ik max in Lage „L1 offen“" in warn
+    assert "rechnet weiter mit den eingegebenen Werten" in warn
+    # Ringvorschlag mit eingeschalteter Rechnung laeuft und schreibt ins Modell
+    at.toggle(key="netz_ring_vorschlag_an").set_value(True).run()
+    _keine_ausnahme(at)
+    _klick(at, "netz_ring_uebernehmen")
+    netz = at.session_state["netz_modell"]
+    assert "Ringvorschlag übernommen" in _texte(at.success)
+    assert netz.elemente["L1"].p["iph_hh"] == 5.6 and netz.knoten["K5"].Ik_min_kA is None
+    print("Kurzschluss-Ring OK: Werte je Lage, Warnung zu K3 und K4, Übernahme ins Modell.")
+
+
 if __name__ == "__main__":
     test_leerstart()
     test_beispielnetz()
@@ -289,4 +349,6 @@ if __name__ == "__main__":
     test_staffelung()
     test_staffelvorschlag()
     test_ring()
+    test_kurzschluss_anzeige()
+    test_kurzschluss_ring()
     print("\nAlle Prüfungen bestanden.")

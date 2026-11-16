@@ -100,3 +100,47 @@ Faktor_max = {
     ("trafo", "I>> US"): 12.0,
     ("leitung", "Iph>>"): 10.0,
 }
+
+# ── Kurzschlussstromberechnung (netz_kurzschluss.py) ─────────────────────────
+# Vereinfachte Rechnung in Anlehnung an IEC 60909-0. Die Werte sind am 16.11.2026 gegen
+# Sekundaerquellen geprueft (Lehrbuch, Fachaufsatz, Datenblatt), der Normtext selbst lag
+# nicht vor. Quellen und offene Punkte: docs/tool_vorgabe_kurzschluss.md, Abschnitt 8.
+# Spannungsfaktor c am Fehlerort, getrennt nach Spannungsebene (Grenze 1 kV).
+c_max_HS = 1.10       # UN > 1 kV, groesster Kurzschlussstrom
+c_min_HS = 1.00       # UN > 1 kV, kleinster Kurzschlussstrom
+c_max_NS = 1.10       # UN <= 1 kV, Netze mit 10 % Spannungstoleranz (400/230 V).
+                      # Fuer Netze mit +6 % Toleranz nennt die Norm 1,05.
+c_min_NS = 0.90       # UN <= 1 kV, passend zu 10 % Toleranz (Ausgabe 2016). Bei 6 %
+                      # Toleranz und in der Ausgabe 2001 steht 0,95.
+U_Grenze_NS_kV = 1.0
+
+# Netzeinspeisung: ohne Angabe RX_Q im Element gilt R_Q = RX_Q_def * X_Q
+RX_Q_def = 0.10
+
+# Korrekturfaktor fuer Netztransformatoren: K_T = 0,95 * c_max / (1 + 0,6 * x_T).
+# False rechnet ohne K_T (so sind die Handwerte des Referenznetzes entstanden).
+KT_anwenden = True
+KT_a, KT_b = 0.95, 0.60
+
+# Leitung: der Widerstandsbelag aus den Elementdaten gilt als Wert bei 20 Grad C.
+# Fuer Ik min wird er auf die Leitertemperatur am Ende des Kurzschlusses umgerechnet:
+# R = R20 * (1 + alpha * (theta - 20)). Die Norm verlangt die Leitertemperatur am Ende
+# des Kurzschlusses. Tool-Vorgabe 90 Grad C: hoechste zulaessige Betriebstemperatur von
+# VPE-Kabeln (Datenblaetter NA2XS(F)2Y). Das ist die untere Grenze fuer ein vorbelastetes
+# Kabel, die Kurzschlusserwaermung selbst (zulaessig bis 250 Grad C) ist nicht enthalten.
+# Je Leitung ueber den Parameter theta_min_C aenderbar.
+alpha_Leiter_1K = 0.004
+theta_Leiter_min_C = 90.0
+
+# Asynchronmotor: R_M/X_M ohne Angabe RX_M im Element. Die Norm staffelt nach
+# Leistung je Polpaar (ueber 1 kV: 0,10 ab 1 MW je Polpaar, sonst 0,15. Bis 1 kV: 0,42).
+# Das Netzmodell kennt die Polpaarzahl nicht. Tool-Vorgabe ueber 1 kV: 0,10.
+RX_M_HS = 0.10
+RX_M_NS = 0.42
+
+# Zweipoliger Kurzschluss fern von Generatoren (Z2 = Z1): Ik2 = sqrt(3)/2 * Ik3
+f_2pol = 3.0 ** 0.5 / 2.0
+
+# Anzeige: ab dieser Abweichung zwischen eingegebenem und berechnetem Ik weist die
+# Oberflaeche darauf hin (Tool-Vorgabe, halbe Sicherheit von k_S_Strom = 1,2)
+Ik_Abweichung_Hinweis = 0.10

@@ -12,6 +12,10 @@ Ablauf:
   2. Einlinienbild und Topologie-Meldungen (nur wenn ein Netz vorhanden ist)
   3. Baumeingabe: Knoten anlegen, Element anlegen (Parameter aus den Tabs)
   4. Netz bearbeiten: schalten, Parameter uebernehmen, entfernen
+  4b. Kurzschlussstroeme aus den Netzdaten (netz_kurzschluss.py), per Schalter:
+      eingegeben, berechnet, Abweichung, im Ring je Trennstellenlage. Eingegebene
+      Werte haben immer Vorrang. Nur Knoten OHNE Eingabewert rechnen in der
+      Staffelung mit dem berechneten Wert (Kopie, das Modell bleibt unveraendert).
   5. Schutzstufen aus den Betriebsmittel-Tabs (Adapter)
   6. Zeitstaffelung: Pfade, Ampel je benachbartem Paar, Meldungen
      (netz_selektivitaet.py)
@@ -33,6 +37,7 @@ import streamlit as st
 import konstanten_netz as KN
 import netz_adapter
 import netz_bild
+import netz_kurzschluss
 import netz_ring
 import netz_selektivitaet
 import netz_stromstaffel
@@ -278,6 +283,134 @@ def _bearbeiten(netz: Netz) -> None:
         } for e in sorted(elemente.values(), key=lambda e: e.id)]), width="stretch", hide_index=True)
 
 
+# ── 4b. Kurzschlussstroeme aus den Netzdaten ─────────────────────────────────
+def _ka(wert, stellen: int = 2) -> str:
+    return "–" if wert is None else de(wert, stellen)
+
+
+def _abw(v) -> str:
+    a = v.abweichung
+    if a is None:
+        return "–"
+    return f"{'+' if a >= 0 else '−'}{de(abs(a) * 100, 1)} %" + (" ⚠️" if v.auffaellig else "")
+
+
+def _kurzschluss(netz: Netz):
+    """
+    Berechnete Kurzschlussstroeme neben den eingegebenen zeigen. Rueckgabe (Rechennetz, an):
+    Das Rechennetz ist eine Kopie, in der NUR Knoten ohne Eingabewert den berechneten Ik
+    tragen. Ohne Schalter das Netz selbst. Geschrieben wird immer ins Modell, nie in die Kopie.
+    """
+    grphead("Kurzschlussströme aus den Netzdaten")
+    if not st.toggle("Kurzschlussströme berechnen und mit den eingegebenen Werten vergleichen",
+                     key="netz_ik_an",
+                     help="Vereinfachte Rechnung in Anlehnung an IEC 60909-0 aus Sk″ der "
+                          "Einspeisung, uk der Trafos und den Leitungsbelägen. Eingegebene Werte "
+                          "haben immer Vorrang und werden nie überschrieben. Nur wo kein Wert "
+                          "eingegeben ist, rechnet die Staffelung mit dem berechneten. "
+                          "Annahmen: docs/tool_vorgabe_kurzschluss.md."):
+        return netz, False
+    zustaende = netz_kurzschluss.berechne_schaltzustaende(netz)
+    akt = zustaende[0]
+    _meldungen(akt.meldungen)
+    if not any(k.Ik_max_kA is not None or k.Ik_min_kA is not None for k in akt.knoten.values()):
+        st.caption("Noch nichts berechenbar. Nötig sind eine Einspeisung mit Sk″ und die "
+                   "Impedanzdaten der Trafos (Sn, uk) und Leitungen (Länge, X′).")
+        return netz, True
+    vgl = {(v.knoten, v.groesse): v for v in netz_kurzschluss.vergleiche(netz, akt)}
+    netz_r, ergaenzt, meld = netz_kurzschluss.ergaenze_ik(netz, akt)
+    _meldungen(meld)
+    gilt = {}
+    for e in ergaenzt:
+        gilt.setdefault(e.knoten, []).append("Ik max" if e.groesse == "max" else "Ik min")
+
+    def zeile(kid):
+        r, vmax, vmin = akt.knoten[kid], vgl[(kid, "max")], vgl[(kid, "min")]
+        return {
+            "Knoten": kid, "UN [kV]": de(r.UN_kV, 1),
+            "Ik″ max eingegeben [kA]": _ka(vmax.eingegeben_kA),
+            "Ik″ max berechnet [kA]": _ka(vmax.berechnet_kA), "Abw. max": _abw(vmax),
+            "Ik min eingegeben [kA]": _ka(vmin.eingegeben_kA),
+            "Ik min berechnet [kA]": _ka(vmin.berechnet_kA), "Abw. min": _abw(vmin),
+            "Ik″ max mit Motoren [kA]": _ka(r.Ik_max_mit_Motor_kA),
+            "Staffelung rechnet mit": ("berechnet: " + ", ".join(gilt[kid])) if kid in gilt
+                                      else "eingegeben",
+        }
+
+    st.dataframe(pd.DataFrame([zeile(k) for k in sorted(akt.knoten)]),
+                 width="stretch", hide_index=True)
+    titel = "" if akt.art == netz_kurzschluss.AKTUELL else f" Lage: {akt.bezeichnung}."
+    st.caption("Ik″ max dreipolig ohne Motoren (der Strom, den die vorgelagerten Schutzgeräte "
+               "führen), Ik min zweipolig. Abweichung = berechnet gegen eingegeben, ⚠️ ab "
+               f"{de(KN.Ik_Abweichung_Hinweis * 100, 0)} %. Eingegebene Werte bleiben gültig."
+               + titel)
+    if ergaenzt:
+        st.caption("Ohne Eingabewert, deshalb berechnet in der Staffelung verwendet: "
+                   + ", ".join(f"{e.knoten} {'Ik max' if e.groesse == 'max' else 'Ik min'} "
+                               f"{de(e.wert_kA, 2)} kA" for e in ergaenzt) + ".")
+
+    if len(zustaende) > 1:
+        _kurzschluss_lagen(netz, zustaende)
+
+    with st.expander("Details: Impedanzen und Annahmen der Kurzschlussrechnung"):
+        st.dataframe(pd.DataFrame([{
+            "Element": i.element, "Typ": TYP_TEXT.get(i.typ, i.typ),
+            "bezogen auf [kV]": de(i.UN_kV, 1),
+            "Z für Ik max": netz_kurzschluss.polar_text(i.Z_max),
+            "Z für Ik min": netz_kurzschluss.polar_text(i.Z_min),
+            "Annahmen": "; ".join(i.annahmen) or "–",
+        } for i in akt.impedanzen]), width="stretch", hide_index=True)
+        st.caption(
+            f"Spannungsfaktor c: über 1 kV {de(KN.c_max_HS, 2)} (max) und {de(KN.c_min_HS, 2)} "
+            f"(min), bis 1 kV {de(KN.c_max_NS, 2)} und {de(KN.c_min_NS, 2)}. Ik min = √3/2 × "
+            "dreipoliger Strom. Nicht berücksichtigt: Generatoren, Erdfehler, Lastströme, "
+            "Lichtbogenwiderstand. Alle Annahmen sind Tool-Vorgaben "
+            "(docs/tool_vorgabe_kurzschluss.md).")
+    return netz_r, True
+
+
+def _kurzschluss_lagen(netz: Netz, zustaende) -> None:
+    """Ring: berechnete Werte je Trennstellenlage, nur fuer Knoten, deren Wert sich aendert."""
+    kn = netz.knoten
+
+    def paar(z, kid):
+        r = z.knoten.get(kid)
+        return (None, None) if r is None else (r.Ik_max_kA, r.Ik_min_kA)
+
+    def verschieden(kid):
+        werte = [paar(z, kid) for z in zustaende]
+        return any(a is not None and b is not None and abs(a - b) > 1e-6 * max(a, b)
+                   for w in werte for a, b in zip(w, werte[0]))
+
+    wechselnd = [k for k in sorted(kn) if verschieden(k)]
+    if not wechselnd:
+        st.caption("Im Ring ändert sich kein berechneter Wert mit der Trennstellenlage.")
+        return
+    st.markdown("**Berechnet je Trennstellenlage** (Ik″ max / Ik min 2-pol. in kA)")
+    zeilen = [{"Schaltzustand": "eingegeben (gilt in der Staffelung für alle Lagen)",
+               **{k: f"{_ka(kn[k].Ik_max_kA)} / {_ka(kn[k].Ik_min_kA)}" for k in wechselnd}}]
+    hinweise = []
+    for z in zustaende:
+        zeilen.append({"Schaltzustand": z.bezeichnung,
+                       **{k: f"{_ka(paar(z, k)[0])} / {_ka(paar(z, k)[1])}" for k in wechselnd}})
+        if z.art != netz_kurzschluss.LAGE:
+            continue
+        for v in netz_kurzschluss.vergleiche(netz, z):
+            if v.knoten in wechselnd and v.auffaellig:
+                hinweise.append(
+                    f"{v.knoten} {'Ik max' if v.groesse == 'max' else 'Ik min'} in Lage "
+                    f"„{z.bezeichnung}“: berechnet {de(v.berechnet_kA, 2)} kA, eingegeben "
+                    f"{de(v.eingegeben_kA, 2)} kA ({_abw(v).replace(' ⚠️', '')})")
+    st.dataframe(pd.DataFrame(zeilen), width="stretch", hide_index=True)
+    st.caption("Nur Knoten, deren Wert sich mit der Lage ändert. „Ring geschlossen“ ist kein "
+               "Betriebszustand der Staffelung, zeigt aber den größten Ik″ max beim Umschalten "
+               "ohne Unterbrechung.")
+    if hinweise:
+        st.warning("Die eingegebenen Werte passen nicht zu jeder Trennstellenlage: "
+                   + "; ".join(hinweise) + ". Die Ringstaffelung rechnet weiter mit den "
+                   "eingegebenen Werten.")
+
+
 # ── 5. Schutzstufen ──────────────────────────────────────────────────────────
 def _schutzstufen(netz: Netz, topo):
     """Schutzstufen anzeigen. Liefert das Adapter-Ergebnis fuer die Staffelung (oder None)."""
@@ -308,12 +441,15 @@ def _zeit(t) -> str:
     return "–" if t is None else de(t, 2)
 
 
-def _staffelung(netz: Netz, adapter) -> None:
+def _staffelung(netz: Netz, adapter, ziel: Netz | None = None, ik_an: bool = False) -> None:
     """
     Ergebnis von netz_selektivitaet.pruefe_selektivitaet anzeigen.
     Der Sollabstand ist hier einstellbar (Tool-Vorgabe 0,30 s), der technische
     Mindestwert bleibt fest, damit die rote Ampel nicht weggeregelt werden kann.
+    netz ist das Rechennetz (ggf. mit berechnet ergaenzten Ik), ziel das Modell, in das
+    Vorschlaege geschrieben werden.
     """
+    ziel = netz if ziel is None else ziel
     grphead("Zeitstaffelung entlang der Versorgungspfade")
     if adapter is None:
         st.caption("Die Staffelprüfung läuft, sobald Schutzstufen vorhanden sind.")
@@ -364,8 +500,8 @@ def _staffelung(netz: Netz, adapter) -> None:
                "werden nicht gestaffelt. Die Zeitprüfung rechnet in Nennübersetzung, Stufensteller "
                "und Schaltgruppe berücksichtigt die Stromstaffelung im Staffelvorschlag.")
     if adapter.topologie is not None and adapter.topologie.netzform_erkannt == "ring":
-        _ring(netz, float(dt_soll), adapter.topologie.trennstelle)
-    _vorschlag(netz, adapter, float(dt_soll))
+        _ring(ziel, float(dt_soll), adapter.topologie.trennstelle, ik_an)
+    _vorschlag(netz, adapter, float(dt_soll), ziel)
 
 
 # ── 6b. Ring: alle Trennstellenlagen ─────────────────────────────────────────
@@ -408,13 +544,13 @@ def _aenderungsliste(zeilen, titel: str) -> None:
     st.dataframe(pd.DataFrame(zeilen), width="stretch", hide_index=True)
 
 
-def _ring(netz: Netz, dt_soll: float, aktuell) -> None:
+def _ring(netz: Netz, dt_soll: float, aktuell, ik_an: bool = False) -> None:
     """
     Ring: Ist-Einstellungen in jeder moeglichen Trennstellenlage pruefen und auf Wunsch
     einen Satz Werte vorschlagen, der in allen Lagen gilt (netz_ring.py).
     """
     grphead("Ring: Staffelung in allen Trennstellenlagen")
-    erg = netz_ring.pruefe_ringlagen(netz, dt_soll=dt_soll)
+    erg = netz_ring.pruefe_ringlagen(netz, dt_soll=dt_soll, ik_ergaenzen=ik_an)
     _meldungen(erg.meldungen)
     if not erg.lagen:
         return
@@ -428,7 +564,7 @@ def _ring(netz: Netz, dt_soll: float, aktuell) -> None:
                           "Lagen, wiederholt bis sich nichts mehr ändert. Gegenläufige Ketten "
                           "werden namentlich gemeldet. Herleitung: docs/tool_vorgabe_ring.md."):
         return
-    rv = netz_ring.ringvorschlag(netz, dt_soll=dt_soll)
+    rv = netz_ring.ringvorschlag(netz, dt_soll=dt_soll, ik_ergaenzen=ik_an)
     _meldungen(rv.meldungen)
     if not rv.werte:
         return
@@ -467,13 +603,15 @@ def _ring(netz: Netz, dt_soll: float, aktuell) -> None:
 
 
 # ── 7. Staffelvorschlag ──────────────────────────────────────────────────────
-def _vorschlag(netz: Netz, adapter, dt_soll: float) -> None:
+def _vorschlag(netz: Netz, adapter, dt_soll: float, ziel: Netz | None = None) -> None:
     """
     Vorschlag von der Last zur Quelle: erst die I>>-Ansprechwerte (Stromstaffelung),
     dann die Zeiten mit diesen Werten, dann Gegenpruefung. Oben steht nur, was zu aendern
     ist. Alle Stufen mit Herleitung stehen im aufklappbaren Bereich. Der Vorschlag wird bei
     jedem Lauf neu aus dem Modell gerechnet (Modell ist die Wahrheit).
+    netz ist das Rechennetz, ziel das Modell, in das die Uebernahme schreibt.
     """
+    ziel = netz if ziel is None else ziel
     ring = adapter.topologie is not None and adapter.topologie.netzform_erkannt == "ring"
     grphead("Staffelvorschlag nur für die aktuelle Trennstellenlage" if ring
             else "Staffelvorschlag (erst Strom, dann Zeit)")
@@ -523,9 +661,9 @@ def _vorschlag(netz: Netz, adapter, dt_soll: float) -> None:
         if st.button("✅ Vorschlag ins Netz übernehmen", key="netz_vorschlag_uebernehmen"):
             je_element = vor.parameter_je_element()
             for eid, p_neu in je_element.items():
-                p_alt = dict(netz.elemente[eid].p)
+                p_alt = dict(ziel.elemente[eid].p)
                 p_alt.update(p_neu)
-                netz.parameter_setzen(eid, p_alt)
+                ziel.parameter_setzen(eid, p_alt)
             _erfolg(f"Staffelvorschlag übernommen: {n_strom} Ansprechwerte und {n_zeit} Zeiten in "
                     f"{len(je_element)} Elementen gesetzt.")
 
@@ -592,6 +730,7 @@ def show():
     _form_element(netz)
     if not leer:
         _bearbeiten(netz)
-        adapter = _schutzstufen(netz, topo)
+        netz_r, ik_an = _kurzschluss(netz)
+        adapter = _schutzstufen(netz_r, topo)
         if topo.ok:
-            _staffelung(netz, adapter)
+            _staffelung(netz_r, adapter, netz, ik_an)
