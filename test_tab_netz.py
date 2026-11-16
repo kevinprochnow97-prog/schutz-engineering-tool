@@ -15,6 +15,7 @@ Prueft:
 4. Bearbeiten: Netzform, Schalten, Entfernen.
 5. Uebernahme aus dem Trafo-Tab in der vollstaendigen App.
 6. Staffelung: 7 Paare mit Ampel wie im Modultest, Sollabstand wirkt, Pfade sichtbar.
+8. Ring: Beispielring laden, Lagentabelle, Ringvorschlag und Uebernahme.
 7. Staffelvorschlag (erst Strom, dann Zeit): Tabellen, Gegenpruefungen, Uebernahme ins
    Modell, danach ist die Staffelpruefung bis auf den Netzbetreiber (gelb) gruen.
 """
@@ -197,25 +198,29 @@ def test_staffelung():
 # ── 7. Staffelvorschlag (erst Strom, dann Zeit) ──────────────────────────────
 def test_staffelvorschlag():
     at = _beispiel()
-    assert len(at.dataframe) == 4                           # ohne Schalter keine Vorschlagstabelle
+    assert len(at.dataframe) == 4 and len(at.expander) == 0   # ohne Schalter kein Vorschlag
     at.toggle(key="netz_vorschlag_an").set_value(True).run()
     _keine_ausnahme(at)
-    # Knoten, Elemente, Schutzstufen, Staffelung, Strom, Zeit, Gegenpruefung Strom
-    assert len(at.dataframe) == 7
-    strom = at.dataframe[4].value
+    # Knoten, Elemente, Schutzstufen, Staffelung, Aenderungsliste + Details (Strom, Zeit, Gegenpruefung)
+    assert len(at.dataframe) == 8 and len(at.expander) == 1
+    liste = at.dataframe[4].value
+    assert len(liste) == 11 and list(liste["Größe"]).count("Ansprechwert") == 3   # 3 Stroeme, 8 Zeiten
+    z = liste[(liste["Element"] == "L2") & (liste["Größe"] == "Ansprechwert")].iloc[0]
+    assert (z["bisher"], z["neu"]) == ("600 A (2,00 × IN)", "1680 A (5,60 × IN)")
+    assert z["Warum"] == "1,2 × Ik max hinter T2 (OS)"
+    z = liste[(liste["Element"] == "T1") & (liste["Stufe"] == "I> OS")].iloc[0]
+    assert (z["bisher"], z["neu"]) == ("0,50 s", "1,00 s") and z["Warum"].startswith("0,30 s über T1 (US)")
+    strom = at.dataframe[5].value
     assert len(strom) == 7 and list(strom["Änderung"]).count("✏️") == 3
-    z = strom[(strom["Element"] == "L2") & (strom["Stufe"] == "Iph>>")].iloc[0]
-    assert (z["I bisher [A]"], z["I Vorschlag [A]"], z["Faktor Vorschlag"]) == ("600", "1680", "5,60")
     z = strom[(strom["Element"] == "T1") & (strom["Stufe"] == "I>> US")].iloc[0]
     assert z["Status"] == "nicht wirksam" and z["Änderung"] == ""
-    df = at.dataframe[5].value
+    df = at.dataframe[6].value
     assert len(df) == 16 and list(df["Änderung"]).count("✏️") == 8
-    zeile = df[(df["Element"] == "T1") & (df["Stufe"] == "I> OS")].iloc[0]
-    assert (zeile["t bisher [s]"], zeile["t Vorschlag [s]"]) == ("0,50", "1,00")
-    assert len(at.dataframe[6].value) == 10                  # Stromstaffel und Empfindlichkeit
+    assert len(at.dataframe[7].value) == 11                  # Stromstaffel und Empfindlichkeit
     assert "Stromstaffelung nicht wirksam" in _texte(at.caption)
     assert "Motor-Tab-Fenster" not in _texte(at.warning)
     assert "passt nicht unter den Schutz des Netzbetreibers" in _texte(at.warning)
+    assert "Ergebnis mit diesen Werten" in _texte(at.markdown)
     _klick(at, "netz_vorschlag_uebernehmen")
     assert "3 Ansprechwerte und 8 Zeiten in 4 Elementen" in _texte(at.success)
     netz = at.session_state["netz_modell"]
@@ -226,9 +231,53 @@ def test_staffelvorschlag():
     assert netz.elemente["T2"].p["t_I_Ph_US"] == 0.5        # US-Endpunkt explizit festgehalten
     staffel = at.dataframe[3].value
     assert list(staffel["Ampel"]).count("🟢") == 6 and list(staffel["Ampel"]).count("🟡") == 1
-    # Der Vorschlag ist jetzt deckungsgleich mit dem Netz
-    assert "Keine Änderung nötig" in _texte(at.caption)
-    print("Staffelvorschlag OK: Strom und Zeit, Übernahme, danach 6 grün und der Netzbetreiber gelb.")
+    # Der Vorschlag ist jetzt deckungsgleich mit dem Netz: keine Aenderungsliste mehr
+    assert "Keine Änderung nötig" in _texte(at.caption) and len(at.dataframe) == 7
+    print("Staffelvorschlag OK: Änderungsliste, Details, Übernahme, danach 6 grün und der Netzbetreiber gelb.")
+
+
+# ── 8. Ring ──────────────────────────────────────────────────────────────────
+def test_ring():
+    at = _start()
+    _klick(at, "netz_btn_beispiel_ring")
+    assert at.session_state["netz_modell"].netzform == "ring"
+    # Knoten, Elemente, Schutzstufen, Staffelung, Ringlagen (ohne Schalter)
+    assert len(at.dataframe) == 5
+    lagen = at.dataframe[4].value
+    assert sorted(lagen["Trennstelle"].str.replace(" (aktuell)", "", regex=False)) == ["K34", "L1", "L2"]
+    assert list(lagen["Trennstelle"]).count("K34 (aktuell)") == 1
+    assert set(lagen["Ampel"]) == {"🔴"}
+    assert "Im Ring gilt dieser Vorschlag nur für die aktuelle Trennstellenlage" in _texte(at.caption)
+    # Ringvorschlag: Aenderungsliste, Ergebnis je Lage, Details
+    at.toggle(key="netz_ring_vorschlag_an").set_value(True).run()
+    _keine_ausnahme(at)
+    assert len(at.dataframe) == 8 and len(at.expander) == 1
+    liste = at.dataframe[5].value
+    assert len(liste) == 12
+    z = liste[(liste["Element"] == "L2") & (liste["Größe"] == "Ansprechwert")].iloc[0]
+    assert (z["bisher"], z["neu"]) == ("600 A (2,00 × IN)", "1680 A (5,60 × IN)")
+    assert z["Warum"] == "Lage K34: 1,2 × Ik max hinter T2 (OS)"
+    z = liste[(liste["Element"] == "T1") & (liste["Stufe"] == "I> OS")].iloc[0]
+    assert (z["bisher"], z["neu"]) == ("0,50 s", "1,00 s")
+    nachher = at.dataframe[6].value
+    assert set(nachher["Ampel"]) == {"🟡"} and len(nachher) == 3
+    assert len(at.dataframe[7].value) == 21                  # alle Werte in den Details
+    _klick(at, "netz_ring_uebernehmen")
+    assert "Ringvorschlag übernommen: 12 Werte in 4 Elementen" in _texte(at.success)
+    netz = at.session_state["netz_modell"]
+    assert netz.elemente["L1"].p["iph_hh"] == 5.6 and netz.elemente["L2"].p["iph_hh"] == 5.6
+    assert netz.elemente["T1"].p["f_I_Ph_HH_US"] == 8.21
+    assert set(at.dataframe[4].value["Ampel"]) == {"🟡"}                 # Ist-Zustand jetzt in allen Lagen gelb
+    assert "Keine Änderung nötig, die Werte im Netz gelten bereits in allen Lagen" in _texte(at.caption)
+    assert len([b for b in at.button if b.key == "netz_ring_uebernehmen"]) == 0
+    # Einzelvorschlag im Ring: weiter nutzbar, gilt nur fuer die aktuelle Lage
+    at.toggle(key="netz_vorschlag_an").set_value(True).run()
+    _keine_ausnahme(at)
+    assert len(at.expander) == 2
+    # Strahlennetz zeigt keinen Ringblock
+    at = _beispiel()
+    assert len(at.dataframe) == 4
+    print("Ring OK: Lagentabelle, Änderungsliste, Übernahme, danach alle Lagen gelb.")
 
 
 if __name__ == "__main__":
@@ -239,4 +288,5 @@ if __name__ == "__main__":
     test_uebernahme_aus_trafo_tab()
     test_staffelung()
     test_staffelvorschlag()
+    test_ring()
     print("\nAlle Prüfungen bestanden.")

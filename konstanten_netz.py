@@ -88,3 +88,15 @@ gamma_Reserve = 1.50
 # Fehlerstrom). Das ist exakt der Wert des dreipoligen Fehlers, wenn
 # Ik2 = sqrt(3)/2 * Ik3 gilt. Herleitung in docs/tool_vorgabe_stromstaffelung.md.
 f_Sg_2pol_DY = 2.0 / 3.0 ** 0.5
+
+# Groesster Faktor (x IN), den der Vorschlag einer I>>-Stufe gibt. Tool-Vorgabe: der
+# Reglerbereich des jeweiligen Betriebsmittel-Tabs (tab_leitung.py: Iph>> 0,5 bis 10,
+# tab_trafo.py: I>> US 4 bis 12). Fuer I>> OS des Trafos gibt es keine Grenze, weil die
+# Automatik im Trafo-Tab selbst ueber den Reglerbereich hinausgeht (z. B. 18,19 x IN bei T2
+# im Referenznetz). Der Einstellbereich des Geraets in Sekundaerampere ist damit nicht
+# geprueft (Pruefpunkt in docs/tool_vorgabe_stromstaffelung.md). Liegt der noetige Wert
+# darueber, bleibt die Stufe unveraendert und wird wie eine Zeitstufe gestaffelt.
+Faktor_max = {
+    ("trafo", "I>> US"): 12.0,
+    ("leitung", "Iph>>"): 10.0,
+}

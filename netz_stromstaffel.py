@@ -53,6 +53,7 @@ from utils import de
 ANGEHOBEN = "angehoben"
 BLEIBT = "bleibt"
 NICHT_WIRKSAM = "nicht wirksam"
+NICHT_EINSTELLBAR = "nicht einstellbar"
 ENDPUNKT = "Endpunkt"
 OHNE_BEZUG = "ohne Bezug"
 
@@ -74,6 +75,7 @@ class Stromvorschlag:
     faktor_neu: float | None
     status: str
     grund: str
+    kurz: str = ""                 # Begruendung in einem Halbsatz, fuer die Aenderungsliste
 
     @property
     def geaendert(self) -> bool:
@@ -334,9 +336,9 @@ def _stufe(netz, topo, ad, zusp, ort, s, darunter, U, k_S, erg) -> tuple:
         return s, Stromvorschlag(ort.element, s.stufe, key, s.I_prim_A, s.I_prim_A,
                                  f_alt, f_alt, status, grund)
 
-    massgebend = None        # (k_S * I_bez, Text)
+    kandidaten = []          # (k_S * I_bez, Text, Art, Name der Station)
     for u in darunter:
-        I_bez, text, _art, hinweise = _bezug_unten(netz, topo, ad, zusp, ort, u, U)
+        I_bez, text, art, hinweise = _bezug_unten(netz, topo, ad, zusp, ort, u, U)
         for h in hinweise:
             erg.meldungen.append(Meldung(HINWEIS, h, (ort.element,)))
         if I_bez is None:
@@ -344,41 +346,83 @@ def _stufe(netz, topo, ad, zusp, ort, s, darunter, U, k_S, erg) -> tuple:
                 HINWEIS, f"{ort.element} {s.stufe}: {text}. Diese Station fließt nicht in "
                          f"den Stromvorschlag ein.", (ort.element,)))
             continue
-        if massgebend is None or k_S * I_bez > massgebend[0]:
-            massgebend = (k_S * I_bez, text)
-    if massgebend is None:
+        kandidaten.append((k_S * I_bez, text, art, u.name))
+    if not kandidaten:
         return unveraendert(OHNE_BEZUG, "Kein Bezugsstrom ermittelbar, Wert aus dem Tab bleibt")
-
-    soll_bez, text = massgebend
-    soll_A = soll_bez * U / ort.UN_kV                # zurueck auf die Spannung des Messorts
-    kopf = f"{de(k_S, 2)} × Bezug ({text}) = {de(soll_bez, 0)} A bez."   # endet mit Punkt der Abkuerzung
-
+    kandidaten.sort(key=lambda k: k[0], reverse=True)
     ik_eigen = _eigenes_ik_bez(netz, ort, U)
-    if ik_eigen is not None and soll_bez > ik_eigen * (1 + KN.EPS_STROM):
+    f_max = KN.Faktor_max.get((e.typ, s.stufe))
+
+    def machbar(soll_bez):
+        """(Hindernis oder None, Sollwert in A am Messort, Faktor oder None)."""
+        soll_A = soll_bez * U / ort.UN_kV            # zurueck auf die Spannung des Messorts
+        if ik_eigen is not None and soll_bez > ik_eigen * (1 + KN.EPS_STROM):
+            return NICHT_WIRKSAM, soll_A, None
+        if IN is None or key is None:
+            return OHNE_BEZUG, soll_A, None
+        f = S._aufrunden(soll_A / IN, KN.Raster_Faktor)
+        if f_max is not None and f > f_max + 1e-9:
+            return NICHT_EINSTELLBAR, soll_A, f
+        return None, soll_A, f
+
+    def kopf_kurz(k):
+        soll_bez, text, art, name = k
+        kopf = f"{de(k_S, 2)} × Bezug ({text}) = {de(soll_bez, 0)} A bez."   # endet mit Punkt der Abkuerzung
+        kurz = {ART_IK: f"{de(k_S, 1)} × Ik max hinter {name}",
+                ART_MOTOR: f"{de(k_S, 1)} × Anlaufstrom bzw. I>> von {name}",
+                ART_I2: f"{de(k_S, 1)} × I>> von {name}"}.get(art, "")
+        return kopf, kurz
+
+    def anheben(k, f, vorsatz=""):
+        kopf, kurz = kopf_kurz(k)
+        I_neu = f * IN
+        return replace(s, I_prim_A=I_neu), Stromvorschlag(
+            ort.element, s.stufe, key, s.I_prim_A, I_neu, f_alt, f, ANGEHOBEN,
+            f"{vorsatz}{kopf} Faktor {de(f, 2)} × IN = {de(I_neu, 0)} A "
+            f"(bisher {de(s.I_prim_A, 0)} A)", kurz)
+
+    haupt = kandidaten[0]
+    kopf, _kurz = kopf_kurz(haupt)
+    hindernis, soll_A, f_neu = machbar(haupt[0])
+    if hindernis != NICHT_WIRKSAM and s.I_prim_A >= soll_A * (1 - KN.EPS_STROM):
+        # Der Wert im Netz erfuellt die Regel schon, egal wie er zustande kam
+        return unveraendert(BLEIBT, f"{kopf} Tab-Wert {de(s.I_prim_A, 0)} A reicht aus und "
+                                    f"bleibt (es wird nie abgesenkt)")
+    if hindernis is None:
+        return anheben(haupt, f_neu)
+
+    # Der groesste noetige Wert ist nicht machbar: melden, Stufe wird zeitgestaffelt
+    if hindernis == NICHT_WIRKSAM:
         erg.meldungen.append(Meldung(
             HINWEIS,
             f"{ort.element} {s.stufe}: Stromstaffelung nicht wirksam. Der nötige Wert "
-            f"{de(soll_bez, 0)} A bez. liegt über Ik max am Messort {ort.messort} "
+            f"{de(haupt[0], 0)} A bez. liegt über Ik max am Messort {ort.messort} "
             f"({de(ik_eigen, 0)} A bez.), das Ik-Gefälle zur nächsten Station ist zu klein. "
             f"Die Stufe wird wie eine Zeitstufe gestaffelt.", (ort.element,)))
-        return unveraendert(NICHT_WIRKSAM,
-                            f"{kopf} Über Ik max am Messort ({de(ik_eigen, 0)} A bez.), "
-                            f"Wert aus dem Tab bleibt, Zeitstaffelung")
-    if s.I_prim_A >= soll_A * (1 - KN.EPS_STROM):
-        return unveraendert(BLEIBT, f"{kopf} Tab-Wert {de(s.I_prim_A, 0)} A reicht aus und "
-                                    f"bleibt (es wird nie abgesenkt)")
-    if IN is None or key is None:
+        grund = (f"{kopf} Über Ik max am Messort ({de(ik_eigen, 0)} A bez.), Zeitstaffelung")
+    elif hindernis == NICHT_EINSTELLBAR:
+        erg.meldungen.append(Meldung(
+            HINWEIS,
+            f"{ort.element} {s.stufe}: Der nötige Wert {de(f_neu, 2)} × IN liegt über dem "
+            f"Einstellbereich bis {de(f_max, 1)} × IN. Die Stufe wird wie eine Zeitstufe "
+            f"gestaffelt.", (ort.element,)))
+        grund = (f"{kopf} Nötig wären {de(f_neu, 2)} × IN, einstellbar sind höchstens "
+                 f"{de(f_max, 1)} × IN, Zeitstaffelung")
+    else:
         erg.meldungen.append(Meldung(
             WARNUNG, f"{ort.element} {s.stufe}: Faktor nicht ermittelbar, Vorschlag nicht "
                      f"setzbar.", (ort.element,)))
         return unveraendert(OHNE_BEZUG, f"{kopf} Nicht setzbar (Nennstrom unbekannt)")
-    f_neu = S._aufrunden(soll_A / IN, KN.Raster_Faktor)
-    I_neu = f_neu * IN
-    s_neu = replace(s, I_prim_A=I_neu)
-    return s_neu, Stromvorschlag(
-        ort.element, s.stufe, key, s.I_prim_A, I_neu, f_alt, f_neu, ANGEHOBEN,
-        f"{kopf} Faktor {de(f_neu, 2)} × IN = {de(I_neu, 0)} A "
-        f"(bisher {de(s.I_prim_A, 0)} A)")
+    # Die Anlaufgrenze eines Motors darunter gilt trotzdem: sie laesst sich nicht ueber die
+    # Zeit loesen (ein Anlauf dauert laenger als jede Staffelzeit).
+    for k in kandidaten[1:]:
+        if k[2] != ART_MOTOR:
+            continue
+        h2, soll2_A, f2 = machbar(k[0])
+        if h2 is None and s.I_prim_A < soll2_A * (1 - KN.EPS_STROM):
+            return anheben(k, f2, vorsatz=f"{grund}. Angehoben wird bis zur Anlaufgrenze: ")
+        break
+    return unveraendert(hindernis, f"{grund}, Wert aus dem Tab bleibt")
 
 
 # ── Gegenpruefung ────────────────────────────────────────────────────────────
@@ -392,6 +436,7 @@ def pruefe_strom(netz, adapter=None, U_bezug_kV: float | None = None,
       Empfindlichkeit: Ik min hinter der naechsten Station (zweipolig, ueber die
                        Trafos mit Stufensteller und Schaltgruppe) >= gamma * kleinster
                        Ansprechwert des oberen Schutzes. Gelb ab 1, rot darunter.
+                       Beim Motor gilt Ik min an seinem Anschlussknoten.
     Wirft nie.
     """
     erg = StromPruefErgebnis()
@@ -433,6 +478,8 @@ def _pruefe_strom(netz, adapter, U_bezug_kV, k_S, gamma, erg) -> StromPruefErgeb
                                                           ik_eigen, I_anl_bez))
         # 2. Empfindlichkeit des empfindlichsten Ansprechwerts von o
         fern = _fernknoten(netz, zusp, u)
+        if fern is None and netz.elemente[u.element].typ == "motor":
+            fern = u.messort             # Fehler am Motoranschluss: die Station darueber muss ihn sehen
         if fern is None:
             continue
         k = netz.knoten.get(fern)
@@ -486,7 +533,8 @@ def _urteil_empf(u, o, I_min, I_an, gamma, um, fern, ik_min_kA) -> Stromstufenpr
 # ── Gesamtvorschlag: Strom, dann Zeit, dann Gegenpruefung ────────────────────
 def gesamtvorschlag(netz, adapter=None, U_bezug_kV: float | None = None,
                     dt_soll: float = KN.dt_Staffel_soll, k_S: float = KN.k_S_Strom,
-                    t_min: float = KN.t_Vorschlag_min) -> GesamtVorschlag:
+                    t_min: float = KN.t_Vorschlag_min,
+                    untergrenzen: dict | None = None) -> GesamtVorschlag:
     """Erst die I>>-Ansprechwerte, dann die Zeiten mit diesen Werten. Wirft nie."""
     try:
         strom = stromvorschlag(netz, adapter, U_bezug_kV, k_S)
@@ -495,7 +543,7 @@ def gesamtvorschlag(netz, adapter=None, U_bezug_kV: float | None = None,
         if not strom.ok or strom.adapter is None:
             return erg
         erg.zeit = S.staffelvorschlag(netz, strom.adapter, strom.U_bezug_kV, dt_soll, t_min,
-                                      strom_beruecksichtigt=True)
+                                      strom_beruecksichtigt=True, untergrenzen=untergrenzen)
         gesehen = {(m.stufe, m.text) for m in erg.meldungen}
         for m in erg.zeit.meldungen:
             if (m.stufe, m.text) not in gesehen:

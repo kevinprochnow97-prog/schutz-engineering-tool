@@ -1,6 +1,6 @@
 # Tool-Vorgabe: Stromstaffelung der I>>-Stufen und Umrechnung über Transformatoren
 
-Stand: 11.11.2026 | Gilt für `konstanten_netz.py`, `netz_umrechnung.py` und `netz_stromstaffel.py`
+Stand: 11.11.2026 (überarbeitet nach Review) | Gilt für `konstanten_netz.py`, `netz_umrechnung.py` und `netz_stromstaffel.py`
 
 > **Einordnung:** Alles in diesem Dokument ist eine **Tool-Vorgabe**. Keine der Regeln ist
 > eine Werksvoreinstellung eines Geräts. Die Herleitungen sind eigene Rechnungen, die
@@ -53,6 +53,16 @@ dahinter eigene Elemente sind.
   ansprechen. Der Wert bleibt dann unverändert, die Stufe wird wie eine Zeitstufe gestaffelt
   und es gibt einen Hinweis. Typisch ist das bei kurzen Kabeln, wo sich Ik zwischen Anfang und
   Ende kaum ändert.
+- **Einstellbereich.** Liegt der nötige Faktor über dem Reglerbereich des Betriebsmittel-Tabs
+  (`konstanten_netz.Faktor_max`: Leitung Iph>> bis 10 × IN, Trafo I>> US bis 12 × IN), bleibt
+  der Wert ebenfalls unverändert und die Stufe wird zeitgestaffelt (Status „nicht einstellbar“).
+  Für I>> OS des Trafos gibt es keine Grenze, weil die Automatik im Trafo-Tab selbst darüber
+  hinausgeht (T2 im Referenznetz: 18,19 × IN).
+- **Anlaufgrenze gilt immer.** Ist der größte nötige Wert nicht wirksam oder nicht einstellbar,
+  wird trotzdem bis zur Anlaufgrenze eines Motors darunter angehoben. Sie lässt sich nicht über
+  die Zeit lösen, weil ein Anlauf länger dauert als jede Staffelzeit.
+- **Der Wert im Netz zählt.** Erfüllt der vorhandene Wert die Regel bereits, bleibt er, egal wie
+  er zustande kam.
 
 ### 2.3 Zahlenwerte
 
@@ -146,7 +156,9 @@ Der I>>-Vorschlag und die Zeitprüfung sind damit konsistent: Der Vorschlag häl
 | Stromstaffel | I>> oben ≥ k_S · I_Bezug der nächsten Station | grün. Gelb, wenn nicht erfüllt (dann nur über die Zeit selektiv, bei zu kleinem Ik-Gefälle mit entsprechendem Text). Rot nur, wenn der Wert unter dem Anlaufstrom des Motors darunter liegt (die Stufe würde beim Anlauf auslösen). |
 | Empfindlichkeit | Ik min hinter der nächsten Station (zweipolig, über Trafos) ≥ γ · kleinster Ansprechwert oben | grün ab γ = 1,5, gelb zwischen 1 und γ, rot darunter |
 
-Fehlt Ik min an einem Knoten, entfällt die Zeile und es gibt einen Hinweis.
+Beim Motor als nächster Station gilt Ik min an seinem Anschlussknoten (die Station darüber muss
+einen Fehler am Motoranschluss sehen). Fehlt Ik min an einem Knoten, entfällt die Zeile und es
+gibt einen Hinweis.
 
 ## 5. Ergebnis im Referenznetz „Industrie 10 kV“
 
@@ -186,10 +198,12 @@ abstand von 0,3 s wird damit noch nicht erreicht.
 | 1 | Sitz des Stufenstellers auf der OS-Wicklung (Tool-Vorgabe). Bei Stufensteller auf der US-Seite kehrt sich der Faktor um. | Typenschild und Datenblatt der eingesetzten Trafos |
 | 2 | Faktor 2/√3 für den zweipoligen Fehler hinter D/Y: eigene Herleitung, durch Test belegt. Literaturbeleg ergänzen. | Fachliteratur Kurzschlussstromberechnung (Quelle noch zu benennen) |
 | 3 | k_S = 1,2 für die Stromstaffelung stammt aus `konstanten_trafo.k_S_IGG`. Die Herkunft dort (7UT613-Handbuch Kap. 2.4) ist in diesem Schritt nicht neu am Handbuch geprüft. | Handbuch 7UT613, Abschnitt Überstromzeitschutz |
-| 4 | **Erledigt 11.11.2026 (Referenznetz).** M1 I>> (50-2) stand mit der Werksvoreinstellung 4,0 × IN bei 547 A unter dem Anlaufstrom 752 A. Im Referenznetz jetzt 8,81 × IN = 1204 A (kleinster Faktor mit ≥ 1,6 × Anlaufstrom = 1203 A, Tool-Vorgabe). **Offen:** Der Motor-Default `konstanten_motor.f_50_2_def` = 4,0 liegt für I_A/IN > 2,5 unter dem eigenen Fenster des Motor-Tabs. Das betrifft den Motor-Tab selbst, nicht den Netz-Tab, und ist mit dem Betreuer zu klären. | `beispielnetze/industrie_10kV.json`, `konstanten_motor.py` |
+| 4 | **Erledigt 11.11.2026 (Referenznetz).** M1 I>> (50-2) stand im Referenznetz ohne eigenen Wert und fiel auf den Rückfallwert des Rechenkerns `konstanten_motor.f_50_2_def` = 4,0 × IN (547 A), unter dem Anlaufstrom 752 A. Jetzt 8,81 × IN = 1204 A (kleinster Faktor mit ≥ 1,6 × Anlaufstrom, Tool-Vorgabe). **Korrektur einer früheren Aussage:** Der Motor-Tab selbst setzt 50-2 in der Oberfläche auf 2 × Anlaufstrom. Ein aus dem Motor-Tab übernommener Parametersatz ist also nicht betroffen, nur ein Netz, dessen Motor ohne `f_50_2` angelegt wurde. | `beispielnetze/industrie_10kV.json`, `tab_motor.py` |
 | 5 | **Erledigt 11.11.2026.** Das Feld heißt jetzt „Ik min 2-pol. [kA]“ mit Hilfetext. | `tab_netz.py`, Knoten-Formular |
 | 6 | **Erledigt 11.11.2026.** Stufenstellerlage in Zeitprüfung und Zeitvorschlag (Abschnitt 3.4). | `netz_selektivitaet.py` |
 | 7 | Δt-Einzelwerte aus `tool_vorgabe_staffelabstand.md`, Abschnitt 5, sind weiter nicht gegen Handbücher geprüft. | Handbücher 7SJ66, 7UT613, 7SA6 |
+| 8 | Einstellbereich der I>>-Stufen: Das Tool nutzt den Reglerbereich der Tabs. Der Bereich der Geräte in Sekundärampere ist nicht geprüft. | Technische Daten 7SA6/7SD5, 7UT613, 7SJ66 |
+| 9 | **Offene Fachfrage Anlauf:** Im Referenznetz liegt Iph> von L1 (360 A, nach Vorschlag 0,8 s) unter dem Anlaufstrom von M1 (752 A, 8 s). Dasselbe gilt für die Motorstufe 50-1 selbst (342 A, 0,5 s, Voreinstellung im Motor-Tab). Ohne Anlaufblockierung würden beide beim Anlauf auslösen. Das Tool prüft bisher nur die I>>-Stufen gegen den Anlaufstrom. Klären, ob 50-1 im Gerät während des Anlaufs gesperrt ist und wie die I>-Stufe der Leitung darüber bemessen werden soll. | Handbuch 7SJ66 (Anlaufüberwachung), Betreuer |
 
 ## Quellen
 

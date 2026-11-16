@@ -15,6 +15,7 @@ Ablauf:
   5. Schutzstufen aus den Betriebsmittel-Tabs (Adapter)
   6. Zeitstaffelung: Pfade, Ampel je benachbartem Paar, Meldungen
      (netz_selektivitaet.py)
+  6b. Ring: Pruefung und Vorschlag ueber alle Trennstellenlagen (netz_ring.py)
   7. Staffelvorschlag: erst I>>-Ansprechwerte (Strom), dann Zeiten, Gegenpruefung
      beider, Uebernahme ins Modell (netz_stromstaffel.py)
 
@@ -32,6 +33,7 @@ import streamlit as st
 import konstanten_netz as KN
 import netz_adapter
 import netz_bild
+import netz_ring
 import netz_selektivitaet
 import netz_stromstaffel
 import netz_topologie
@@ -41,6 +43,7 @@ from utils import AMPEL_EMOJI, de
 
 SCHLUESSEL = "netz_modell"
 BEISPIELNETZ = Path(__file__).parent / "beispielnetze" / "industrie_10kV.json"
+BEISPIELNETZ_RING = Path(__file__).parent / "beispielnetze" / "industrie_10kV_ring.json"
 
 NETZFORM_TEXT = {"strahl": "Strahlennetz", "ring": "Ringnetz (offen betrieben)"}
 STERNPUNKT_TEXT = {
@@ -123,6 +126,12 @@ def _steuerleiste(netz: Netz) -> None:
         if st.button("📂 Beispielnetz laden", key="netz_btn_beispiel", width="stretch"):
             try:
                 _setze_netz(Netz.laden(BEISPIELNETZ), "Beispielnetz „Industrie 10 kV“ geladen.")
+                st.rerun()
+            except (OSError, ModellFehler) as exc:
+                st.error(f"Beispielnetz konnte nicht geladen werden: {exc}")
+        if st.button("🔁 Ring-Beispiel laden", key="netz_btn_beispiel_ring", width="stretch"):
+            try:
+                _setze_netz(Netz.laden(BEISPIELNETZ_RING), "Ring-Beispielnetz „Industrie 10 kV Ring“ geladen.")
                 st.rerun()
             except (OSError, ModellFehler) as exc:
                 st.error(f"Beispielnetz konnte nicht geladen werden: {exc}")
@@ -354,18 +363,123 @@ def _staffelung(netz: Netz, adapter) -> None:
                "Mindestwert und Soll, rot darunter. Nur Phasenstufen 50/51, Erdfehlerstufen "
                "werden nicht gestaffelt. Die Zeitprüfung rechnet in Nennübersetzung, Stufensteller "
                "und Schaltgruppe berücksichtigt die Stromstaffelung im Staffelvorschlag.")
+    if adapter.topologie is not None and adapter.topologie.netzform_erkannt == "ring":
+        _ring(netz, float(dt_soll), adapter.topologie.trennstelle)
     _vorschlag(netz, adapter, float(dt_soll))
+
+
+# ── 6b. Ring: alle Trennstellenlagen ─────────────────────────────────────────
+def _lagentabelle(erg, aktuell) -> None:
+    zeilen = []
+    for l in erg.lagen:
+        z = l.zeit.pruefungen if l.zeit else []
+        n = {k: sum(1 for p in z if p.status == k)
+             for k in (netz_selektivitaet.OK, netz_selektivitaet.GELB, netz_selektivitaet.ROT)}
+        sp = l.schlechtestes_paar
+        zeilen.append({
+            "Ampel": AMPEL_EMOJI[l.status] if l.status else "–",
+            "Trennstelle": l.trennstelle + (" (aktuell)" if l.trennstelle == aktuell else ""),
+            "grün / gelb / rot": f"{n[netz_selektivitaet.OK]} / {n[netz_selektivitaet.GELB]} / "
+                                 f"{n[netz_selektivitaet.ROT]}",
+            "Strom": AMPEL_EMOJI[l.strom.status] if l.strom and l.strom.status else "–",
+            "Schlechtestes Paar": "–" if sp is None else
+                                  f"{sp.unten} → {sp.oben}, Δt {_zeit(sp.dt_s)} s",
+        })
+    st.dataframe(pd.DataFrame(zeilen), width="stretch", hide_index=True)
+
+
+def _strom_text(I_A, faktor) -> str:
+    """Ansprechwert fuer die Aenderungsliste: primaer in A, dahinter der Faktor."""
+    return f"{de(I_A, 0)} A" if faktor is None else f"{de(I_A, 0)} A ({de(faktor, 2)} × IN)"
+
+
+def _warum_zeit(grund: str, dt_soll: float) -> str:
+    """Kurzbegruendung einer Zeit: 'Staffelabstand ueber <Stufe darunter>'."""
+    if grund.startswith("Lage ") and ": " in grund:
+        lage, rest = grund.split(": ", 1)
+        return f"{lage}: {_warum_zeit(rest, dt_soll)}"
+    if grund.startswith(("Mindestzeit", "Untergrenze", "Endpunkt", "Netzbetreiber", "AMZ")):
+        return grund
+    return f"{de(dt_soll, 2)} s über {grund}"
+
+
+def _aenderungsliste(zeilen, titel: str) -> None:
+    st.markdown(f"**{titel}**")
+    st.dataframe(pd.DataFrame(zeilen), width="stretch", hide_index=True)
+
+
+def _ring(netz: Netz, dt_soll: float, aktuell) -> None:
+    """
+    Ring: Ist-Einstellungen in jeder moeglichen Trennstellenlage pruefen und auf Wunsch
+    einen Satz Werte vorschlagen, der in allen Lagen gilt (netz_ring.py).
+    """
+    grphead("Ring: Staffelung in allen Trennstellenlagen")
+    erg = netz_ring.pruefe_ringlagen(netz, dt_soll=dt_soll)
+    _meldungen(erg.meldungen)
+    if not erg.lagen:
+        return
+    _lagentabelle(erg, aktuell)
+    st.caption("Jedes Ringelement kann Trennstelle werden. Je Zeile ist dieses Element offen, "
+               "geprüft werden die Einstellwerte im Netz. Spalte Strom: Stromstaffel und "
+               "Empfindlichkeit.")
+    if not st.toggle("Ringvorschlag berechnen (ein Satz Werte für alle Lagen)",
+                     key="netz_ring_vorschlag_an",
+                     help="Je Lage erst Strom, dann Zeit. Je Wert gilt der größte über alle "
+                          "Lagen, wiederholt bis sich nichts mehr ändert. Gegenläufige Ketten "
+                          "werden namentlich gemeldet. Herleitung: docs/tool_vorgabe_ring.md."):
+        return
+    rv = netz_ring.ringvorschlag(netz, dt_soll=dt_soll)
+    _meldungen(rv.meldungen)
+    if not rv.werte:
+        return
+    if rv.geaendert:
+        _aenderungsliste([{
+            "Element": w.element, "Stufe": w.stufe,
+            "Größe": "Ansprechwert" if w.art == "Strom" else "Zeit",
+            "bisher": _strom_text(w.alt * w.IN_A, w.alt) if w.art == "Strom" and w.IN_A
+                      else f"{de(w.alt, 2)} s",
+            "neu": _strom_text(w.neu * w.IN_A, w.neu) if w.art == "Strom" and w.IN_A
+                   else f"{de(w.neu, 2)} s",
+            "Warum": w.kurz if w.art == "Strom" else _warum_zeit(w.kurz, dt_soll),
+        } for w in rv.geaendert], "Was ist zu ändern (gilt in allen Lagen)")
+    else:
+        st.caption("Keine Änderung nötig, die Werte im Netz gelten bereits in allen Lagen.")
+    if rv.pruefung is not None and rv.pruefung.lagen:
+        st.markdown("**Ergebnis mit diesen Werten, je Lage**")
+        _lagentabelle(rv.pruefung, aktuell)
+    if rv.uebernehmbar:
+        if st.button("✅ Ringvorschlag ins Netz übernehmen", key="netz_ring_uebernehmen"):
+            je_element = rv.parameter_je_element()
+            for eid, p_neu in je_element.items():
+                p_alt = dict(netz.elemente[eid].p)
+                p_alt.update(p_neu)
+                netz.parameter_setzen(eid, p_alt)
+            _erfolg(f"Ringvorschlag übernommen: {len(rv.geaendert)} Werte in "
+                    f"{len(je_element)} Elementen gesetzt.")
+    with st.expander("Details: alle Werte mit Herleitung"):
+        st.dataframe(pd.DataFrame([{
+            "Element": w.element, "Stufe": w.stufe, "Parameter": w.parameter, "Art": w.art,
+            "bisher": de(w.alt, 2), "Vorschlag": de(w.neu, 2),
+            "Änderung": "✏️" if w.geaendert else "", "Bestimmt durch": w.grund or "–",
+        } for w in rv.werte]), width="stretch", hide_index=True)
+        st.caption(f"{rv.runden} Runden bis zum Fixpunkt. Zeiten in s, Ansprechwerte als "
+                   "Faktor × IN. Geschrieben werden die Parameter in der Spalte Parameter.")
 
 
 # ── 7. Staffelvorschlag ──────────────────────────────────────────────────────
 def _vorschlag(netz: Netz, adapter, dt_soll: float) -> None:
     """
     Vorschlag von der Last zur Quelle: erst die I>>-Ansprechwerte (Stromstaffelung),
-    dann die Zeiten mit diesen Werten, dann Gegenpruefung. Auf Wunsch ins Netzmodell
-    schreiben. Der Vorschlag wird bei jedem Lauf neu aus dem Modell gerechnet, es gibt
-    keinen Zwischenstand im Session-State (Modell ist die Wahrheit).
+    dann die Zeiten mit diesen Werten, dann Gegenpruefung. Oben steht nur, was zu aendern
+    ist. Alle Stufen mit Herleitung stehen im aufklappbaren Bereich. Der Vorschlag wird bei
+    jedem Lauf neu aus dem Modell gerechnet (Modell ist die Wahrheit).
     """
-    grphead("Staffelvorschlag (erst Strom, dann Zeit)")
+    ring = adapter.topologie is not None and adapter.topologie.netzform_erkannt == "ring"
+    grphead("Staffelvorschlag nur für die aktuelle Trennstellenlage" if ring
+            else "Staffelvorschlag (erst Strom, dann Zeit)")
+    if ring:
+        st.caption("Im Ring gilt dieser Vorschlag nur für die aktuelle Trennstellenlage. "
+                   "Für alle Lagen den Ringvorschlag oben verwenden.")
     if not st.toggle("Staffelvorschlag berechnen", key="netz_vorschlag_an",
                      help="Erst die I>>-Ansprechwerte über Ik max der nächsten Station (mit "
                           "Stufensteller und Schaltgruppe), dann jede UMZ-Stufe so schnell wie "
@@ -379,64 +493,74 @@ def _vorschlag(netz: Netz, adapter, dt_soll: float) -> None:
     if vor.zeit is None or vor.zeit.pruefung is None:
         return
 
-    st.markdown("**1. Strom: I>>-Ansprechwerte**")
-    st.dataframe(pd.DataFrame([{
-        "Element": v.element, "Stufe": v.stufe, "Parameter": v.parameter or "–",
-        "I bisher [A]": de(v.I_alt_A, 0), "I Vorschlag [A]": de(v.I_neu_A, 0),
-        "Faktor bisher": "–" if v.faktor_alt is None else de(v.faktor_alt, 2),
-        "Faktor Vorschlag": "–" if v.faktor_neu is None else de(v.faktor_neu, 2),
-        "Änderung": "✏️" if v.geaendert else "", "Status": v.status,
-        "Begründung": v.grund,
-    } for v in vor.strom.vorschlaege]), width="stretch", hide_index=True)
+    n_strom, n_zeit = len(vor.strom.geaendert), len(vor.zeit.geaendert)
+    if n_strom or n_zeit:
+        zeilen = [{
+            "Element": v.element, "Stufe": v.stufe, "Größe": "Ansprechwert",
+            "bisher": _strom_text(v.I_alt_A, v.faktor_alt), "neu": _strom_text(v.I_neu_A, v.faktor_neu),
+            "Warum": v.kurz or v.status,
+        } for v in vor.strom.geaendert] + [{
+            "Element": v.element, "Stufe": v.stufe, "Größe": "Zeit",
+            "bisher": f"{de(v.t_alt_s, 2)} s", "neu": f"{de(v.t_neu_s, 2)} s",
+            "Warum": _warum_zeit(v.grund, dt_soll),
+        } for v in vor.zeit.geaendert]
+        _aenderungsliste(zeilen, "Was ist zu ändern")
+    else:
+        st.caption("Keine Änderung nötig, die Werte im Netz entsprechen bereits dem Vorschlag.")
 
-    st.markdown("**2. Zeit** (mit den Ansprechwerten aus Schritt 1)")
-    st.dataframe(pd.DataFrame([{
-        "Element": v.element, "Stufe": v.stufe,
-        "Parameter": v.parameter or "–",
-        "t bisher [s]": "–" if v.t_alt_s != v.t_alt_s else de(v.t_alt_s, 2),
-        "t Vorschlag [s]": "–" if v.t_neu_s != v.t_neu_s else de(v.t_neu_s, 2),
-        "Änderung": "✏️" if v.geaendert else "",
-        "Bestimmt durch": v.grund,
-    } for v in vor.zeit.vorschlaege]), width="stretch", hide_index=True)
-
-    p = vor.zeit.pruefung
+    p, sp = vor.zeit.pruefung, vor.strom.pruefung
     anz = {k: sum(1 for x in p.pruefungen if x.status == k)
            for k in (netz_selektivitaet.OK, netz_selektivitaet.GELB, netz_selektivitaet.ROT)}
-    st.markdown(f"{AMPEL_EMOJI[p.status]} **Gegenprüfung Zeit mit den vorgeschlagenen Werten: "
-                f"{p.status}** &nbsp; " + " ".join(pill(k, n) for k, n in anz.items() if n),
+    strom_text = "" if sp is None or sp.status is None else (
+        f" &nbsp;·&nbsp; {AMPEL_EMOJI[sp.status]} **Strom: {sp.status}**")
+    st.markdown(f"Ergebnis mit diesen Werten: {AMPEL_EMOJI[p.status]} **Zeit: {p.status}** &nbsp; "
+                + " ".join(pill(k, n) for k, n in anz.items() if n) + strom_text,
                 unsafe_allow_html=True)
-    sp = vor.strom.pruefung
-    if sp is not None and sp.pruefungen:
-        st.markdown(f"{AMPEL_EMOJI[sp.status]} **Gegenprüfung Strom (Stromstaffel und "
-                    f"Empfindlichkeit): {sp.status}**")
-        st.dataframe(pd.DataFrame([{
-            "Ampel": AMPEL_EMOJI[x.status], "Prüfung": x.art, "unten (Last)": x.unten,
-            "oben (Quelle)": x.oben, "Stufe oben": x.stufe_oben,
-            "Soll [A bez.]": "–" if x.I_soll_bez_A is None else de(x.I_soll_bez_A, 0),
-            "Ist [A bez.]": "–" if x.I_ist_bez_A is None else de(x.I_ist_bez_A, 0),
-            "Bewertung": x.text,
-        } for x in sp.pruefungen]), width="stretch", hide_index=True)
-        st.caption("Stromstaffel: I>> oben mindestens k_S × Strom hinter der nächsten Station. "
-                   "Empfindlichkeit: Ik min (zweipolig, über Stufensteller und Schaltgruppe) "
-                   "mindestens γ × kleinster Ansprechwert oben. Ströme auf die "
-                   "Bezugsspannung umgerechnet.")
+    if n_strom or n_zeit:
+        st.caption(f"{n_strom} Ansprechwerte und {n_zeit} Zeiten würden geändert. Die Übernahme "
+                   "schreibt sie in die Element-Parameter des Netzes (nicht in die Betriebsmittel-"
+                   "Tabs).")
+        if st.button("✅ Vorschlag ins Netz übernehmen", key="netz_vorschlag_uebernehmen"):
+            je_element = vor.parameter_je_element()
+            for eid, p_neu in je_element.items():
+                p_alt = dict(netz.elemente[eid].p)
+                p_alt.update(p_neu)
+                netz.parameter_setzen(eid, p_alt)
+            _erfolg(f"Staffelvorschlag übernommen: {n_strom} Ansprechwerte und {n_zeit} Zeiten in "
+                    f"{len(je_element)} Elementen gesetzt.")
 
-    n_strom, n_zeit = len(vor.strom.geaendert), len(vor.zeit.geaendert)
-    if not (n_strom or n_zeit):
-        st.caption("Keine Änderung nötig, die Werte im Netz entsprechen bereits dem Vorschlag.")
-        return
-    st.caption(f"{n_strom} Ansprechwerte und {n_zeit} Zeiten würden geändert. Die Übernahme "
-               "schreibt sie in die Element-Parameter des Netzes (nicht in die Betriebsmittel-"
-               "Tabs). Die Werte erscheinen danach in der Schutzstufen-Tabelle und in der "
-               "Staffelprüfung oben.")
-    if st.button("✅ Vorschlag ins Netz übernehmen", key="netz_vorschlag_uebernehmen"):
-        je_element = vor.parameter_je_element()
-        for eid, p_neu in je_element.items():
-            p_alt = dict(netz.elemente[eid].p)
-            p_alt.update(p_neu)
-            netz.parameter_setzen(eid, p_alt)
-        _erfolg(f"Staffelvorschlag übernommen: {n_strom} Ansprechwerte und {n_zeit} Zeiten in "
-                f"{len(je_element)} Elementen gesetzt.")
+    with st.expander("Details: alle Stufen, Herleitung und Gegenprüfung"):
+        st.markdown("**1. Strom: I>>-Ansprechwerte**")
+        st.dataframe(pd.DataFrame([{
+            "Element": v.element, "Stufe": v.stufe, "Parameter": v.parameter or "–",
+            "I bisher [A]": de(v.I_alt_A, 0), "I Vorschlag [A]": de(v.I_neu_A, 0),
+            "Faktor bisher": "–" if v.faktor_alt is None else de(v.faktor_alt, 2),
+            "Faktor Vorschlag": "–" if v.faktor_neu is None else de(v.faktor_neu, 2),
+            "Änderung": "✏️" if v.geaendert else "", "Status": v.status,
+            "Begründung": v.grund,
+        } for v in vor.strom.vorschlaege]), width="stretch", hide_index=True)
+        st.markdown("**2. Zeit** (mit den Ansprechwerten aus Schritt 1)")
+        st.dataframe(pd.DataFrame([{
+            "Element": v.element, "Stufe": v.stufe,
+            "Parameter": v.parameter or "–",
+            "t bisher [s]": "–" if v.t_alt_s != v.t_alt_s else de(v.t_alt_s, 2),
+            "t Vorschlag [s]": "–" if v.t_neu_s != v.t_neu_s else de(v.t_neu_s, 2),
+            "Änderung": "✏️" if v.geaendert else "",
+            "Bestimmt durch": v.grund,
+        } for v in vor.zeit.vorschlaege]), width="stretch", hide_index=True)
+        if sp is not None and sp.pruefungen:
+            st.markdown("**3. Gegenprüfung Strom** (Stromstaffel und Empfindlichkeit)")
+            st.dataframe(pd.DataFrame([{
+                "Ampel": AMPEL_EMOJI[x.status], "Prüfung": x.art, "unten (Last)": x.unten,
+                "oben (Quelle)": x.oben, "Stufe oben": x.stufe_oben,
+                "Soll [A bez.]": "–" if x.I_soll_bez_A is None else de(x.I_soll_bez_A, 0),
+                "Ist [A bez.]": "–" if x.I_ist_bez_A is None else de(x.I_ist_bez_A, 0),
+                "Bewertung": x.text,
+            } for x in sp.pruefungen]), width="stretch", hide_index=True)
+        st.caption("„A bez.“ heißt: Strom auf die Bezugsspannung der Staffelprüfung umgerechnet. "
+                   "Stromstaffel: I>> oben mindestens k_S × Strom hinter der nächsten Station. "
+                   "Empfindlichkeit: Ik min (zweipolig, über Stufensteller und Schaltgruppe) "
+                   "mindestens γ × kleinster Ansprechwert oben.")
 
 
 # ── Einstieg ─────────────────────────────────────────────────────────────────

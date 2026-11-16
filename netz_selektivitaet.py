@@ -539,16 +539,20 @@ def _aufrunden(wert: float, raster: float) -> float:
 def staffelvorschlag(netz: Netz, adapter=None, U_bezug_kV: float | None = None,
                      dt_soll: float = KN.dt_Staffel_soll,
                      t_min: float = KN.t_Vorschlag_min,
-                     strom_beruecksichtigt: bool = False) -> VorschlagErgebnis:
+                     strom_beruecksichtigt: bool = False,
+                     untergrenzen: dict | None = None) -> VorschlagErgebnis:
     """
     Zeiten fuer eine reine Zeitstaffelung vorschlagen (siehe Modulkopf).
     Jede UMZ-Stufe erhaelt die kleinste Zeit >= t_min, die bei jedem Strom, bei dem sie
     anregt, einen Staffelabstand dt_soll ueber der wirksamen Ausloesezeit aller
     Schutzorte darunter liegt. Gerundet auf das Einstellraster.
+    untergrenzen: {(Element, Stufe): Zeit}, kleinste zulaessige Zeit je Mittelstation
+    (Ringvorschlag: Werte aus anderen Trennstellenlagen). Endpunkte bleiben unveraendert.
     """
     erg = VorschlagErgebnis()
     try:
-        return _vorschlag(netz, adapter, U_bezug_kV, dt_soll, t_min, erg, strom_beruecksichtigt)
+        return _vorschlag(netz, adapter, U_bezug_kV, dt_soll, t_min, erg, strom_beruecksichtigt,
+                          untergrenzen)
     except Exception as exc:
         erg.meldungen.append(Meldung(
             FEHLER, f"Staffelvorschlag abgebrochen ({type(exc).__name__}: {exc})."))
@@ -556,7 +560,8 @@ def staffelvorschlag(netz: Netz, adapter=None, U_bezug_kV: float | None = None,
 
 
 def _vorschlag(netz, adapter, U_bezug_kV, dt_soll, t_min, erg,
-               strom_beruecksichtigt: bool = False) -> VorschlagErgebnis:
+               strom_beruecksichtigt: bool = False,
+               untergrenzen: dict | None = None) -> VorschlagErgebnis:
     if not (_ist_zahl(dt_soll) and dt_soll > 0 and _ist_zahl(t_min) and t_min >= 0):
         erg.meldungen.append(Meldung(FEHLER, "Staffelabstand oder Mindestzeit ungültig."))
         return erg
@@ -602,6 +607,10 @@ def _vorschlag(netz, adapter, U_bezug_kV, dt_soll, t_min, erg,
                         continue
                     t_neu, grund = _zeit_fuer_stufe(ort, s, [neu[u.schluessel] for u in unter[k]],
                                                     U, knoten, dt_soll, t_min, st["tap"])
+                    boden = (untergrenzen or {}).get((ort.element, s.stufe))
+                    if boden is not None and boden > t_neu + KN.EPS_ZEIT:
+                        t_neu = _aufrunden(boden, KN.dt_Raster)
+                        grund = f"Untergrenze {de(boden, 2)} s aus einer anderen Ringlage"
                     _merke(erg, elemente, ort, s, t_neu, grund)
                     stufen.append(replace(s, t_s=t_neu))
                 neu[k] = replace(ort, stufen=tuple(stufen))

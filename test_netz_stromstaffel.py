@@ -16,6 +16,8 @@ Prueft:
  9. Uebernahme ins Netz: zweiter Lauf ohne Aenderung, Parameter erreichen die Rechenkerne.
 10. Fehlerfaelle und Zufallsnetze: Meldung statt Absturz, das Sicherheitsnetz greift nie.
 11. Ring: offen betriebener Ring.
+13. Einstellbereich der I>>-Stufe, Anlaufgrenze als Ersatz, Kurzbegruendung,
+    Empfindlichkeit am Motoranschluss.
 12. Stufenstellerlage in der Zeitpruefung: Paar gegen Handrechnung, Referenznetz mit
     knapp bemessenem I>> OS (0 % gegen 16 %), Spanne der Faktoren.
 """
@@ -423,6 +425,58 @@ def test_tap_spanne():
     print("Tap-Spanne OK.")
 
 
+# ── 13. Einstellbereich, Anlaufgrenze, Kurzbegruendung ──────────────────────
+def test_einstellbereich_und_anlaufgrenze():
+    # Ik max K5 80 kA: 80 kA * 0,4/10 = 3200 A, * 1,2 = 3840 A = 12,8 x IN der Leitung.
+    # Der Regler der Leitung reicht bis 10 x IN: nicht einstellbar, Wert bleibt, Hinweis.
+    n = _ref()
+    n.knoten_aendern("K5", Ik_max_kA=80.0)
+    erg = SS.stromvorschlag(n)
+    v = _v(erg, "L2", "Iph>>")
+    assert v.status == SS.NICHT_EINSTELLBAR and not v.geaendert and v.I_neu_A == 600.0
+    assert "12,80 × IN" in v.grund and "Einstellbereich bis 10,0 × IN" in _meldungen(erg, HINWEIS)
+    assert KN.Faktor_max[("leitung", "Iph>>")] == 10.0 and ("trafo", "I>> OS") not in KN.Faktor_max
+    # T2 I>> OS: der Tab liefert selbst 1,2 * 3200 A = 3840 A (41,57 x IN), der Wert reicht und bleibt
+    assert _v(erg, "T2", "I>> OS").status == SS.BLEIBT
+    # Mit einem Motor M2 an K4 gilt dessen Anlaufgrenze trotzdem (nicht ueber die Zeit loesbar):
+    # 1,2 * max(I>> 1204,2 A; Anlauf 751,8 A) = 1445 A -> 4,82 x IN
+    n.element_hinzufuegen("M2", "Motor 2", "motor", "K4", None, dict(n.elemente["M1"].p), "ein")
+    erg = SS.stromvorschlag(n)
+    v = _v(erg, "L2", "Iph>>")
+    assert v.status == SS.ANGEHOBEN and v.faktor_neu == 4.82 and "Anlaufgrenze" in v.grund
+    assert v.kurz == "1,2 × Anlaufstrom bzw. I>> von M2"
+    assert "Einstellbereich bis 10,0 × IN" in _meldungen(erg, HINWEIS)
+    # Gegenpruefung: gegen den Motor erfuellt, gegen T2 (OS) nur ueber die Zeit (gelb), nichts rot
+    pr = {(p.unten, p.art): p.status for p in erg.pruefung.pruefungen if p.oben == "L2"}
+    assert pr[("M2", "Stromstaffel")] == S.OK and pr[("T2 (OS)", "Stromstaffel")] == S.GELB
+    # Derselbe Ersatz bei "nicht wirksam": Ik max K4 so hoch, dass 1,2 * Ik ueber Ik max K2 liegt
+    n = _ref()
+    n.element_hinzufuegen("M2", "Motor 2", "motor", "K4", None, dict(n.elemente["M1"].p), "ein")
+    n.knoten_aendern("K5", Ik_max_kA=250.0)                 # 10 kA bei 10 kV, * 1,2 = 12 kA > 10 kA
+    v = _v(SS.stromvorschlag(n), "L2", "Iph>>")
+    assert v.status == SS.ANGEHOBEN and v.faktor_neu == 4.82
+    print("Einstellbereich OK: über 10 × IN bleibt der Wert, die Anlaufgrenze gilt trotzdem.")
+
+
+def test_kurzbegruendung_und_motoranschluss():
+    erg = SS.stromvorschlag(_ref())
+    assert _v(erg, "L2", "Iph>>").kurz == "1,2 × Ik max hinter T2 (OS)"
+    assert _v(erg, "L1", "Iph>>").kurz == "1,2 × Anlaufstrom bzw. I>> von M1"
+    assert _v(erg, "T1", "I>> OS").kurz == "1,2 × Ik max hinter T1 (US)"
+    assert _v(erg, "T1", "I>> US").kurz == ""                # unveraendert: keine Kurzbegruendung
+    # Empfindlichkeit am Motoranschluss: Ik min K3 6,8 kA gegen Iph> von L1 (360 A): Faktor 18,9
+    e = [p for p in erg.pruefung.pruefungen if p.art == "Empfindlichkeit" and p.unten == "M1"][0]
+    assert e.oben == "L1" and e.status == S.OK and abs(e.I_ist_bez_A - 6800.0) < 1e-6
+    assert abs(e.I_soll_bez_A - 1.5 * 360.0) < 1e-6
+    # Zu kleines Ik min am Motorknoten wird erkannt: 0,4 kA < 1,5 * 360 A -> gelb, 0,3 kA < 360 A -> rot
+    for ik, status in ((0.4, S.GELB), (0.3, S.ROT)):
+        n = _ref()
+        n.knoten_aendern("K3", Ik_min_kA=ik)
+        e = [p for p in SS.pruefe_strom(n).pruefungen if p.art == "Empfindlichkeit" and p.unten == "M1"][0]
+        assert e.status == status, (ik, e.status)
+    print("Kurzbegründung OK, Empfindlichkeit am Motoranschluss geprüft.")
+
+
 if __name__ == "__main__":
     test_konstanten()
     test_adapter_stromparameter()
@@ -441,4 +495,6 @@ if __name__ == "__main__":
     test_stufenstellerlage_paar()
     test_stufenstellerlage_referenznetz()
     test_tap_spanne()
+    test_einstellbereich_und_anlaufgrenze()
+    test_kurzbegruendung_und_motoranschluss()
     print("\nAlle Prüfungen bestanden.")
