@@ -15,7 +15,8 @@ bestaetigt sind.
 # Zusammensetzung: dt = t_LS + t_Rueck + 2 * t_Tol + t_Sich
 # (Form nach ABB Distribution Automation Handbook, Abschnitt 8.2, Gl. 8.2.2)
 dt_t_LS     = 0.080   # Ausschaltzeit Leistungsschalter inkl. Lichtbogenzeit   [s]
-dt_t_Rueck  = 0.030   # Rueckfallzeit (Ueberlaufzeit) des oberen Schutzes      [s]
+dt_t_Rueck  = 0.035   # Rueckfallzeit des oberen Schutzes. Groesster Wert der eingesetzten
+                      # Geraete: 7UT613 ca. 35 ms (Hdb. Kap. 4.4), 7SJ66 und 7SA6 ca. 30 ms  [s]
 dt_t_Tol    = 0.025   # Zeittoleranz je Geraet, geht fuer zwei Geraete ein     [s]
 dt_t_Sich   = 0.020   # Sicherheitszuschlag, ca. eine Netzperiode bei 50 Hz    [s]
 dt_Raster   = 0.050   # Einstellraster, auf das der Mindestwert aufgerundet wird [s]
@@ -35,7 +36,7 @@ def _aufrunden(wert: float, raster: float) -> float:
 
 # Technischer Mindestabstand: Summe der Einzelanteile, auf das Raster aufgerundet.
 # Darunter ist Selektivitaet auch mit schnellen Schaltern nicht mehr gesichert.
-dt_Staffel_min = _aufrunden(dt_summe(), dt_Raster)      # 0,18 s -> 0,20 s
+dt_Staffel_min = _aufrunden(dt_summe(), dt_Raster)      # 0,185 s -> 0,20 s
 
 # Soll-Staffelabstand (Tool-Vorgabe). Enthaelt gegenueber dem Mindestwert eine
 # Reserve fuer Wandlersaettigung durch das Gleichstromglied und fuer langsamere

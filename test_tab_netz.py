@@ -340,6 +340,41 @@ def test_kurzschluss_ring():
     print("Kurzschluss-Ring OK: Werte je Lage, Warnung zu K3 und K4, Übernahme ins Modell.")
 
 
+
+# ── 10. Staffeldiagramm ──────────────────────────────────────────────────────
+def test_staffeldiagramm():
+    import json
+    at = _beispiel()
+    diagramme = at.get("vega_lite_chart")
+    assert len(diagramme) == 1 and len(at.dataframe) == 4            # Diagramm zaehlt nicht als Tabelle
+    wahl = at.selectbox(key="netz_diag_pfad")
+    assert len(wahl.options) == 2 and wahl.options[0] == "M1 → L1 → T1 (US) → T1 (OS) → E1"
+    spec = json.loads(diagramme[0].proto.spec)
+    assert {z["Schutzort"] for z in spec["layer"][1]["data"]["values"]} == {"M1", "L1", "T1 (US)", "T1 (OS)", "E1"}
+    # Zweiter Pfad, dann Vorschlag: das zweite Diagramm zeigt denselben Pfad mit den neuen Zeiten
+    wahl.set_value(1).run()
+    _keine_ausnahme(at)
+    at.toggle(key="netz_vorschlag_an").set_value(True).run()
+    _keine_ausnahme(at)
+    diagramme = at.get("vega_lite_chart")
+    assert len(diagramme) == 2
+    ist, neu = (json.loads(d.proto.spec)["layer"][1]["data"]["values"] for d in diagramme)
+    assert {z["Schutzort"] for z in ist} == {z["Schutzort"] for z in neu}
+    assert "T2 (US)" in {z["Schutzort"] for z in neu}
+
+    def zeit(werte, ort, stufe):
+        return [z["t_s"] for z in werte if z["Schutzort"] == ort and z["Stufe"] == stufe][-1]
+    assert zeit(neu, "L2", "Iph>") > zeit(ist, "L2", "Iph>") == 0.5
+    assert "Staffeldiagramm mit dem Vorschlag" in " ".join(str(m.value) for m in at.markdown)
+    # Ring-Beispiel: Diagramm der aktuellen Lage
+    at = _start()
+    _klick(at, "netz_btn_beispiel_ring")
+    assert len(at.get("vega_lite_chart")) == 1 and len(at.dataframe) == 5
+    # Leeres Netz: kein Diagramm
+    assert len(_start().get("vega_lite_chart")) == 0
+    print("Staffeldiagramm OK: Ist-Zustand, Pfadauswahl, Vorschlag im selben Pfad.")
+
+
 if __name__ == "__main__":
     test_leerstart()
     test_beispielnetz()
@@ -351,4 +386,5 @@ if __name__ == "__main__":
     test_ring()
     test_kurzschluss_anzeige()
     test_kurzschluss_ring()
+    test_staffeldiagramm()
     print("\nAlle Prüfungen bestanden.")

@@ -19,6 +19,8 @@ Ablauf:
   5. Schutzstufen aus den Betriebsmittel-Tabs (Adapter)
   6. Zeitstaffelung: Pfade, Ampel je benachbartem Paar, Meldungen
      (netz_selektivitaet.py)
+  6a. Staffeldiagramm: Strom-Zeit-Kennlinien je Pfad (netz_diagramm.py), fuer den
+      Ist-Zustand und, wenn berechnet, fuer den Staffelvorschlag
   6b. Ring: Pruefung und Vorschlag ueber alle Trennstellenlagen (netz_ring.py)
   7. Staffelvorschlag: erst I>>-Ansprechwerte (Strom), dann Zeiten, Gegenpruefung
      beider, Uebernahme ins Modell (netz_stromstaffel.py)
@@ -37,6 +39,7 @@ import streamlit as st
 import konstanten_netz as KN
 import netz_adapter
 import netz_bild
+import netz_diagramm
 import netz_kurzschluss
 import netz_ring
 import netz_selektivitaet
@@ -499,9 +502,37 @@ def _staffelung(netz: Netz, adapter, ziel: Netz | None = None, ik_an: bool = Fal
                "Mindestwert und Soll, rot darunter. Nur Phasenstufen 50/51, Erdfehlerstufen "
                "werden nicht gestaffelt. Die Zeitprüfung rechnet in Nennübersetzung, Stufensteller "
                "und Schaltgruppe berücksichtigt die Stromstaffelung im Staffelvorschlag.")
+    _staffeldiagramm(netz, erg, "Staffeldiagramm (Einstellwerte im Netz)", True)
+    st.caption("Auslösezeit je Schutzort über dem Strom, beide Achsen logarithmisch. Selektiv "
+               "ist ein Pfad, wenn jede Kennlinie mit Abstand über der des Schutzes darunter "
+               "liegt. Jede Kennlinie endet bei Ik max an ihrem Messort. Unverzögerte Stufen "
+               "stehen auf der Linie 0,01 s.")
     if adapter.topologie is not None and adapter.topologie.netzform_erkannt == "ring":
         _ring(ziel, float(dt_soll), adapter.topologie.trennstelle, ik_an)
     _vorschlag(netz, adapter, float(dt_soll), ziel)
+
+
+# ── 6a. Staffeldiagramm ──────────────────────────────────────────────────────
+def _staffeldiagramm(netz: Netz, pruefung, titel: str, mit_auswahl: bool) -> None:
+    """
+    Strom-Zeit-Kennlinien eines Pfades. Die Pfadauswahl gibt es einmal (beim Ist-Zustand),
+    das Diagramm des Vorschlags zeigt denselben Pfad, damit beide vergleichbar sind.
+    """
+    diagramme = [d for d in netz_diagramm.erzeuge_diagramme(netz, pruefung) if d.kurven]
+    if not diagramme:
+        return
+    st.markdown(f"**{titel}**")
+    nr = 0
+    if mit_auswahl and len(diagramme) > 1:
+        nr = st.selectbox("Pfad im Diagramm", range(len(diagramme)), key="netz_diag_pfad",
+                          format_func=lambda i: diagramme[i].titel)
+    elif not mit_auswahl:
+        nr = st.session_state.get("netz_diag_pfad", 0)
+    d = diagramme[nr if isinstance(nr, int) and 0 <= nr < len(diagramme) else 0]
+    if not mit_auswahl or len(diagramme) == 1:
+        st.caption("🔗 " + d.titel)
+    st.vega_lite_chart(netz_diagramm.vega_spec(d), width="stretch")
+    _meldungen(d.meldungen)
 
 
 # ── 6b. Ring: alle Trennstellenlagen ─────────────────────────────────────────
@@ -654,6 +685,7 @@ def _vorschlag(netz: Netz, adapter, dt_soll: float, ziel: Netz | None = None) ->
     st.markdown(f"Ergebnis mit diesen Werten: {AMPEL_EMOJI[p.status]} **Zeit: {p.status}** &nbsp; "
                 + " ".join(pill(k, n) for k, n in anz.items() if n) + strom_text,
                 unsafe_allow_html=True)
+    _staffeldiagramm(netz, p, "Staffeldiagramm mit dem Vorschlag", False)
     if n_strom or n_zeit:
         st.caption(f"{n_strom} Ansprechwerte und {n_zeit} Zeiten würden geändert. Die Übernahme "
                    "schreibt sie in die Element-Parameter des Netzes (nicht in die Betriebsmittel-"

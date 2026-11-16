@@ -26,10 +26,10 @@ Staffelabstand aus vier Anteilen zusammen [1, Gl. 8.2.2]:
 | Größe | Konstante | Wert | Quelle und Begründung |
 |---|---|---|---|
 | t_LS | `dt_t_LS` | 80 ms | Konservativ gegenüber dem Beispielwert 50 ms in [1]. Gleiche Annahme wie beim Schalterversagerschutz im Generator-Tab (`konstanten_gen.py`, Hinweis zu Adr. 7004: t_LS_max ca. 80 ms). |
-| t_Rück | `dt_t_Rueck` | 30 ms | Beispielwert in [1]. Numerische Relais nach [2, Tab. 9.2]: Überlaufzeit 20 ms. |
+| t_Rück | `dt_t_Rueck` | 35 ms | Größter Wert der eingesetzten Geräte: 7UT613 ca. 35 ms (Handbuch Kap. 4.4), 7SJ66 und 7SA6 ca. 30 ms. Geändert am 16.11.2026, vorher 30 ms (Beispielwert in [1]). Numerische Relais nach [2, Tab. 9.2]: Überlaufzeit 20 ms. |
 | t_Tol | `dt_t_Tol` | 25 ms | Beispielwert in [1]. Konservativ gegenüber der typischen SIPROTEC-Angabe „1 % vom Einstellwert bzw. 10 ms“ [4]. |
 | t_Sich | `dt_t_Sich` | 20 ms | Etwa eine Netzperiode bei 50 Hz, nach [1] der kleinste sinnvolle Wert. |
-| Summe | `dt_summe()` | 180 ms | 80 + 30 + 2 · 25 + 20 |
+| Summe | `dt_summe()` | 185 ms | 80 + 35 + 2 · 25 + 20 |
 | **Mindestwert** | `dt_Staffel_min` | **0,20 s** | Summe, auf das Einstellraster 0,05 s aufgerundet. |
 | **Sollwert** | `dt_Staffel_soll` | **0,30 s** | Siehe Abschnitt 3. |
 
@@ -58,7 +58,7 @@ im Netz-Tab einstellbar machen.
 
 | Nr. | Was prüfen | Wo |
 |---|---|---|
-| 1 | Zeittoleranz der UMZ-Verzögerung und Rückfallzeit. **Geprüft 16.11.2026:** Zeittoleranz in allen drei Handbüchern 1 % vom Einstellwert bzw. 10 ms, die 25 ms des Tools sind damit konservativ. Rückfallzeit 7SJ66 ca. 30 ms (Grundschwingung), 7SA6 ca. 30 ms, **7UT613 ca. 35 ms** bei 50 Hz. `dt_t_Rueck` = 30 ms liegt für den 7UT613 um 5 ms zu niedrig. Mit 35 ms wäre die Summe 185 ms, der Mindestwert bleibt nach der Rundung 0,20 s. Der Wert im Code ist bewusst noch nicht geändert (Entscheidung offen). 7SD5 nicht geprüft. | 7SJ66 Handbuch C53000-B1140-C383-D (09.2023), Kap. 4.2. 7SA6 Handbuch, Kap. 4.11. 7UT613 Handbuch C53000-G1100-C160-3, Kap. 4.4 |
+| 1 | Zeittoleranz der UMZ-Verzögerung und Rückfallzeit. **Geprüft 16.11.2026:** Zeittoleranz in allen drei Handbüchern 1 % vom Einstellwert bzw. 10 ms, die 25 ms des Tools sind damit konservativ. Rückfallzeit 7SJ66 ca. 30 ms (Grundschwingung), 7SA6 ca. 30 ms, **7UT613 ca. 35 ms** bei 50 Hz. `dt_t_Rueck` ist deshalb seit dem 16.11.2026 auf 35 ms gesetzt (Summe 185 ms, Mindestwert nach der Rundung unverändert 0,20 s). 7SD5 nicht geprüft. | 7SJ66 Handbuch C53000-B1140-C383-D (09.2023), Kap. 4.2. 7SA6 Handbuch, Kap. 4.11. 7UT613 Handbuch C53000-G1100-C160-3, Kap. 4.4 |
 | 2 | Ausschaltzeit der eingesetzten MS-Leistungsschalter | Datenblatt des Schalters. Vakuumschalter liegen meist unter 80 ms, dann ist der Wert konservativ. |
 | 3 | Anregeschwelle der AMZ-Stufen (Tool: 1,1 · Ip). **Bestätigt 16.11.2026:** 7SJ66 nennt für die IEC-Kennlinien eine Anregeschwelle von ca. 1,10 · Ip. | 7SJ66 Handbuch C53000-B1140-C383-D (09.2023), Kap. 4.3. Achtung: [1] nennt für die Norm 1,3. |
 | 4 | Kennlinienkonstanten AMZ (0,14 / 0,02 usw.) | IEC 60255-151 bzw. Handbuch 7SJ66. Stimmen mit [1, Tab. 8.2.1] überein. |

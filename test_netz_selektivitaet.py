@@ -83,14 +83,14 @@ def _gestaffelt() -> Netz:
 
 # ── 1. Staffelabstand ────────────────────────────────────────────────────────
 def test_staffelabstand():
-    assert abs(KN.dt_summe() - 0.18) < 1e-9
+    assert abs(KN.dt_summe() - 0.185) < 1e-9             # 80 + 35 + 2 * 25 + 20 ms
     assert KN.dt_Staffel_min == 0.20
     assert KN.dt_Staffel_soll == 0.30
     assert KN.dt_Staffel_min <= KN.dt_Staffel_soll
     # Ein Wert im ganzen Tool: der Trafo-Tab fuehrt dieselbe Staffelzeit
     assert KN.dt_Staffel_soll == konstanten_trafo.dt_Staffel
     assert KN._aufrunden(0.20, 0.05) == 0.20 and KN._aufrunden(0.201, 0.05) == 0.25
-    print("Staffelabstand OK: Summe 0,18 s, Mindestwert 0,20 s, Soll 0,30 s.")
+    print("Staffelabstand OK: Summe 0,185 s, Mindestwert 0,20 s, Soll 0,30 s.")
 
 
 # ── 2. Umrechnung ────────────────────────────────────────────────────────────
