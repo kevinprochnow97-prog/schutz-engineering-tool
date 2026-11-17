@@ -225,6 +225,16 @@ HERST = {
         "grund": ("Reservestufe 50-1 (UMZ). Oberhalb der maximalen Betriebslast, "
                   "verzögert als Backup zur 50-2 (7SJ66 Hdb. 2.2, Adr.1204)."),
     },
+    "t_50_1": {
+        "range": "0,00 ... 60,00 s; ∞ (Voreinst. 0,50 s)",
+        "grund": ("Zusatzverzögerung 50-1, ohne Eigenzeit des Geräts. Aus dem Staffelplan, "
+                  "hinter dem Anlaufstrom-Fenster (7SJ66 Hdb. 2.2, Adr.1205)."),
+    },
+    "T_51": {
+        "range": "0,05 ... 3,20 s (IEC, Voreinst. 0,50 s) bzw. 0,50 ... 15,00 (ANSI, Adr.1209)",
+        "grund": ("Zeitfaktor der AMZ-Stufe 51 bei IEC-Kennlinie. Verschiebt die Kennlinie "
+                  "in der Zeit, aus dem Staffelplan (7SJ66 Hdb. 2.2, Adr.1208)."),
+    },
     "f_51": {
         "range": "0,10 ... 4,00 A (Voreinst. ~1,2 x IN)",
         "grund": ("AMZ-Stufe 51. Anregewert über max. Betriebsstrom. Die inverse Kennlinie "
@@ -357,7 +367,8 @@ HERST = {
 _HERST_ADR = {
     "k_Faktor": "Adr.4202", "tau_min": "Adr.4203", "Ktau_Stop": "Adr.4207A",
     "I_Warn": "Adr.4205", "f_50_2": "Adr.1202", "t_50_2": "Adr.1203",
-    "f_50_1": "Adr.1204", "f_51": "Adr.1207", "I2_dauer": "Adr.4002",
+    "f_50_1": "Adr.1204", "t_50_1": "Adr.1205", "f_51": "Adr.1207",
+    "T_51": "Adr.1208 (IEC) / 1209 (ANSI)", "I2_dauer": "Adr.4002",
     "I2_kurz": "Adr.4004", "Startup_Time": "Adr.4103", "Lock_Rotor_Time": "Adr.4104",
     "IStart_IMOTnom": "Adr.4302", "T_Start_Max": "Adr.4303",
     "Max_Warm_Starts": "Adr.4306", "LoadJam_I": "Adr.4402", "I_unter": "Setpoint (MV)",

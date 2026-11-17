@@ -192,7 +192,7 @@ def test_gegenlaeufige_ketten():
     assert not rv.konvergiert and not rv.uebernehmbar and rv.runden == R.MAX_RUNDEN
     w = _text(rv, WARNUNG)
     assert "Gegenläufige Ketten" in w and "Lc liegt mit Trennstelle La über Lb" in w
-    assert "Trennstelle festlegen" in w
+    assert "Trennstelle festlegen" in w and "außerhalb des Tools" in w
     # Keine weggelaufenen Zeiten anzeigen: ohne Fixpunkt gibt es keine Werte
     assert rv.werte == [] and rv.pruefung is None and rv.parameter_je_element() == {}
     # Gegenprobe: jede der vier Lagen fuer sich ist staffelbar (kein Widerspruch innerhalb einer Lage)
@@ -234,7 +234,7 @@ def test_dreileitungsring():
     for l in rv.pruefung.lagen:
         for p in l.zeit.pruefungen:
             assert p.status != S.ROT or p.oben == "E1", (l.trennstelle, p.unten, p.oben)
-        assert S.ROT not in {p.status for p in l.strom.pruefungen}, l.trennstelle
+        assert S.ROT not in {p.status for p in l.strom.pruefungen if p.art != "Anlauf"}, l.trennstelle  # Anlauf: eigene Pruefung
     print("Dreileitungsring OK: lösbar, L1 mit Anlaufgrenze 4,82 × IN, L1 und L2 auf 1,4 s.")
 
 
@@ -293,6 +293,38 @@ def test_zufall():
     print(f"Zufall OK: 40 Ringe, nie abgebrochen, {konvergiert} Fixpunkte alle selektiv.")
 
 
+def test_ik_ersetzen_je_lage():
+    """Entscheidung 17.11.2026: im Ring gilt je Lage der berechnete Ik, mit Rueckfall auf den eingegebenen."""
+    n = _ring()
+    vorher = n.to_dict()
+    lagen, meld = R.erzeuge_lagen(n, ik_ersetzen=True)
+    assert n.to_dict() == vorher and not any(m.stufe == FEHLER for m in meld)
+    ik = {l.trennstelle: {k: v.Ik_max_kA for k, v in l.netz.knoten.items()} for l in lagen}
+    assert abs(ik["L1"]["K3"] - 8.00) < 5e-3 and abs(ik["L2"]["K4"] - 9.27) < 5e-3     # je Lage verschieden
+    assert ik["L1"]["K3"] != ik["L2"]["K3"]
+    assert all(l.ik_ersetzt and not l.ik_rueckfall for l in lagen)
+    # ohne den Schalter bleibt alles beim Eingegebenen
+    lagen0, _ = R.erzeuge_lagen(n)
+    assert all(l.netz.knoten["K4"].Ik_max_kA == 7.9 for l in lagen0)
+    # Vorschlag und Pruefung laufen mit berechneten Werten, der Hinweis nennt die Quelle
+    rv = R.ringvorschlag(n, ik_ersetzen=True)
+    assert rv.ok and rv.konvergiert and rv.pruefung is not None
+    texte = " ".join(m.text for m in rv.meldungen)
+    assert "je Trennstellenlage aus der Kurzschlussrechnung" in texte and "Prüfpunkte 7 und 9" in texte
+    erg = R.pruefe_ringlagen(n, ik_ersetzen=True)
+    assert "je Trennstellenlage aus der Kurzschlussrechnung" in " ".join(m.text for m in erg.meldungen)
+    assert n.to_dict() == vorher
+    # Rueckfall: ohne Sk nichts berechenbar, es gilt der eingegebene Wert, und das wird gesagt
+    p = dict(n.elemente["E1"].p)
+    p.pop("Sk_max_MVA"), p.pop("Sk_min_MVA")
+    n.parameter_setzen("E1", p)
+    lagen2, meld2 = R.erzeuge_lagen(n, ik_ersetzen=True)
+    assert all(l.netz.knoten["K4"].Ik_max_kA == 7.9 for l in lagen2)
+    assert any("Nicht berechenbar, deshalb gilt der eingegebene Wert" in m.text and "K4 Ik max" in m.text
+               for m in meld2)
+    print("Ring mit berechnetem Ik OK: je Lage, Rueckfall, Quelle genannt.")
+
+
 if __name__ == "__main__":
     test_untergrenzen()
     test_lagen()
@@ -300,6 +332,7 @@ if __name__ == "__main__":
     test_ringvorschlag_beispiel()
     test_uebernahme_ring()
     test_gegenlaeufige_ketten()
+    test_ik_ersetzen_je_lage()
     test_dreileitungsring()
     test_unabhaengig_von_aktueller_lage()
     test_fehlerfaelle()

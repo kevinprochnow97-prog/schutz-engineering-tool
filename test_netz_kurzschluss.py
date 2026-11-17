@@ -12,7 +12,7 @@ Prueft:
  4. Optionale Angaben (ukr_pct, R_Belag, RX_Q, RX_M, theta_min_C) wirken.
  5. Handwert hat Vorrang: nichts wird ueberschrieben, ergaenzt wird nur, wo nichts steht.
  6. Schaltzustand: ausgeschaltete Elemente, Kupplung, Ring je Lage und geschlossen.
- 7. Ring-Staffelung: Ergaenzung je Lage nur auf Wunsch.
+ 7. Ring-Staffelung: Ergaenzung je Lage nur auf Wunsch, Ersetzen je Lage mit Rueckfall.
  8. Fehlerfaelle: fehlende Daten, Unsinn in den Parametern, nie eine Ausnahme.
  9. Zufaellige Strahlenketten gegen die Reihensumme.
 """
@@ -345,6 +345,25 @@ def test_fehlerfaelle():
     print("Fehlerfälle OK: fehlende Daten ergeben Meldungen und keine Werte, nie eine Ausnahme.")
 
 
+# ── 10. Gegenrechnung mit pandapower (IEC 60909) ─────────────────────────────
+# Werte aus werkzeuge/gegenrechnung_pandapower.py, pandapower 3.5.6, 17.11.2026. Eingefroren, damit
+# der Test ohne pandapower laeuft. Grundlage fuer die Entscheidung "K_T nur bei Ik max".
+PANDAPOWER = {   # Knoten: (Ik max, Ik min 2-pol., Ik max mit Motoren) in kA
+    "K1": (15.7459, 6.8182, 15.8153), "K2": (10.2205, 7.5034, 11.0362),
+    "K3": (9.2750, 6.8073, 10.1007), "K4": (7.9981, 5.8057, 8.4452),
+    "K5": (34.9495, 24.6722, 35.3043),
+}
+
+
+def test_gegenrechnung_pandapower():
+    k = KS.berechne(_netz()).knoten
+    for kid, (mx, mn, mot) in PANDAPOWER.items():
+        assert abs(k[kid].Ik_max_kA / mx - 1) < 1e-4, (kid, k[kid].Ik_max_kA, mx)
+        assert abs(k[kid].Ik_min_kA / mn - 1) < 1e-4, (kid, k[kid].Ik_min_kA, mn)
+        assert abs(k[kid].Ik_max_mit_Motor_kA / mot - 1) < 1e-4, (kid, k[kid].Ik_max_mit_Motor_kA, mot)
+    print("Gegenrechnung OK: alle Knoten auf 0,01 % gleich pandapower.")
+
+
 # ── 9. Zufaellige Strahlenketten gegen die Reihensumme ───────────────────────
 def test_zufall_reihensumme():
     zufall = random.Random(60909)
@@ -359,7 +378,7 @@ def test_zufall_reihensumme():
         n.element_hinzufuegen("T1", "", "trafo", "K1", "K2", {"Sn_MVA": Sn, "uk_pct": uk})
         kt = 0.95 * 1.1 / (1 + 0.6 * uk / 100)
         z_max = _rx(1.1 * 20 ** 2 / Sk_max) + complex(0, uk / 100 * 400 / Sn * kt)
-        z_min = _rx(1.0 * 20 ** 2 / Sk_min) + complex(0, uk / 100 * 400 / Sn * kt)
+        z_min = _rx(1.0 * 20 ** 2 / Sk_min) + complex(0, uk / 100 * 400 / Sn)
         for i in range(zufall.randint(1, 5)):
             L, Xb, Rb = zufall.uniform(0.1, 8), zufall.uniform(0.08, 0.4), zufall.uniform(0.05, 0.6)
             n.knoten_hinzufuegen(f"K{i + 3}", "", 20.0, "isoliert")
@@ -379,6 +398,30 @@ def _rx(z):
     return complex(0.1 * x, x)
 
 
+def test_ersetze_ik():
+    """Im Ring ersetzt der berechnete Wert den eingegebenen. Rueckfall, wo nichts berechnet ist."""
+    n = _ring()
+    vorher = n.to_dict()
+    kopie, ersetzt, rueck, meld = KS.ersetze_ik(n)
+    assert n.to_dict() == vorher                                          # Eingabe unveraendert
+    erg = KS.berechne(n)
+    for kid, k in kopie.knoten.items():                                   # jeder berechnete Wert gilt
+        assert abs(k.Ik_max_kA - erg.knoten[kid].Ik_max_kA) < 1e-12
+        assert abs(k.Ik_min_kA - erg.knoten[kid].Ik_min_kA) < 1e-12
+    assert len(ersetzt) == 10 and rueck == [] and meld == []
+    assert abs(kopie.knoten["K5"].Ik_max_kA - 34.949) < 1e-3              # Handwert 35,0 ersetzt
+    # Rueckfall: ohne Sk der Einspeisung ist nichts berechenbar, es gelten alle eingegebenen Werte
+    p = dict(n.elemente["E1"].p)
+    p.pop("Sk_max_MVA"), p.pop("Sk_min_MVA")
+    n.parameter_setzen("E1", p)
+    kopie, ersetzt, rueck, meld = KS.ersetze_ik(n)
+    assert ersetzt == [] and ("K4", "max") in rueck and ("K5", "min") not in rueck   # K5 min war nie eingegeben
+    assert kopie.knoten["K4"].Ik_max_kA == 7.9
+    # Unsinn wirft nie
+    assert KS.ersetze_ik(Netz())[1] == []
+    print("ersetze_ik OK: ersetzt, Rueckfall, Eingabe unveraendert.")
+
+
 if __name__ == "__main__":
     test_referenznetz_handrechnung()
     test_korrekturfaktor_KT()
@@ -386,9 +429,11 @@ if __name__ == "__main__":
     test_ik_min()
     test_optionale_angaben()
     test_handwert_hat_vorrang()
+    test_ersetze_ik()
     test_schaltzustand()
     test_ring_je_lage()
     test_ring_ergaenzung_je_lage()
     test_fehlerfaelle()
     test_zufall_reihensumme()
+    test_gegenrechnung_pandapower()
     print("\nAlle Prüfungen bestanden.")

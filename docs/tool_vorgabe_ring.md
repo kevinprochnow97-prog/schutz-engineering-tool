@@ -97,8 +97,20 @@ Einspeisungen.
 
 ## 6. Weitere Grenzen
 
-- **Ik an den Knoten** ist ein Eingabewert und gilt für jede Lage gleich. In der Realität ändern
-  sich Ik max und Ik min mit der Trennstelle. Die Oberfläche weist darauf hin.
+**Abgrenzung (Entscheidung 17.11.2026):** Das Tool staffelt Ringe mit einer Einspeisung, einer
+Masche und ungerichteten Stufen, Betrieb offen mit einer Trennstelle. Nicht abgebildet sind
+gegenläufige Ketten und Richtungsstufen, der geschlossene Ring, Vermaschung und mehrere Quellen. Bei
+gegenläufigen Paaren nennt die Meldung die Paare und rät, die Trennstelle festzulegen oder Richtungs-
+stufen außerhalb des Tools zu planen. Die Beschränkung ist bewusst: Sie hält das Modell einfach
+(ein Parametersatz je Element), die Erweiterung wäre ein eigener Ausbauschritt (Abschnitt 5).
+
+- **Ik an den Knoten:** Entscheidung 17.11.2026: Im Ring rechnet die Staffelung je Lage mit den
+  **berechneten** Ik (`netz_kurzschluss.ersetze_ik`). Wo für einen Knoten nichts berechenbar ist,
+  gilt der eingegebene Wert, die Quelle steht in der Ausgabe. Über den Schalter „Ik-Quelle im Ring“
+  lässt sich auf „Eingegeben (gleich in allen Lagen)“ umstellen. Das Strahlennetz bleibt bei
+  „eingegebener Wert hat Vorrang“. Folge im Beispielring: Mit berechneten Werten steigen die
+  Zeiten (T1 I> OS 1,7 s), die Kette passt dann nicht mehr unter den Netzbetreiber (E1 löst bei
+  1,2 s aus). Die eingegebenen Werte lagen in „L2 offen“ um rund 17 % unter dem berechneten Wert.
 - **Eine Einspeisung, eine Masche.** Mehrere Maschen und geschlossener Betrieb meldet die Topologie
   als Fehler.
 - **Kupplung ohne eigenen Schutz** (Tool-Vorgabe, wie bisher).
@@ -111,5 +123,5 @@ Einspeisungen.
 |---|---|---|
 | 1 | Entscheidung mit dem Betreuer: Reicht die Beschränkung auf Ringe ohne gegenläufige Ketten, oder sollen Richtungsstufen mit Schutzgeräten je Leitungsende ins Modell | Aufgabenstellung, Abschnitt Netzformen |
 | 2 | Literaturbeleg zu Staffelung im offenen Ring und zu Richtungsstufen | Fachliteratur Netzschutz (Quelle noch zu benennen) |
-| 3 | **Teilweise erledigt 16.11.2026.** `netz_kurzschluss.py` rechnet Ik max und Ik min je Trennstellenlage und die Oberfläche warnt bei mehr als 10 % Abweichung vom eingegebenen Wert. Die Ringstaffelung rechnet weiter mit den eingegebenen Werten, nur Knoten ohne Eingabewert bekommen den Wert der jeweiligen Lage. Offen: Entscheidung, ob die Staffelung je Lage ganz auf berechnete Werte umgestellt wird (Prüfpunkt 8 in `tool_vorgabe_kurzschluss.md`). | `netz_kurzschluss.py`, `tool_vorgabe_kurzschluss.md` |
+| 3 | **Erledigt 17.11.2026 (Ring).** `netz_kurzschluss.py` rechnet Ik max und Ik min je Trennstellenlage und die Oberfläche warnt bei mehr als 10 % Abweichung vom eingegebenen Wert. Die Ringstaffelung rechnet weiter mit den eingegebenen Werten, nur Knoten ohne Eingabewert bekommen den Wert der jeweiligen Lage. Die Ringstaffelung rechnet standardmäßig je Lage mit den berechneten Werten (Abschnitt 6). Offen: Belege für die Kurzschlussrechnung selbst (Prüfpunkt 5 der Besprechung). | `netz_kurzschluss.py`, `tool_vorgabe_kurzschluss.md` |
 | 4 | Höchstzahl der Runden (12) ist eine Tool-Vorgabe ohne Herleitung. Im Beispielring genügen 2, im Dreileitungsring 3 | `netz_ring.py` |

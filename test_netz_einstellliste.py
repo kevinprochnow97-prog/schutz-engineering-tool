@@ -133,22 +133,87 @@ def test_adressen_nur_aus_herst():
 
 
 def test_adressen_der_i_stufen():
-    """Prüfpunkt 1: I>-Stufen haben jetzt eine Adresse, soweit HERST sie kennt. Nichts wird geraten."""
+    """Prüfpunkt 1: alle I>-Stufen haben eine Adresse, geprüft am 17.11.2026 gegen die Handbücher."""
     liste = E.erstelle(_netz())
     z = {(x.element, x.stufe): x for x in liste.zeilen}
     assert z[("T1", "I> OS")].adresse_strom == "Adr.2014" and z[("T1", "I> OS")].adresse_zeit == "Adr.2016"
     assert z[("T1", "I>> OS")].adresse_strom == "Adr.2011"            # unveraendert
     assert z[("L1", "Iph>")].adresse_strom.startswith("Iph> Adr.2620")
     assert z[("M1", "I> (50-1)")].adresse_strom == "Adr.1204" and z[("M1", "Ip")].adresse_strom == "Adr.1207"
-    # nicht geraten: Trafo I> US (HERST kennt nur die OS-Adresse), 50-1 und 51 Zeit, Netzbetreiber
-    assert z[("T1", "I> US")].adresse_strom == "" and z[("T2", "I> US")].adresse_strom == ""
-    assert z[("M1", "I> (50-1)")].adresse_zeit == "" and z[("M1", "Ip")].adresse_zeit == ""
+    # Trafo US: zweite Ueberstromfunktion (7UT613, U/AMZ-Phase 2)
+    for t in ("T1", "T2"):
+        assert z[(t, "I> US")].adresse_strom.startswith("Adr.2114")
+        assert z[(t, "I> US")].adresse_zeit.startswith("Adr.2116")
+        assert z[(t, "I>> US")].adresse_strom.startswith("Adr.2111")
+        assert z[(t, "I>> US")].adresse_zeit.startswith("Adr.2113")
+    # Motor: 50-1 Zeit 1205, 51 Zeitfaktor 1208 (IEC) bzw. 1209 (ANSI), 50-2 Zeit 1203
+    assert z[("M1", "I> (50-1)")].adresse_zeit == "Adr.1205"
+    assert z[("M1", "Ip")].adresse_zeit.startswith("Adr.1208")
+    assert z[("M1", "I>> (50-2)")].adresse_zeit == "Adr.1203"
+    # bewusst leer: der Netzbetreiber-Schutz ist kein Geraet im Netz
     assert z[("E1", "I> NB")].adresse_strom == "" and z[("E1", "I> NB")].adresse_zeit == ""
-    assert sum(1 for x in liste.zeilen if x.adresse_strom) == 13       # vorher 7 von 16
-    assert sum(1 for x in liste.zeilen if x.adresse_zeit) == 13
+    n_strom = sum(1 for x in liste.zeilen if x.adresse_strom)
+    n_zeit = sum(1 for x in liste.zeilen if x.adresse_zeit)
+    assert n_strom == len(liste.zeilen) - 1 and n_zeit == len(liste.zeilen) - 1
     # die I>-Stufen sind trotzdem keine Stromvorschlag-Stufen
     assert "I> OS" not in netz_adapter.STROM_PARAMETER["trafo"]
-    print("I>-Adressen OK: 13 von 16 Stufen, nichts geraten.")
+    assert "I> US" not in netz_adapter.STROM_PARAMETER["trafo"]
+    print(f"I>-Adressen OK: {n_strom} von {len(liste.zeilen)} Stufen, nur der Netzbetreiber bleibt leer.")
+
+
+def test_adresse_nach_nennstrom():
+    """7UT613: 1 A -> Adr., 5 A -> Adr. + 1, unbekannt -> beide. Nur Trafo-Ansprechwerte, Zeiten nie."""
+    n = _netz()
+    z = {(x.element, x.stufe): x for x in E.erstelle(n).zeilen}
+    assert z[("T1", "I>> OS")].adresse_strom == "Adr.2011"                       # 1 A: unveraendert
+    p = dict(n.elemente["T1"].p)
+    p.update(CT_OS_Sek=5, CT_US_Sek=5)
+    n.parameter_setzen("T1", p)
+    z = {(x.element, x.stufe): x for x in E.erstelle(n).zeilen}
+    assert z[("T1", "I>> OS")].adresse_strom == "Adr.2012" and z[("T1", "I> OS")].adresse_strom == "Adr.2015"
+    assert z[("T1", "I>> US")].adresse_strom.startswith("Adr.2112")
+    assert z[("T1", "I> US")].adresse_strom.startswith("Adr.2115")
+    assert z[("T1", "I> OS")].adresse_zeit == "Adr.2016"                         # Zeit-Adresse bleibt
+    assert z[("T2", "I>> OS")].adresse_strom == "Adr.2011"                       # anderes Element: 1 A
+    p = dict(n.elemente["T1"].p)
+    p["CT_OS_Sek"] = 2                                   # weder 1 A noch 5 A (ohne Angabe liefert der Adapter keine Stufen)
+    n.parameter_setzen("T1", p)
+    z = {(x.element, x.stufe): x for x in E.erstelle(n).zeilen}
+    assert z[("T1", "I>> OS")].adresse_strom == "Adr.2011 (1 A) / 2012 (5 A)"     # ungewoehnlich: beide
+    assert z[("T1", "I>> US")].adresse_strom.startswith("Adr.2112")              # US-Seite weiter 5 A
+    # kein Eingriff bei anderen Geraeten
+    assert z[("L1", "Iph>")].adresse_strom.startswith("Iph> Adr.2620")
+    assert z[("M1", "I> (50-1)")].adresse_strom == "Adr.1204"
+    # Hilfsfunktion direkt, auch mit Muell
+    assert E._strom_adresse_nach_nennstrom("trafo", "Adr.2014", "x") == "Adr.2014 (1 A) / 2015 (5 A)"
+    assert E._strom_adresse_nach_nennstrom("trafo", "", 5.0) == ""
+    assert E._strom_adresse_nach_nennstrom("motor", "Adr.1204", 5.0) == "Adr.1204"
+    print("Nennstrom-Umschaltung OK.")
+
+
+def test_hinweis_phase_2():
+    liste = E.erstelle(_netz())
+    for z in liste.zeilen:
+        if z.typ == "trafo" and z.stufe.endswith("US"):
+            assert "U/AMZ-Phase 2" in z.hinweis and "430" in z.hinweis
+        else:
+            assert z.hinweis == ""
+    tab = E.als_tabelle(liste)
+    assert all("Hinweis" in r for r in tab) and any(r["Hinweis"] for r in tab)
+    assert "Hinweis" in E.als_csv(liste).split("\r\n")[4]                       # Spaltenkopf
+    print("Hinweis Phase 2 OK.")
+
+
+def test_hinweis_not_umz():
+    n = _netz()
+    _p = dict(n.elemente["L1"].p)
+    assert all(z.hinweis == "" for z in E.erstelle(n).zeilen if z.typ == "leitung")
+    n.parameter_setzen("L1", {**_p, "uebs_betriebsart": "Ein: bei U-Ausfall"})
+    zl = [z for z in E.erstelle(n).zeilen if z.typ == "leitung" and z.element == "L1"]
+    assert zl and all("Not-UMZ nur bei Spannungsausfall" in z.hinweis for z in zl)
+    n.parameter_setzen("L1", {**_p, "uebs_betriebsart": "Aus"})
+    assert all("ausgeschaltet" in z.hinweis for z in E.erstelle(n).zeilen if z.element == "L1")
+    print("Hinweis Not-UMZ OK.")
 
 
 def test_fehlerfaelle():
@@ -170,5 +235,8 @@ if __name__ == "__main__":
     test_csv()
     test_adressen_nur_aus_herst()
     test_adressen_der_i_stufen()
+    test_adresse_nach_nennstrom()
+    test_hinweis_phase_2()
+    test_hinweis_not_umz()
     test_fehlerfaelle()
     print("\nAlle Prüfungen bestanden.")

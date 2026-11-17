@@ -132,6 +132,10 @@ FELDER: dict = {
         Feld("t_Anlauf", "Anlaufzeit", "s", G_GRUND, vorgabe=_d(_KM, "t_Anlauf_def", "s")),
         Feld("CT_Prim", "CT primär", "A", G_WANDLER, pflicht=True),
         Feld("CT_Sek", "CT sekundär", "A", G_WANDLER, pflicht=True),
+        Feld("anlauf_gesperrt", "Anlauf im Gerät gesperrt (50-1)", "", G_SCHUTZ, art=WAHL,
+             optionen=("nein", "ja"),
+             vorgabe="Tool-Vorgabe nein. Mit ja gilt 50-1 beim Anlauf als gesperrt "
+                     "(Blockierlogik im Gerät), die Anlaufprüfung entfällt für diese Stufe"),
         Feld("f_51", "51 Ansprechwert", "× IN", G_SCHUTZ, vorgabe=_d(_KM, "f_51_def", "× IN")),
         Feld("T_51", "51 Zeitfaktor", "s", G_SCHUTZ, vorgabe=_d(_KM, "T_51_def", "s")),
         Feld("f_50_1", "50-1 Ansprechwert", "× IN", G_SCHUTZ, vorgabe=_d(_KM, "f_50_1_def", "× IN")),

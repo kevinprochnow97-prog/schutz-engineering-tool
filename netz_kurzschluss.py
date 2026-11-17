@@ -9,10 +9,13 @@ Einstieg:
   berechne_schaltzustaende(netz) -> Liste KurzschlussErgebnis (im Ring je Trennstellenlage
                                     und zusaetzlich mit geschlossenem Ring)
   vergleiche(netz, ergebnis)     -> Liste Vergleich (eingegeben, berechnet, Abweichung)
+  ersetze_ik(netz)               -> (Netzkopie, Ersetzungen, Rueckfaelle, Meldungen): berechnete
+                                    Werte ersetzen die eingegebenen (Ring, je Lage)
   ergaenze_ik(netz)              -> (Netzkopie, Liste Ergaenzung): berechnete Werte NUR an
                                     Knoten ohne Handwert
 
-Grundsatz: Ein von Hand eingegebener Ik-Wert hat immer Vorrang. Dieses Modul schreibt
+Grundsatz: Ein von Hand eingegebener Ik-Wert hat Vorrang. Einzige Ausnahme ist die Staffelung im
+Ring (ersetze_ik, Entscheidung 17.11.2026): dort ist ein Wert fuer alle Lagen falsch. Dieses Modul schreibt
 nie in das uebergebene Netz. Berechnete Werte stehen im Ergebnisobjekt, ergaenze_ik
 liefert eine Kopie und laesst vorhandene Werte unveraendert.
 
@@ -188,10 +191,10 @@ def _z_einspeisung(e, kn) -> tuple:
 
 
 def _z_trafo(e, kn) -> tuple:
-    """(z, Annahmen, Fehlertext). Gleiche Impedanz fuer beide Faelle."""
+    """(z_max, z_min, Annahmen, Fehlertext). K_T nur bei Ik max (IEC 60909-0:2016, 6.3.3)."""
     Sn, uk_pct = _pos(e.p, "Sn_MVA"), _pos(e.p, "uk_pct")
     if Sn is None or uk_pct is None:
-        return None, [], "Sn_MVA oder uk_pct fehlt"
+        return None, None, [], "Sn_MVA oder uk_pct fehlt"
     uk = uk_pct / 100.0
     ukr_pct = e.p.get("ukr_pct")
     ann = []
@@ -203,9 +206,11 @@ def _z_trafo(e, kn) -> tuple:
     kt = faktor_KT(uk, ukr, kn[e.nach].UN_kV)
     if KN.KT_anwenden:
         ann.append(f"K_T = {de(kt, 4)}")
+    if KN.KT_anwenden and not KN.KT_bei_min:
+        ann.append("K_T nur bei Ik max")
     ann.append("Stufensteller in Mittelstellung")
-    z = complex(ukr, math.sqrt(uk * uk - ukr * ukr)) * S_B_MVA / Sn * kt
-    return z, ann, ""
+    z = complex(ukr, math.sqrt(uk * uk - ukr * ukr)) * S_B_MVA / Sn
+    return z * kt, (z * kt if KN.KT_bei_min else z), ann, ""
 
 
 def _z_leitung(e, kn) -> tuple:
@@ -358,8 +363,7 @@ def _berechne(netz: Netz, erg: KurzschlussErgebnis) -> KurzschlussErgebnis:
                          f"berücksichtigt. Ik ist ohne ihren Beitrag gerechnet.", (e.id,)))
         elif e.typ in ("trafo", "leitung"):
             if e.typ == "trafo":
-                z, ann, fehlt = _z_trafo(e, kn)
-                z_max = z_min = z
+                z_max, z_min, ann, fehlt = _z_trafo(e, kn)
                 UN, warn = kn[e.nach].UN_kV, ""
             else:
                 z_max, z_min, ann, fehlt, warn = _z_leitung(e, kn)
@@ -508,6 +512,52 @@ def ergaenze_ik(netz: Netz, ergebnis: KurzschlussErgebnis | None = None) -> tupl
         meld.append(Meldung(
             WARNUNG, f"Ik-Werte konnten nicht ergänzt werden ({type(exc).__name__}: {exc})."))
     return kopie, erg_liste, meld
+
+
+def ersetze_ik(netz: Netz, ergebnis: KurzschlussErgebnis | None = None) -> tuple:
+    """
+    Kopie des Netzes, in der JEDER berechenbare Ik den eingegebenen Wert ersetzt (Ring: je Lage
+    der fuer diese Lage berechnete Wert, Entscheidung 17.11.2026, tool_vorgabe_ring.md).
+    Rueckfall auf den eingegebenen Wert, wo nichts berechnet werden kann. Ist die Rechnung
+    insgesamt fehlerhaft (Ergebnis nicht ok), wird nichts ersetzt. Das uebergebene Netz bleibt
+    unveraendert. Rueckgabe (Netzkopie, Ersetzungen, Rueckfaelle, Meldungen):
+      Ersetzungen: Liste Ergaenzung (berechneter Wert, der den eingegebenen ersetzt oder fehlt)
+      Rueckfaelle: Liste (Knoten, Groesse) mit eingegebenem Wert, der gilt, weil nichts berechnet ist
+    Wirft nie.
+    """
+    kopie, ersetzt, rueckfall, meld = netz, [], [], []
+    try:
+        kopie = Netz.from_dict(netz.to_dict())
+        erg = ergebnis if ergebnis is not None else berechne(netz)
+        if not erg.ok:
+            meld.append(Meldung(
+                WARNUNG, "Die Kurzschlussrechnung ist nicht möglich. Es gelten die eingegebenen "
+                         "Werte. " + " ".join(m.text for m in erg.meldungen if m.stufe == FEHLER)[:200]))
+            return kopie, ersetzt, [(v.knoten, v.groesse) for v in vergleiche(netz, erg)
+                                    if v.eingegeben_kA is not None], meld
+        je_knoten: dict = {}
+        for v in vergleiche(netz, erg):
+            if v.berechnet_kA is None:
+                if v.eingegeben_kA is not None:
+                    rueckfall.append((v.knoten, v.groesse))
+                continue
+            feld = "Ik_max_kA" if v.groesse == MAX else "Ik_min_kA"
+            je_knoten.setdefault(v.knoten, {})[feld] = v
+        for kid, felder in je_knoten.items():
+            try:                              # beide Werte eines Knotens zusammen, die Pruefung sieht beide
+                kopie.knoten_aendern(kid, **{f: v.berechnet_kA for f, v in felder.items()})
+                ersetzt += [Ergaenzung(kid, v.groesse, v.berechnet_kA) for v in felder.values()]
+            except ModellFehler:
+                for f, v in felder.items():
+                    if v.eingegeben_kA is not None:
+                        rueckfall.append((kid, v.groesse))
+                meld.append(Meldung(
+                    HINWEIS, f"{kid}: die berechneten Werte passen nicht zusammen und werden nicht "
+                             f"eingesetzt, es gilt der eingegebene Wert.", (kid,)))
+    except Exception as exc:
+        meld.append(Meldung(
+            WARNUNG, f"Ik-Werte konnten nicht ersetzt werden ({type(exc).__name__}: {exc})."))
+    return kopie, ersetzt, rueckfall, meld
 
 
 def polar_text(z: complex | None) -> str:

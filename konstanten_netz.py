@@ -61,6 +61,15 @@ AMZ_KENNLINIEN = {
 # Eine AMZ-Stufe regt erst oberhalb ihres Einstellwerts Ip an. Tool-Vorgabe 1,1 * Ip
 # (uebliche Anregeschwelle numerischer Geraete, gegen 7SJ66 Techn. Daten pruefen).
 AMZ_Anregefaktor = 1.10
+
+# Zeittoleranz der AMZ-Kennlinien (Punkt 7, 17.11.2026). 7SJ66 Handbuch C53000-B1140-C383-D,
+# Kap. 4.3 Technische Daten: Ausloesezeit fuer 2 <= I/Ip <= 20 "5 % of reference (calculated)
+# value + 2 % current tolerance, or 30 ms". Tool-Vorgabe: gilt fuer alle AMZ-Stufen und den ganzen
+# Strombereich, der groessere Wert zaehlt. Bei UMZ bleibt dt_t_Tol. Wo die AMZ-Toleranz ueber
+# dt_t_Tol liegt, waechst der noetige Staffelabstand um die Differenz (je Geraet).
+AMZ_Tol_rel   = 0.05    # Anteil der berechneten Ausloesezeit
+AMZ_Tol_Strom = 0.02    # Stromtoleranz, wirkt ueber die Kennliniensteilheit auf die Zeit
+AMZ_Tol_min_s = 0.030   # Mindestwert [s]
 # Stuetzstellen je Pruefung, wenn eine AMZ-Stufe beteiligt ist (logarithmisch verteilt)
 AMZ_Stuetzstellen = 60
 
@@ -75,6 +84,10 @@ t_Vorschlag_min = 0.10
 # Sicherheitsfaktor der I>>-Stufe ueber dem Bezugsstrom. Gleicher Wert wie
 # konstanten_trafo.k_S_IGG (Ausgangspunkt laut Aufgabe, ein Test prueft das).
 k_S_Strom = 1.20
+# Anlaufpruefung der I>-Stufen (Tool-Vorgabe 17.11.2026): der Ansprechwert jeder I>- und AMZ-Stufe im
+# Pfad zu einem Motor soll ueber k * Anlaufstrom liegen. Gleicher Wert wie k_S_Strom. Das Handbuch
+# nennt 1,6 nur fuer die 50-2-Stufe des Motors (7SJ66 Hdb. 2.2), fuer I> gibt es keine Herstellervorgabe.
+k_Anlauf_Strom = 1.20
 # Einstellraster des I>>-Faktors (x IN). Der Vorschlag wird auf dieses Raster
 # AUFgerundet, nie abgerundet (ein zu kleiner Wert waere unselektiv).
 Raster_Faktor = 0.01
@@ -122,6 +135,11 @@ RX_Q_def = 0.10
 # False rechnet ohne K_T (so sind die Handwerte des Referenznetzes entstanden).
 KT_anwenden = True
 KT_a, KT_b = 0.95, 0.60
+# K_T nur beim groessten Kurzschlussstrom (IEC 60909-0:2016, Abschnitt 6.3.3, Normstelle nach
+# pandapower 3.5, Funktion _transformer_correction_factor; Normtext nicht gelesen). Beim kleinsten
+# Strom ohne K_T: hoehere Impedanz, kleinerer Ik min, also auf der sicheren Seite fuer die
+# Empfindlichkeit. Entscheidung 17.11.2026 nach Gegenrechnung mit pandapower.
+KT_bei_min = False
 
 # Leitung: der Widerstandsbelag aus den Elementdaten gilt als Wert bei 20 Grad C.
 # Fuer Ik min wird er auf die Leitertemperatur am Ende des Kurzschlusses umgerechnet:

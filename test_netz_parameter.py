@@ -92,6 +92,19 @@ def test_aendern_setzen_und_leeren():
     assert P.parameter_aendern(n, "T2", {"CT_OS_Prim": 150.0}) == "T2: keine Änderung an den Parametern."
 
 
+def test_anlauf_gesperrt_feld():
+    n = _netz()
+    felder = {f.key: f for f in P.felder("motor")}
+    f = felder["anlauf_gesperrt"]
+    assert f.art == P.WAHL and tuple(f.optionen) == ("nein", "ja")
+    P.parameter_aendern(n, "M1", {"anlauf_gesperrt": "ja"})
+    assert n.elemente["M1"].p["anlauf_gesperrt"] == "ja"
+    P.parameter_aendern(n, "M1", {"anlauf_gesperrt": None})
+    assert "anlauf_gesperrt" not in n.elemente["M1"].p                  # leer = Standard "nein"
+    with pytest.raises(ModellFehler):
+        P.parameter_aendern(n, "M1", {"anlauf_gesperrt": "vielleicht"})
+
+
 def test_einspeisung_netzbetreiber_paar():
     n = _netz()
     P.parameter_aendern(n, "E1", {"I_gt_NB_A": 200, "t_gt_NB_s": 1.0, "Sk_min_MVA": 1000})

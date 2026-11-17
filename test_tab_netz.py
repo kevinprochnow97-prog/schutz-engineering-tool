@@ -85,7 +85,7 @@ def test_beispielnetz():
     assert sorted(netz.elemente) == ["E1", "L1", "L2", "M1", "T1", "T2"]
     assert "Beispielnetz" in _texte(at.success)
     assert len(at.info) == 0 and len(at.error) == 0 and len(at.warning) == 0
-    assert len(at.dataframe) == 4                         # Knoten, Elemente, Schutzstufen, Staffelung
+    assert len(at.dataframe) == 5                         # Knoten, Elemente, Schutzstufen, Staffelung, Anlauf
     assert len(at.dataframe[2].value) == 16               # 16 Schutzstufen wie im Adaptertest
     assert any(c.type == "graphviz_chart" for c in at.main.children.values()) or \
         "graphviz_chart" in str(at._tree)
@@ -188,11 +188,36 @@ def test_uebernahme_aus_trafo_tab():
 
 
 # ── 6. Staffelung ────────────────────────────────────────────────────────────
+def test_anlauf_tabelle():
+    """Anlaufpruefung (Entscheidung 17.11.2026): Tabelle, Ampel-Zeile, Schalter am Motor."""
+    at = _beispiel()
+    def tab(a):
+        t = [d.value for d in a.dataframe if "Untergrenze [A bez.]" in d.value.columns]
+        assert len(t) == 1
+        return t[0]
+    df = tab(at)
+    assert len(df) == 6 and list(df["Ampel"]).count("🔴") == 3 and list(df["Ampel"]).count("🟢") == 3
+    assert "3 Stufen lösen beim Motoranlauf aus" in _texte(at.markdown)
+    assert "Abschnitt 8" in _texte(at.caption)
+    # Schalter am Motor: 50-1 des Motors wird nicht geprueft, Leitung und Ip bleiben rot
+    netz = at.session_state["netz_modell"]
+    p = dict(netz.elemente["M1"].p)
+    netz.parameter_setzen("M1", {**p, "anlauf_gesperrt": "ja"})
+    at.session_state["netz_modell"] = netz
+    at.run()
+    _keine_ausnahme(at)
+    df = tab(at)
+    assert list(df["Ampel"]).count("🔴") == 2
+    assert "gesperrt" in df[df["Stufe"] == "I> (50-1)"].iloc[0]["Bewertung"]
+    print("Anlauftabelle OK: 6 Zeilen, 3 rot, Schalter wirkt nur auf 50-1 des Motors.")
+
+
 def test_staffelung():
     import konstanten_netz as KN
     at = _beispiel()
     df = at.dataframe[3].value
     assert len(df) == 7 and list(df["Ampel"]).count("🔴") == 6 and list(df["Ampel"]).count("🟢") == 1
+    assert "Zuschlag AMZ [s]" in df.columns and set(df["Zuschlag AMZ [s]"]) == {"–"}   # Beispielnetz: 50-1 greift vor Ip
     assert "M1 → L1 → T1 (US) → T1 (OS) → E1" in _texte(at.caption)
     assert at.number_input(key="netz_dt_soll").value == KN.dt_Staffel_soll
     # Sollabstand hochsetzen: das einzige gruene Paar (0,7 s) wird gelb, der Mindestwert bleibt
@@ -211,11 +236,11 @@ def test_staffelung():
 # ── 7. Staffelvorschlag (erst Strom, dann Zeit) ──────────────────────────────
 def test_staffelvorschlag():
     at = _beispiel()
-    assert len(at.dataframe) == 4 and len(at.expander) == 0   # ohne Schalter kein Vorschlag
+    assert len(at.dataframe) == 5 and len(at.expander) == 0   # ohne Schalter kein Vorschlag
     at.toggle(key="netz_vorschlag_an").set_value(True).run()
     _keine_ausnahme(at)
     # Knoten, Elemente, Schutzstufen, Staffelung, Aenderungsliste + Details (Strom, Zeit, Gegenpruefung)
-    assert len(at.dataframe) == 8 and len(at.expander) == 1
+    assert len(at.dataframe) == 9 and len(at.expander) == 1
     liste = at.dataframe[4].value
     assert len(liste) == 11 and list(liste["Größe"]).count("Ansprechwert") == 3   # 3 Stroeme, 8 Zeiten
     z = liste[(liste["Element"] == "L2") & (liste["Größe"] == "Ansprechwert")].iloc[0]
@@ -229,7 +254,7 @@ def test_staffelvorschlag():
     assert z["Status"] == "nicht wirksam" and z["Änderung"] == ""
     df = at.dataframe[6].value
     assert len(df) == 16 and list(df["Änderung"]).count("✏️") == 8
-    assert len(at.dataframe[7].value) == 11                  # Stromstaffel und Empfindlichkeit
+    assert len(at.dataframe[7].value) == 17                  # Stromstaffel und Empfindlichkeit
     assert "Stromstaffelung nicht wirksam" in _texte(at.caption)
     assert "Motor-Tab-Fenster" not in _texte(at.warning)
     assert "passt nicht unter den Schutz des Netzbetreibers" in _texte(at.warning)
@@ -245,7 +270,7 @@ def test_staffelvorschlag():
     staffel = at.dataframe[3].value
     assert list(staffel["Ampel"]).count("🟢") == 6 and list(staffel["Ampel"]).count("🟡") == 1
     # Der Vorschlag ist jetzt deckungsgleich mit dem Netz: keine Aenderungsliste mehr
-    assert "Keine Änderung nötig" in _texte(at.caption) and len(at.dataframe) == 7
+    assert "Keine Änderung nötig" in _texte(at.caption) and len(at.dataframe) == 8
     print("Staffelvorschlag OK: Änderungsliste, Details, Übernahme, danach 6 grün und der Netzbetreiber gelb.")
 
 
@@ -254,8 +279,12 @@ def test_ring():
     at = _start()
     _klick(at, "netz_btn_beispiel_ring")
     assert at.session_state["netz_modell"].netzform == "ring"
+    # Standard ist die je Lage berechnete Ik-Quelle, dieser Test prueft die eingegebenen Werte
+    assert at.radio(key="netz_ring_ik_quelle").value == "Berechnet je Lage"
+    at.radio(key="netz_ring_ik_quelle").set_value("Eingegeben (gleich in allen Lagen)").run()
+    _keine_ausnahme(at)
     # Knoten, Elemente, Schutzstufen, Staffelung, Ringlagen (ohne Schalter)
-    assert len(at.dataframe) == 5
+    assert len(at.dataframe) == 6
     lagen = at.dataframe[4].value
     assert sorted(lagen["Trennstelle"].str.replace(" (aktuell)", "", regex=False)) == ["K34", "L1", "L2"]
     assert list(lagen["Trennstelle"]).count("K34 (aktuell)") == 1
@@ -264,7 +293,7 @@ def test_ring():
     # Ringvorschlag: Aenderungsliste, Ergebnis je Lage, Details
     at.toggle(key="netz_ring_vorschlag_an").set_value(True).run()
     _keine_ausnahme(at)
-    assert len(at.dataframe) == 8 and len(at.expander) == 1
+    assert len(at.dataframe) == 9 and len(at.expander) == 1
     liste = at.dataframe[5].value
     assert len(liste) == 12
     z = liste[(liste["Element"] == "L2") & (liste["Größe"] == "Ansprechwert")].iloc[0]
@@ -289,8 +318,41 @@ def test_ring():
     assert len(at.expander) == 2
     # Strahlennetz zeigt keinen Ringblock
     at = _beispiel()
-    assert len(at.dataframe) == 4
+    assert len(at.dataframe) == 5
     print("Ring OK: Lagentabelle, Änderungsliste, Übernahme, danach alle Lagen gelb.")
+
+
+def test_ring_ik_quelle():
+    """Standard im Ring: je Lage berechnet. Umschalter auf eingegeben. Strahlennetz ohne Umschalter."""
+    at = _start()
+    _klick(at, "netz_btn_beispiel_ring")
+    r = at.radio(key="netz_ring_ik_quelle")
+    assert r.value == "Berechnet je Lage" and list(r.options) == ["Berechnet je Lage",
+                                                                  "Eingegeben (gleich in allen Lagen)"]
+    vorher = at.session_state["netz_modell"].to_dict()
+    at.toggle(key="netz_ring_vorschlag_an").set_value(True).run()
+    _keine_ausnahme(at)
+    assert "je Trennstellenlage aus der Kurzschlussrechnung" in _texte(at.caption)
+    berechnet = at.dataframe[5].value
+    # andere Quelle, anderer Vorschlag (T1 I> OS: 1,0 s mit eingegebenen, 1,7 s mit berechneten Werten)
+    z = berechnet[(berechnet["Element"] == "T1") & (berechnet["Stufe"] == "I> OS")].iloc[0]
+    assert z["neu"] == "1,70 s"
+    at.radio(key="netz_ring_ik_quelle").set_value("Eingegeben (gleich in allen Lagen)").run()
+    _keine_ausnahme(at)
+    assert "je Trennstellenlage aus der Kurzschlussrechnung" not in _texte(at.caption)
+    eingegeben = at.dataframe[5].value
+    z = eingegeben[(eingegeben["Element"] == "T1") & (eingegeben["Stufe"] == "I> OS")].iloc[0]
+    assert z["neu"] == "1,00 s"
+    assert at.session_state["netz_modell"].to_dict() == vorher            # nur Rechennetz, nie das Modell
+    # Warntext der Kurzschlussanzeige nennt die wirksame Quelle
+    at.toggle(key="netz_ik_an").set_value(True).run()
+    assert "rechnet weiter mit den eingegebenen Werten" in _texte(at.warning)
+    at.radio(key="netz_ring_ik_quelle").set_value("Berechnet je Lage").run()
+    assert "rechnet je Lage mit den berechneten Werten" in _texte(at.warning)
+    # Strahlennetz: kein Umschalter
+    at = _beispiel()
+    assert len([r for r in at.radio if r.key == "netz_ring_ik_quelle"]) == 0
+    print("Ring-Ik-Quelle OK: Standard berechnet, Umschalter, Modell unveraendert.")
 
 
 # ── 9. Kurzschlussstroeme aus den Netzdaten ──────────────────────────────────
@@ -301,17 +363,17 @@ def test_kurzschluss_anzeige():
     at.toggle(key="netz_ik_an").set_value(True).run()
     _keine_ausnahme(at)
     # zwei Tabellen mehr (Vergleich, Impedanzen im Expander), dahinter alles wie bisher
-    assert len(at.dataframe) == 6 and len(at.expander) == 1
+    assert len(at.dataframe) == 7 and len(at.expander) == 1
     assert len(at.error) == 0 and len(at.warning) == 0
     df = at.dataframe[2].value.set_index("Knoten")
     assert df.loc["K2", "Ik″ max eingegeben [kA]"] == "10,00"
     assert df.loc["K2", "Ik″ max berechnet [kA]"] == "10,22" and df.loc["K2", "Abw. max"] == "+2,2 %"
-    assert df.loc["K4", "Ik min berechnet [kA]"] == "5,90"
+    assert df.loc["K4", "Ik min berechnet [kA]"] == "5,81"
     assert df.loc["K3", "Ik″ max mit Motoren [kA]"] == "10,10"
     assert df.loc["K5", "Ik min eingegeben [kA]"] == "–"
     assert df.loc["K5", "Staffelung rechnet mit"] == "berechnet: Ik min"
     assert set(df.drop("K5")["Staffelung rechnet mit"]) == {"eingegeben"}
-    assert "K5 Ik min 24,58 kA" in _texte(at.caption)
+    assert "K5 Ik min 24,67 kA" in _texte(at.caption)
     assert len(at.dataframe[3].value) == 6                           # Impedanzen: E1, L1, L2, M1, T1, T2
     # Das Modell bleibt auf den eingegebenen Werten, die Zeitstaffelung aendert sich nicht
     assert at.session_state["netz_modell"].to_dict() == vorher
@@ -330,16 +392,17 @@ def test_kurzschluss_anzeige():
 def test_kurzschluss_ring():
     at = _start()
     _klick(at, "netz_btn_beispiel_ring")
+    at.radio(key="netz_ring_ik_quelle").set_value("Eingegeben (gleich in allen Lagen)").run()
     at.toggle(key="netz_ik_an").set_value(True).run()
     _keine_ausnahme(at)
     # Vergleich, Lagen, Impedanzen zusaetzlich zu den fuenf Tabellen des Rings
-    assert len(at.dataframe) == 8 and len(at.expander) == 1
+    assert len(at.dataframe) == 9 and len(at.expander) == 1
     lagen = at.dataframe[3].value.set_index("Schaltzustand")
     assert list(lagen.index)[1:] == ["K34 offen", "L1 offen", "L2 offen", "Ring geschlossen"]
     assert list(lagen.columns) == ["K3", "K4", "K5"]                 # K1 und K2 aendern sich nicht
     assert lagen.iloc[0]["K4"] == "7,90 / 5,80"                      # eingegeben
-    assert lagen.loc["L2 offen", "K4"] == "9,27 / 6,95"
-    assert lagen.loc["L1 offen", "K3"] == lagen.loc["L1 offen", "K4"] == "8,00 / 5,90"
+    assert lagen.loc["L2 offen", "K4"] == "9,27 / 6,81"
+    assert lagen.loc["L1 offen", "K3"] == lagen.loc["L1 offen", "K4"] == "8,00 / 5,81"
     warn = _texte(at.warning)
     assert "K4 Ik max in Lage „L2 offen“" in warn and "K3 Ik max in Lage „L1 offen“" in warn
     assert "rechnet weiter mit den eingegebenen Werten" in warn
@@ -359,7 +422,7 @@ def test_staffeldiagramm():
     import json
     at = _beispiel()
     diagramme = at.get("vega_lite_chart")
-    assert len(diagramme) == 1 and len(at.dataframe) == 4            # Diagramm zaehlt nicht als Tabelle
+    assert len(diagramme) == 1 and len(at.dataframe) == 5            # Diagramm zaehlt nicht als Tabelle
     wahl = at.selectbox(key="netz_diag_pfad")
     assert len(wahl.options) == 2 and wahl.options[0] == "M1 → L1 → T1 (US) → T1 (OS) → E1"
     spec = json.loads(diagramme[0].proto.spec)
@@ -382,7 +445,7 @@ def test_staffeldiagramm():
     # Ring-Beispiel: Diagramm der aktuellen Lage
     at = _start()
     _klick(at, "netz_btn_beispiel_ring")
-    assert len(at.get("vega_lite_chart")) == 1 and len(at.dataframe) == 5
+    assert len(at.get("vega_lite_chart")) == 1 and len(at.dataframe) == 6
     # Leeres Netz: kein Diagramm
     assert len(_start().get("vega_lite_chart")) == 0
     print("Staffeldiagramm OK: Ist-Zustand, Pfadauswahl, Vorschlag im selben Pfad.")
@@ -436,7 +499,7 @@ def test_elementformular_behaelt_eingaben_und_wird_leer():
     at.selectbox(key="netz_e_nach").set_value("K3")
     _absenden(at, "➕ Element anlegen")
     e = at.session_state["netz_modell"].elemente["L3"]
-    assert (e.name, e.von, e.nach, e.zustand) == ("Kabel Halle 3", "K4", "K3", "aus") and e.p == {}
+    assert (e.name, e.von, e.nach, e.zustand) == ("Kabel Halle 3", "K4", "K3", "aus") and e.p == {"uebs_betriebsart": "Ein: immer aktiv"}
     # Formular wie beim ersten Oeffnen: leer, erster Typ, kein Knoten, ein, Haekchen gesetzt
     assert at.text_input(key="netz_e_id").value == "" and at.text_input(key="netz_e_name").value == ""
     assert at.selectbox(key="netz_e_typ").value == "einspeisung"
@@ -647,11 +710,11 @@ def test_parameter_editor_typen_und_entwurf():
 # ── 14. Einstellliste ────────────────────────────────────────────────────────
 def test_einstellliste_ist_und_vorschlag():
     at = _beispiel()
-    assert len(at.dataframe) == 4 and len(at.get("download_button")) == 1   # nur Netz speichern, Liste aus
+    assert len(at.dataframe) == 5 and len(at.get("download_button")) == 1   # nur Netz speichern, Liste aus
     at.toggle(key="netz_liste_an").set_value(True).run()
     _keine_ausnahme(at)
-    assert len(at.dataframe) == 5 and len(at.get("download_button")) == 2
-    liste = at.dataframe[4].value
+    assert len(at.dataframe) == 6 and len(at.get("download_button")) == 2
+    liste = at.dataframe[5].value
     assert len(liste) == 16 and "geändert" not in liste.columns          # Ist-Liste ohne Vorschlagsspalten
     z = liste[(liste["Element"] == "T1") & (liste["Stufe"] == "I> OS")].iloc[0]
     assert z["Adresse Ansprechwert"] == "Adr.2014" and z["Wandler"] == "150/1 A"
@@ -696,9 +759,11 @@ if __name__ == "__main__":
     test_knoten_und_element_anlegen()
     test_bearbeiten()
     test_uebernahme_aus_trafo_tab()
+    test_anlauf_tabelle()
     test_staffelung()
     test_staffelvorschlag()
     test_ring()
+    test_ring_ik_quelle()
     test_kurzschluss_anzeige()
     test_kurzschluss_ring()
     test_staffeldiagramm()

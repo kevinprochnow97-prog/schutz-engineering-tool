@@ -263,7 +263,7 @@ def test_gesamtvorschlag():
     assert rein.pruefung.pruefung("T1 (OS)", "E1").status == S.ROT
     assert "bereits berücksichtigt" in _meldungen(gesamt, WARNUNG)
     # Gegenpruefung Strom hat keine roten Zeilen
-    assert gesamt.strom.pruefung.status in (S.OK, S.GELB)
+    assert S.ROT not in {p.status for p in gesamt.strom.pruefung.pruefungen if p.art != "Anlauf"}
     # Beide Vorschlagsarten in einem Parametersatz
     pe = gesamt.parameter_je_element()
     assert pe["L2"] == {"iph_hh": 5.6, "t_iph_h": 1.1, "t_iph_hh": 0.4}
@@ -477,6 +477,45 @@ def test_kurzbegruendung_und_motoranschluss():
     print("Kurzbegründung OK, Empfindlichkeit am Motoranschluss geprüft.")
 
 
+def test_anlaufpruefung():
+    """Entscheidung 17.11.2026: I>- und AMZ-Stufen im Pfad eines Motors gegen den Anlaufstrom."""
+    def anl(n):
+        return {(p.oben, p.stufe_oben): p for p in SS.pruefe_strom(n).pruefungen if p.art == "Anlauf"}
+
+    n = _ref()
+    vorher = n.to_dict()
+    a = anl(n)
+    assert set(a) == {("M1", "Ip"), ("M1", "I> (50-1)"), ("L1", "Iph>"), ("T1 (OS)", "I> OS"),
+                      ("T1 (US)", "I> US"), ("E1", "I> NB")}
+    assert [k for k, p in a.items() if p.status == S.ROT] == [("M1", "Ip"), ("M1", "I> (50-1)"), ("L1", "Iph>")]
+    assert all(a[k].status == S.OK for k in (("T1 (OS)", "I> OS"), ("T1 (US)", "I> US"), ("E1", "I> NB")))
+    p = a[("L1", "Iph>")]
+    assert abs(p.I_soll_bez_A - KN.k_Anlauf_Strom * 752.1) < 1.0 and abs(p.I_ist_bez_A - 360.0) < 1e-6
+    assert "löst nach 0,50 s aus" in p.text and "Anlaufzeit 8,0 s" in p.text
+    assert not any(x.art == "Anlauf" and ">>" in x.stufe_oben for x in SS.pruefe_strom(n).pruefungen)
+    assert n.to_dict() == vorher                                           # nur Pruefung
+    # Schalter am Motor: gilt nur fuer 50-1 des Motors, nicht fuer die Leitung und nicht fuer Ip
+    _p_aendern(n, "M1", anlauf_gesperrt="ja")
+    a = anl(n)
+    assert a[("M1", "I> (50-1)")].status == S.OK and "gesperrt" in a[("M1", "I> (50-1)")].text
+    assert a[("M1", "Ip")].status == S.ROT and a[("L1", "Iph>")].status == S.ROT
+    _p_aendern(n, "M1", anlauf_gesperrt="nein")
+    assert anl(n)[("M1", "I> (50-1)")].status == S.ROT
+    # Leitung anheben: knapp (gelb), dann ueber der Marge (ok); Zeit ueber Anlaufzeit (ok)
+    _p_aendern(n, "L1", iph_h=2.7)                                         # 810 A: ueber 752, unter 902
+    assert anl(n)[("L1", "Iph>")].status == S.GELB
+    _p_aendern(n, "L1", iph_h=3.2)                                         # 960 A
+    assert anl(n)[("L1", "Iph>")].status == S.OK
+    _p_aendern(n, "L1", iph_h=1.2, t_iph_h=9.0)                            # regt an, loest nach 9 s (Anlauf 8 s)
+    assert anl(n)[("L1", "Iph>")].status == S.OK and "erst nach 9,0 s" in anl(n)[("L1", "Iph>")].text
+    # Motor ausgeschaltet oder kein Motor: keine Zeilen. Unsinn im Parameter wirft nie.
+    _p_aendern(n, "M1", anlauf_gesperrt="vielleicht", t_Anlauf="x")
+    assert anl(n)[("L1", "Iph>")].status == S.OK
+    n.element_aendern("M1", zustand="aus")
+    assert anl(n) == {}
+    print("Anlaufpruefung OK: ROT/GELB/OK, Schalter nur fuer 50-1 des Motors, Modell unveraendert.")
+
+
 if __name__ == "__main__":
     test_konstanten()
     test_adapter_stromparameter()
@@ -497,4 +536,5 @@ if __name__ == "__main__":
     test_tap_spanne()
     test_einstellbereich_und_anlaufgrenze()
     test_kurzbegruendung_und_motoranschluss()
+    test_anlaufpruefung()
     print("\nAlle Prüfungen bestanden.")

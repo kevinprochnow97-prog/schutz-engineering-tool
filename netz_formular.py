@@ -95,6 +95,12 @@ def element_anlegen(netz: Netz, eid, name, typ, von, nach, zustand="ein",
         hinweis = (f" Parameter aus dem Tab {tab_name} übernommen." if p else
                    f" Im Tab {tab_name} sind noch keine Grunddaten berechnet, "
                    f"Parameter bleiben leer.")
+    if typ == "leitung" and p.get("uebs_betriebsart") != "Aus":
+        # Staffelung im Strahlennetz braucht die immer aktive UMZ-Stufe (Entscheidung 17.11.2026);
+        # der Not-UMZ ist nur bei Spannungsausfall wirksam. "Aus" bleibt, wie vom Nutzer gesetzt.
+        if p.get("uebs_betriebsart") not in (None, "Ein: immer aktiv"):
+            hinweis += " Betriebsart Not-UMZ auf „Ein: immer aktiv“ gesetzt (Staffelung)."
+        p["uebs_betriebsart"] = "Ein: immer aktiv"
     if typ == "einspeisung":
         if I_nb_A:
             p[NB_STROM] = float(I_nb_A)

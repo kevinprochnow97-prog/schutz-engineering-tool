@@ -87,6 +87,12 @@ Grenzen: Der Editor zeigt Schlüssel mit sprechenden Namen, aber ohne die Herste
 Für die Adressen gilt weiter der Tab bzw. die Einstellliste. Wertebereiche sind die der Rechenkerne und Tabs
 (zum Beispiel Stufensteller 0 bis 40 %, φ bis 90°), keine Gerätegrenzen.
 
+## 3a. Ergänzungen 17.11.2026
+
+- **Ring:** Schalter „Ik-Quelle im Ring“ (Standard „Berechnet je Lage“, Alternative „Eingegeben (gleich in allen Lagen)“). Die Ausgabe nennt die verwendete Quelle.
+- **Motor:** Feld „Anlauf im Gerät gesperrt“ im Parameter-Editor (Standard „nein“), wirkt nur auf die Anlaufprüfung von 50-1 des Motors.
+- **Neue Leitung:** Betriebsart Not-UMZ ist mit „Ein: immer aktiv“ vorbelegt, auch wenn der Leitungs-Tab „Ein: bei U-Ausfall“ liefert. Ein bewusst gesetztes „Aus“ bleibt. Grund: Die Staffelung im Strahlennetz braucht die immer aktive UMZ-Stufe. Wird später auf „bei U-Ausfall“ geändert, warnt die Staffelung und die Einstellliste nennt es in der Spalte „Hinweis“.
+
 ## 4. Offene Prüfpunkte
 
 | Nr. | Was prüfen | Wo |

@@ -437,6 +437,9 @@ def pruefe_strom(netz, adapter=None, U_bezug_kV: float | None = None,
                        Trafos mit Stufensteller und Schaltgruppe) >= gamma * kleinster
                        Ansprechwert des oberen Schutzes. Gelb ab 1, rot darunter.
                        Beim Motor gilt Ik min an seinem Anschlussknoten.
+      Anlauf:          Jede I>- und AMZ-Stufe im Pfad zu einem Motor soll ueber
+                       k_Anlauf * Anlaufstrom liegen oder erst nach Anlaufzeit + Delta t
+                       ausloesen. Nur Pruefung mit Meldung, das Tool aendert nichts.
     Wirft nie.
     """
     erg = StromPruefErgebnis()
@@ -497,7 +500,73 @@ def _pruefe_strom(netz, adapter, U_bezug_kV, k_S, gamma, erg) -> StromPruefErgeb
         erg.meldungen.append(Meldung(
             HINWEIS, f"Ik min fehlt an {', '.join(ohne_ikmin)}: Empfindlichkeit der Reserve "
                      f"dahinter nicht prüfbar."))
+    _pruefe_anlauf(netz, ad, U, erg)
     return erg
+
+
+def _stationsname(eid: str, stufe: str, typ: str) -> str:
+    """Name des Schutzorts wie in der Zeitstaffelung: beim Trafo mit Seite."""
+    if typ == "trafo" and stufe.endswith((" OS", " US")):
+        return f"{eid} ({stufe[-2:]})"
+    return eid
+
+
+def _pruefe_anlauf(netz, ad, U: float, erg: StromPruefErgebnis) -> None:
+    """
+    Anlaufpruefung (Tool-Vorgabe 17.11.2026, docs/tool_vorgabe_stromstaffelung.md, Abschnitt 8):
+    Jede I>- und AMZ-Stufe auf dem Weg vom Motor zur Quelle darf beim Anlauf nicht ausloesen.
+    OK     Ansprechwert >= k_Anlauf * Anlaufstrom (auf Bezugsspannung), oder die Stufe loest erst
+           nach Anlaufzeit + Delta t aus, oder 50-1 des Motors ist laut Angabe im Geraet gesperrt.
+    Gelb   Ansprechwert ueber dem Anlaufstrom, aber unter der Marge.
+    Rot    Die Stufe regt beim Anlauf an und loest innerhalb der Anlaufzeit aus.
+    I>>-Stufen prueft die Stromstaffelung (Motor-Tab-Fenster, Abschnitt 3). Zusatzlast anderer
+    Abgaenge ist nicht beruecksichtigt. Das Modell wird nicht veraendert.
+    """
+    topo = ad.topologie
+    stufen = {}
+    for st in ad.stufen:
+        if st.aktiv and S._ist_zahl(st.I_prim_A) and st.I_prim_A > 0 and ">>" not in st.stufe:
+            stufen.setdefault(st.element, []).append(st)
+    for mid, m in sorted(netz.elemente.items()):
+        if m.typ != "motor" or m.zustand != "ein":
+            continue
+        pfad = topo.pfad_zur_quelle(mid)
+        p = ad.p_voll.get(mid, {})
+        I_anl = netz_adapter.anlaufstrom_A(p)
+        if not pfad or I_anl is None or I_anl <= 0:
+            continue
+        UN_m = netz.knoten[m.von].UN_kV
+        I_anl_bez = S.auf_bezug(I_anl, UN_m, U)
+        t_anl = p.get("t_Anlauf", konstanten_motor.t_Anlauf_def)
+        t_anl = float(t_anl) if S._ist_zahl(t_anl) else float(konstanten_motor.t_Anlauf_def)
+        grenze = KN.k_Anlauf_Strom * I_anl_bez
+        gesperrt = str(p.get("anlauf_gesperrt", "nein")).lower() == "ja"
+        for eid in pfad:
+            for s in stufen.get(eid, []):
+                ist = S.anregestrom_bez(s, U)
+                station = _stationsname(eid, s.stufe, netz.elemente[eid].typ)
+                kopf = (f"{station} {s.stufe} {de(ist, 0)} A bez., Anlaufstrom {mid} "
+                        f"{de(I_anl_bez, 0)} A bez., Untergrenze {de(grenze, 0)} A bez. "
+                        f"({de(KN.k_Anlauf_Strom, 1)} × Anlauf).")
+                if gesperrt and eid == mid and s.stufe.startswith("I> (50-1)"):
+                    status, text = S.OK, kopf + " Anlauf im Gerät gesperrt (Angabe am Motor), nicht geprüft."
+                elif ist >= grenze * (1 - KN.EPS_STROM):
+                    status, text = S.OK, kopf + " Löst beim Anlauf nicht aus."
+                elif ist > I_anl_bez * (1 + KN.EPS_STROM):
+                    status, text = S.GELB, kopf + (f" Über dem Anlaufstrom, aber unter der Marge "
+                                                   f"(Faktor {de(ist / I_anl_bez, 2)}).")
+                else:
+                    t = S.zeit_der_stufe(s, I_anl_bez, U)
+                    if t is not None and t >= t_anl + KN.dt_Staffel_soll:
+                        status, text = S.OK, kopf + (f" Regt an, löst aber erst nach {de(t, 1)} s aus "
+                                                     f"(Anlaufzeit {de(t_anl, 1)} s).")
+                    else:
+                        zeit = "" if t is None else f" nach {de(t, 2)} s"
+                        status, text = S.ROT, kopf + (f" Regt beim Anlauf an und löst{zeit} aus "
+                                                      f"(Anlaufzeit {de(t_anl, 1)} s). Ansprechwert "
+                                                      f"anheben, Anlauf im Gerät sperren oder prüfen.")
+                erg.pruefungen.append(Stromstufenpruefung(
+                    "Anlauf", mid, station, s.stufe, status, grenze, ist, text))
 
 
 def _urteil_staffel(u, o, s, ist, soll, I_bez, text, art, ik_eigen, I_anl_bez) -> Stromstufenpruefung:

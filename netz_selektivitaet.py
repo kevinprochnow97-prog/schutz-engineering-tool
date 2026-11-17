@@ -103,6 +103,12 @@ class Staffelpruefung:
     I_grenz_bez_A: float | None = None    # Ik max am unteren Messort, None = unbekannt
     text: str = ""
     f_stufensteller: float | None = None  # ungünstigste Stufenstellerlage (Strom oben = f * unten), None = Nennlage
+    dt_zusatz_s: float = 0.0              # Zuschlag zum Abstand wegen AMZ-Zeittoleranz an dieser Stelle
+
+    @property
+    def reserve_s(self) -> float | None:
+        """Abstand abzueglich AMZ-Zuschlag: das, was gegen Soll und Mindestwert bewertet wird."""
+        return None if self.dt_s is None else self.dt_s - self.dt_zusatz_s
 
 
 @dataclass
@@ -236,6 +242,33 @@ def zeit_der_stufe(s: Schutzstufe, I_bez_A: float, U_bezug_kV: float) -> float |
     return s.T_mult * k / nenner
 
 
+def zeittoleranz(s: Schutzstufe, I_bez_A: float, U_bezug_kV: float, oben: bool = False) -> float:
+    """
+    Zeittoleranz der Stufe beim Strom I [s]. UMZ: dt_t_Tol. AMZ (7SJ66, Kap. 4.3): 5 % der
+    berechneten Zeit plus Wirkung von 2 % Stromtoleranz, mindestens 30 ms und nie unter dt_t_Tol.
+    Ungünstige Richtung: der untere Schutz misst zu wenig Strom (langsamer), der obere zu viel.
+    """
+    if s.kennlinie == UMZ:
+        return KN.dt_t_Tol
+    t = zeit_der_stufe(s, I_bez_A, U_bezug_kV)
+    if t is None:
+        return KN.dt_t_Tol
+    f = 1 + KN.AMZ_Tol_Strom if oben else 1 - KN.AMZ_Tol_Strom
+    t_i = zeit_der_stufe(s, I_bez_A * f, U_bezug_kV)
+    strom = abs(t_i - t) if t_i is not None else 0.0
+    return max(KN.AMZ_Tol_rel * t + strom, KN.AMZ_Tol_min_s, KN.dt_t_Tol)
+
+
+def toleranz_zusatz(s_unten, s_oben, I_bez_A: float, U_bezug_kV: float) -> float:
+    """Zuschlag zum Staffelabstand: AMZ-Toleranz beider Stufen ueber dem festen Anteil dt_t_Tol."""
+    z = 0.0
+    if s_unten is not None:
+        z += zeittoleranz(s_unten, I_bez_A, U_bezug_kV) - KN.dt_t_Tol
+    if s_oben is not None:
+        z += zeittoleranz(s_oben, I_bez_A, U_bezug_kV, oben=True) - KN.dt_t_Tol
+    return max(z, 0.0)
+
+
 def ausloesezeit(ort: Schutzort, I_bez_A: float, U_bezug_kV: float) -> tuple:
     """Wirksame Ausloesezeit des Schutzortes: (t, Stufe) der schnellsten angeregten Stufe."""
     bester = (None, None)
@@ -347,8 +380,8 @@ def _schlechter(a: Staffelpruefung, b: Staffelpruefung) -> bool:
     """True, wenn Ergebnis a strenger zu bewerten ist als b (Ampel, dann kleinerer Abstand)."""
     if _RANG[a.status] != _RANG[b.status]:
         return _RANG[a.status] > _RANG[b.status]
-    da = math.inf if a.dt_s is None else a.dt_s
-    db = math.inf if b.dt_s is None else b.dt_s
+    da = math.inf if a.dt_s is None else a.reserve_s
+    db = math.inf if b.dt_s is None else b.reserve_s
     return da < db - KN.EPS_ZEIT
 
 
@@ -367,7 +400,7 @@ def _pruefe_paar_f(unten: Schutzort, oben: Schutzort, U_bezug_kV: float,
                   f"(kleinster Ansprechwert über Ik max {de(I_grenz_bez_A, 0)} A). "
                   f"Selektiv, aber keine Reserve durch {oben.name}."))
 
-    schlecht = None          # (dt, I, t_u, s_u, t_o, s_o) mit kleinstem dt
+    schlecht = None          # (reserve, I, t_u, s_u, t_o, s_o, dt, zusatz) mit kleinster Reserve
     luecke = None            # kleinster Strom, bei dem oben anregt und unten nicht
     for I in stroeme:
         t_o, s_o = ausloesezeit(oben, I, U)
@@ -379,8 +412,9 @@ def _pruefe_paar_f(unten: Schutzort, oben: Schutzort, U_bezug_kV: float,
                 luecke = (I, s_o)
             continue
         dt = t_o - t_u
-        if schlecht is None or dt < schlecht[0] - KN.EPS_ZEIT:
-            schlecht = (dt, I, t_u, s_u, t_o, s_o)
+        zus = toleranz_zusatz(s_u, s_o, I, U)
+        if schlecht is None or dt - zus < schlecht[0] - KN.EPS_ZEIT:
+            schlecht = (dt - zus, I, t_u, s_u, t_o, s_o, dt, zus)
 
     text_luecke = ""
     if luecke is not None and not luecke_bewerten:
@@ -396,25 +430,29 @@ def _pruefe_paar_f(unten: Schutzort, oben: Schutzort, U_bezug_kV: float,
             text=("Kein gemeinsamer Strombereich, in dem beide Schutzorte anregen."
                   + text_luecke + ohne_grenze))
 
-    dt, I, t_u, s_u, t_o, s_o = schlecht
-    if dt < dt_min - KN.EPS_ZEIT:
+    _, I, t_u, s_u, t_o, s_o, dt, zus = schlecht
+    soll, mind = dt_soll + zus, dt_min + zus
+    wegen = (f" (Soll {de(dt_soll, 2)} s + {de(zus, 3)} s AMZ-Toleranz)" if zus > KN.EPS_ZEIT else "")
+    if dt < mind - KN.EPS_ZEIT:
         status = ROT
         urteil = (f"nicht selektiv: Abstand {de(dt, 2)} s liegt unter dem technischen "
-                  f"Mindestwert {de(dt_min, 2)} s")
-    elif dt < dt_soll - KN.EPS_ZEIT:
+                  f"Mindestwert {de(mind, 2)} s" + ("" if not wegen else
+                  f" ({de(dt_min, 2)} s + {de(zus, 3)} s AMZ-Toleranz)"))
+    elif dt < soll - KN.EPS_ZEIT:
         status = GELB
-        urteil = (f"knapp: Abstand {de(dt, 2)} s liegt unter dem Soll {de(dt_soll, 2)} s, "
-                  f"aber über dem Mindestwert {de(dt_min, 2)} s")
+        urteil = (f"knapp: Abstand {de(dt, 2)} s liegt unter dem Soll {de(soll, 2)} s{wegen}, "
+                  f"aber über dem Mindestwert {de(mind, 2)} s")
     else:
         status = OK
-        urteil = f"selektiv: Abstand {de(dt, 2)} s (Soll {de(dt_soll, 2)} s)"
+        urteil = f"selektiv: Abstand {de(dt, 2)} s (Soll {de(soll, 2)} s{wegen})"
     if status == OK and luecke is not None:
         status = GELB
     text = (f"Bei {de(I, 0)} A: {unten.name} {s_u.stufe} {de(t_u, 2)} s, "
             f"{oben.name} {s_o.stufe} {de(t_o, 2)} s. Ergebnis {urteil}."
             + text_luecke + ohne_grenze)
     return Staffelpruefung(unten.name, oben.name, status, round(dt, 6), I,
-                           s_u.stufe, s_o.stufe, t_u, t_o, I_grenz_bez_A, text)
+                           s_u.stufe, s_o.stufe, t_u, t_o, I_grenz_bez_A, text,
+                           dt_zusatz_s=round(zus, 6))
 
 
 # ── Einstieg ─────────────────────────────────────────────────────────────────
@@ -665,9 +703,13 @@ def _zeit_fuer_stufe(ort, s, darunter, U, knoten, dt_soll, t_min, tap=None) -> t
                 if I < I_an * (1 - KN.EPS_STROM):
                     continue
                 t_u, s_u = ausloesezeit(u, I, U)
-                if t_u is not None and t_u + dt_soll > bedarf + KN.EPS_ZEIT:
-                    bedarf = t_u + dt_soll
-                    wegen = f"{u.name} {s_u.stufe} {de(t_u, 2)} s bei {de(I, 0)} A{lage}"
+                if t_u is None:
+                    continue
+                zus = toleranz_zusatz(s_u, s_f, I, U)
+                if t_u + dt_soll + zus > bedarf + KN.EPS_ZEIT:
+                    bedarf = t_u + dt_soll + zus
+                    wegen = (f"{u.name} {s_u.stufe} {de(t_u, 2)} s bei {de(I, 0)} A{lage}"
+                             + (f", plus {de(zus, 3)} s AMZ-Toleranz" if zus > KN.EPS_ZEIT else ""))
     return _aufrunden(bedarf, KN.dt_Raster), wegen
 
 

@@ -205,6 +205,34 @@ abstand von 0,3 s wird damit noch nicht erreicht.
 | 8 | Einstellbereich der I>>-Stufen: Das Tool nutzt den Reglerbereich der Tabs. **Nachgelesen 16.11.2026** (Sekundärwerte bei IN = 1 A): 7SJ66 50-Stufen 0,10 bis 35,00 A, 7UT613 I>> 0,10 bis 35,00 A, 7SA6 Überstromzeitschutz 0,10 bis 25,00 A. Die Vorschläge in beiden Beispielnetzen liegen darunter (größter Wert T2 I>> OS mit rund 16,8 A sekundär). Eine Prüfung im Code gibt es weiter nicht, 7SD5 ist nicht geprüft. | 7SJ66 Kap. 4.2, 7UT613 Kap. 4.4, 7SA6 Kap. 4.11 |
 | 9 | **Offene Fachfrage Anlauf:** Im Referenznetz liegt Iph> von L1 (360 A, nach Vorschlag 0,8 s) unter dem Anlaufstrom von M1 (752 A, 8 s). Dasselbe gilt für die Motorstufe 50-1 selbst (342 A, 0,5 s, Voreinstellung im Motor-Tab). Ohne Anlaufblockierung würden beide beim Anlauf auslösen. Das Tool prüft bisher nur die I>>-Stufen gegen den Anlaufstrom. Klären, ob 50-1 im Gerät während des Anlaufs gesperrt ist und wie die I>-Stufe der Leitung darüber bemessen werden soll. **Nachgelesen 16.11.2026:** Die Einstellhinweise des 7SJ66 zu 50-1 nennen keine Sperre beim Anlauf. 50-1 soll über dem größten Laststrom liegen, die Verzögerung ergibt sich aus dem Staffelplan. Für 50-2 bestätigt das Handbuch die Regel 1,6 × Anlaufstrom < 50-2 < kleinster zweipoliger Fehlerstrom. Das Gerät hat eine dynamische Ansprechwertumschaltung (Dynamic Cold Load Pickup), ob sie hier die Lösung ist, bleibt eine Frage an den Betreuer. | 7SJ66 Handbuch C53000-B1140-C383-D (09.2023), Abschnitt 2.2 (Einstellhinweise 50-2 und 50-1), Betreuer |
 
+## 8. Anlaufprüfung (Tool-Vorgabe 17.11.2026)
+
+**Was geprüft wird.** Jede I>- und AMZ-Stufe auf dem Weg vom Motor zur Quelle (Motor, Leitung, Trafo
+OS und US, Netzbetreiber) darf beim Motoranlauf nicht auslösen. I>>-Stufen gehören nicht dazu, sie prüft
+die Stromstaffelung (Abschnitt 3, Motor-Tab-Fenster).
+
+**Bewertung** (Stufe auf Bezugsspannung umgerechnet, Anregestrom bei AMZ 1,1 · Ip):
+
+| Ampel | Bedingung |
+|---|---|
+| OK | Ansprechwert ≥ `k_Anlauf_Strom` · Anlaufstrom, oder die Stufe löst erst nach Anlaufzeit + Δt aus, oder 50-1 des Motors ist laut Angabe im Gerät gesperrt |
+| Hinweis | Ansprechwert über dem Anlaufstrom, aber unter der Marge |
+| Prüfen! | Die Stufe regt beim Anlauf an und löst innerhalb der Anlaufzeit aus |
+
+**Tool-Vorgaben.** `k_Anlauf_Strom = 1,20` (Marge für Streuung des Anlaufstroms, ohne Herleitung).
+Anlaufstrom und Anlaufzeit kommen aus den Motorparametern (`t_Anlauf`). Der Schalter „Anlauf im Gerät
+gesperrt“ am Motor (Standard „nein“) gilt **nur für 50-1 des Motors**: Die Leitung L1 ist ein anderes
+Gerät, eine Blockierlogik am Motorrelais hilft dort nicht. Die Prüfung ist **nur eine Meldung**, sie
+ändert keinen Wert und liefert keine Untergrenze für den Stromvorschlag.
+
+**Abgrenzung.** Die Anlaufüberwachung (48) der SIPROTEC-Geräte sperrt 50-1 und 51 nicht, Dynamic Cold
+Load Pickup gilt für die Wiederzuschaltung nach langer Spannungslosigkeit, nicht für den Anlauf.
+Zusatzlast anderer Abgänge während des Anlaufs ist nicht berücksichtigt. Im Beispielnetz sind drei
+Stufen rot: M1 Ip, M1 I> (50-1) und L1 Iph>.
+
+**Offen.** Stufe 2: Untergrenze im Stromvorschlag („nicht lösbar“, wenn Anlauf und Staffelung sich
+widersprechen). Erst nach Rückmeldung des Betreuers oder bei Bedarf am realen Netz.
+
 ## Quellen
 
 Dieses Dokument stützt sich auf eigene Herleitungen und auf Werte aus dem bestehenden Tool

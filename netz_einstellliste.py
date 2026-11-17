@@ -33,6 +33,7 @@ Robustheit: Das Modul wirft nie. Fehlende Daten ergeben leere Felder und Meldung
 from __future__ import annotations
 
 import csv
+import re
 import io
 import math
 from dataclasses import dataclass, field
@@ -50,14 +51,19 @@ _EPS = 1e-9
 # Stufen, die nur fuer die ADRESSE des Ansprechwerts nachgeschlagen werden: Stufenname -> HERST-Schluessel.
 # netz_adapter.STROM_PARAMETER kennt nur die I>>-Stufen, weil der Stromvorschlag nur diese schreibt.
 # Die I>-Stufen gehoeren bewusst nicht dorthin (sie wuerden sonst vom Stromvorschlag mitgestaffelt).
-# Die Zuordnung stimmt mit den Adresspaaren in HERST ueberein (Ansprechwert, Zeit): Trafo 2014/2016,
-# Leitung 2620/2621, Motor 50-1 1204 (Zeit-Adresse steht nicht in HERST).
-# Trafo "I> US": f_I_Ph gilt fuer beide Seiten, in HERST steht nur die OS-Adresse 2014. Die
-# US-Adresse wird nicht geraten, das Feld bleibt leer (docs/tool_vorgabe_einstellliste.md, Punkt 1).
+# Die Zuordnung stimmt mit den Adresspaaren in HERST ueberein (Ansprechwert, Zeit): Trafo OS 2014/2016,
+# US 2114/2116 (zweite Ueberstromfunktion, 7UT613 Hdb.), Leitung 2620/2621, Motor 1204/1205, 51: 1207/1208.
+# Alle Adressen am 17.11.2026 gegen die Handbuecher geprueft (docs/tool_vorgabe_einstellliste.md, Punkt 1).
 _STROM_ADRESSE_ZUSATZ = {
-    "trafo":   {"I> OS": "f_I_Ph"},
+    "trafo":   {"I> OS": "f_I_Ph", "I> US": "f_I_Ph_US"},
     "leitung": {"Iph>": "iph_h"},
     "motor":   {"I> (50-1)": "f_50_1", "Ip": "f_51"},
+}
+
+# Stufen, deren Zeit-Adresse nicht in netz_adapter.ZEIT_PARAMETER steht, weil die Zeit dort kein
+# Staffelwert ist: der Zeitfaktor der AMZ-Stufe 51 (Motor).
+_ZEIT_ADRESSE_ZUSATZ = {
+    "motor":   {"Ip": "T_51"},
 }
 
 
@@ -108,6 +114,7 @@ class Zeile:
     faktor_neu_IN: float | None = None
     t_neu_s: float | None = None
     begruendung: str = ""
+    hinweis: str = ""                  # Bedingung fuer die Adresse, z. B. Projektierung am Geraet
 
     @property
     def geaendert(self) -> bool:
@@ -185,6 +192,43 @@ def _adresse(typ: str, schluessel) -> str:
     return str(eintrag.get("adr", "")) if isinstance(eintrag, dict) else ""
 
 
+# 7UT613: Die Ansprechwerte I>> und I> haben je Sekundaer-Nennstrom eine eigene Adresse (1 A: Adr., 5 A:
+# Adr. + 1, Handbuch "bzw."). Zeiten und alle anderen Geraete haben keine solche Umschaltung.
+# Annahme (Tool-Vorgabe): Geraete-Nennstrom = Wandler-Sekundaerstrom CT_Sek.
+_ADR_ZAHL = re.compile(r"^Adr\.(\d+)(.*)$")
+
+
+def _sek_nennstrom(typ: str, stufe: str, p: dict):
+    """Sekundaerstrom des Wandlers am Messort der Stufe (nur Trafo), sonst None."""
+    if typ != "trafo":
+        return None
+    sek = p.get(f"CT_{'OS' if stufe.endswith('OS') else 'US'}_Sek")
+    return float(sek) if _zahl(sek) else None
+
+
+def _strom_adresse_nach_nennstrom(typ: str, adresse: str, sek) -> str:
+    """Trafo-Ansprechwert: 1 A -> Adresse, 5 A -> Adresse + 1, sonst beide Adressen (nichts raten)."""
+    m = _ADR_ZAHL.match(adresse) if typ == "trafo" else None
+    if not m:
+        return adresse
+    nr, rest = int(m.group(1)), m.group(2)
+    if _zahl(sek) and abs(sek - 1.0) < 1e-9:
+        return adresse
+    if _zahl(sek) and abs(sek - 5.0) < 1e-9:
+        return f"Adr.{nr + 1}{rest}"
+    return f"Adr.{nr} (1 A) / {nr + 1} (5 A){rest}"
+
+
+def _hinweis(typ: str, stufe: str, adapter_hinweis: str = "") -> str:
+    """Bedingung fuer die Adresse. Fuer die Leitung kommt der Hinweis aus dem Adapter
+    (Not-UMZ nur bei Spannungsausfall, Entscheidung 17.11.2026)."""
+    if typ == "trafo" and stufe.endswith("US"):
+        return "Setzt U/AMZ-Phase 2 voraus (projektiert, Adr. 430 = Seite US)"
+    if typ == "leitung" and adapter_hinweis:
+        return adapter_hinweis
+    return ""
+
+
 def _tiefe(topo, element_id: str) -> int:
     """Abstand zur Quelle in Elementen. Die Liste laeuft von der Quelle zur Last."""
     try:
@@ -242,13 +286,18 @@ def _erstelle(netz, adapter, aenderungen, liste, dt_soll) -> Einstellliste:
             I_sek_A=None if ue is None else s.I_prim_A / ue,
             faktor_IN=None if IN is None else s.I_prim_A / IN,
             t_s=s.t_s, T_mult=s.T_mult,
-            adresse_strom=_adresse(e.typ, {**netz_adapter.STROM_PARAMETER.get(e.typ, {}),
-                                           **_STROM_ADRESSE_ZUSATZ.get(e.typ, {})}.get(s.stufe)),
-            adresse_zeit=_adresse(e.typ, netz_adapter.ZEIT_PARAMETER.get(e.typ, {}).get(s.stufe)),
+            adresse_strom=_strom_adresse_nach_nennstrom(
+                e.typ,
+                _adresse(e.typ, {**netz_adapter.STROM_PARAMETER.get(e.typ, {}),
+                                 **_STROM_ADRESSE_ZUSATZ.get(e.typ, {})}.get(s.stufe)),
+                _sek_nennstrom(e.typ, s.stufe, p)),
+            adresse_zeit=_adresse(e.typ, {**netz_adapter.ZEIT_PARAMETER.get(e.typ, {}),
+                                          **_ZEIT_ADRESSE_ZUSATZ.get(e.typ, {})}.get(s.stufe)),
             I_neu_prim_A=I_neu,
             I_neu_sek_A=None if I_neu is None or ue is None else I_neu / ue,
             faktor_neu_IN=None if I_neu is None or IN is None else I_neu / IN,
-            t_neu_s=t_neu, begruendung=". ".join(gruende)))
+            t_neu_s=t_neu, begruendung=". ".join(gruende),
+            hinweis=_hinweis(e.typ, s.stufe, s.hinweis)))
     topo = ad.topologie
     reihenfolge = {z.element: i for i, z in enumerate(liste.zeilen)}
     liste.zeilen.sort(key=lambda z: (_tiefe(topo, z.element), z.element, z.messort != elemente[z.element].von,
@@ -289,7 +338,8 @@ def als_tabelle(liste: Einstellliste, mit_vorschlag: bool | None = None) -> list
                 "x IN neu": _z(z.faktor_neu_IN, 2), "t neu [s]": _z(z.t_neu_s, 2),
                 "Begründung": z.begruendung,
             })
-        zeile.update({"Adresse Ansprechwert": z.adresse_strom, "Adresse Zeit": z.adresse_zeit})
+        zeile.update({"Adresse Ansprechwert": z.adresse_strom, "Adresse Zeit": z.adresse_zeit,
+                      "Hinweis": z.hinweis})
         out.append(zeile)
     return out
 

@@ -482,6 +482,46 @@ def test_staffelvorschlag():
     print("Staffelvorschlag OK: Handrechnung, Endpunkte fest, Übernahme konsistent, Obergrenze gemeldet.")
 
 
+def test_amz_toleranz():
+    """Punkt 7 (17.11.2026): Bei AMZ waechst der noetige Abstand mit der Ausloesezeit (7SJ66, Kap. 4.3)."""
+    k, a = KN.AMZ_KENNLINIEN[NI]
+    t = lambda T, I, Ip: T * k / ((I / Ip) ** a - 1)
+    # UMZ: fester Anteil wie bisher, kein Zuschlag
+    u = _stufe(360, 0.5)
+    assert S.zeittoleranz(u, 1000, 10.0) == KN.dt_t_Tol
+    assert S.toleranz_zusatz(u, _stufe(400, 0.8), 1000, 10.0) == 0.0
+    # AMZ bei 2 * Ip, T = 1: 5 % von 10,03 s plus Wirkung von 2 % Strom
+    amz = _stufe(100, None, "Ip", kennlinie=NI, T=1.0)
+    soll_u = 0.05 * t(1.0, 200, 100) + (t(1.0, 196, 100) - t(1.0, 200, 100))
+    soll_o = 0.05 * t(1.0, 200, 100) + (t(1.0, 200, 100) - t(1.0, 204, 100))
+    assert abs(S.zeittoleranz(amz, 200, 10.0) - soll_u) < 1e-9 and soll_u > 0.5
+    assert abs(S.zeittoleranz(amz, 200, 10.0, oben=True) - soll_o) < 1e-9
+    # kurze AMZ-Zeit: Mindestwert 30 ms, Zuschlag nur 5 ms gegenueber den 25 ms des Tools
+    kurz = _stufe(100, None, "Ip", kennlinie=NI, T=0.05)
+    assert S.zeittoleranz(kurz, 2000, 10.0) == KN.AMZ_Tol_min_s
+    assert abs(S.toleranz_zusatz(kurz, None, 2000, 10.0) - (KN.AMZ_Tol_min_s - KN.dt_t_Tol)) < 1e-12
+    # Paar AMZ unten, UMZ oben: mit festem Abstand gruen (0,38 s), mit AMZ-Toleranz gelb
+    unten = _ort("M", _stufe(100, None, "Ip", kennlinie=NI, T=0.1))
+    oben = _ort("L", _stufe(150, 2.1, "I>"))
+    p = S.pruefe_paar(unten, oben, 10.0, I_grenz_bez_A=2000.0)
+    assert p.I_bez_A == 150 and abs(p.dt_s - (2.1 - t(0.1, 150, 100))) < 1e-6
+    assert p.dt_zusatz_s > 0.1 and p.status == S.GELB and "AMZ-Toleranz" in p.text
+    assert abs(p.reserve_s - (p.dt_s - p.dt_zusatz_s)) < 1e-12
+    alt = (KN.AMZ_Tol_rel, KN.AMZ_Tol_Strom, KN.AMZ_Tol_min_s)
+    try:
+        KN.AMZ_Tol_rel, KN.AMZ_Tol_Strom, KN.AMZ_Tol_min_s = 0.0, 0.0, 0.0
+        q = S.pruefe_paar(unten, oben, 10.0, I_grenz_bez_A=2000.0)
+        assert q.status == S.OK and q.dt_zusatz_s == 0.0          # so war es vor Punkt 7
+    finally:
+        KN.AMZ_Tol_rel, KN.AMZ_Tol_Strom, KN.AMZ_Tol_min_s = alt
+    # Vorschlag: die UMZ-Zeit oben bekommt den Zuschlag mit
+    t_neu, grund = S._zeit_fuer_stufe(oben, oben.stufen[0], [unten], 10.0, {}, KN.dt_Staffel_soll, 0.1)
+    assert t_neu >= t(0.1, 150, 100) + KN.dt_Staffel_soll + p.dt_zusatz_s - 1e-9
+    assert "AMZ-Toleranz" in grund
+    assert S.pruefe_paar(unten, _ort("L", _stufe(150, t_neu, "I>")), 10.0, 2000.0).status == S.OK
+    print("AMZ-Toleranz OK: Zuschlag waechst mit der Zeit, UMZ unveraendert, Vorschlag beruecksichtigt ihn.")
+
+
 if __name__ == "__main__":
     test_staffelabstand()
     test_umrechnung()
@@ -496,4 +536,5 @@ if __name__ == "__main__":
     test_unvollstaendig_und_fehler()
     test_zufallsnetze()
     test_staffelvorschlag()
+    test_amz_toleranz()
     print("\nAlle Prüfungen bestanden.")

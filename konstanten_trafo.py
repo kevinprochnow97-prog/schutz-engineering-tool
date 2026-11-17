@@ -303,6 +303,20 @@ HERST.update({
 })
 
 
+# I> der US-Seite: im Tool gilt f_I_Ph für beide Seiten, im Gerät sind es zwei Funktionen.
+# Die US-Seite ist die zweite Überstromfunktion "U/AMZ-Phase 2" (7UT613 Hdb. Adr. 2114 bzw. 2115,
+# T I> Adr. 2116). Sie wirkt nur, wenn die Funktion projektiert und Adr. 430 der US-Seite
+# zugeordnet ist. Geprüft am 17.11.2026 gegen das Handbuch C53000-G1100-C160-3.
+HERST.update({
+    "f_I_Ph_US": {
+        "range": "wie I> OS (f_I_Ph gilt im Tool für beide Seiten)",
+        "grund": ("Überstromstufe I> der US-Seite, zweite Überstromfunktion U/AMZ-Phase 2 "
+                  "(7UT613 Hdb. 2.4, Zuordnung Adr. 430). Nur sichtbar, wenn die Funktion "
+                  "projektiert ist."),
+    },
+})
+
+
 # ── Eintrag-Adressen für die Pin-Anzeige unter den Reglern ───────────────────
 # Echte DIGSI-Parameter erhalten ihre Adresse. Reine Engineering-Margen
 # (k_S_I, k_S_IGG, gamma, Inrush_Faktor) bleiben ohne Adresse, da sie tool-intern
@@ -311,7 +325,7 @@ _EINTRAG_ADRESSEN = {
     "I_DIFF": "Adr.1221", "I_DIFF_HH": "Adr.1231",
     "Steigung_1": "Adr.1241A", "Steigung_2": "Adr.1243A", "Fusspunkt_2": "Adr.1244A",
     "Harm_2": "Adr.1271",
-    "f_I_Ph": "Adr.2014", "t_I_Ph": "Adr.2016",
+    "f_I_Ph": "Adr.2014", "t_I_Ph": "Adr.2016", "f_I_Ph_US": "Adr.2114 (U/AMZ-Phase 2)",
     "f_I_Ph_HH_OS": "Adr.2011", "f_I_Ph_HH_US": "Adr.2111 (U/AMZ-Phase 2)", "t_I_Ph_HH": "Adr.2013",
     "t_I_Ph_US": "Adr.2116 (U/AMZ-Phase 2)", "t_I_Ph_HH_US": "Adr.2113 (U/AMZ-Phase 2)",
     "k_Faktor": "Adr.4202", "tau_min": "Adr.4203", "I2_zul": "Adr.4032",

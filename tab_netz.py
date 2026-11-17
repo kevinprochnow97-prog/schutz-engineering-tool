@@ -98,6 +98,9 @@ EE_KEYS = {"name": "netz_ed_e_name", "von": "netz_ed_e_von", "nach": "netz_ed_e_
 # Schrittweite der Zahlenfelder im Parameter-Editor nach Einheit
 _SCHRITT = {"A": 10.0, "kW": 100.0, "s": 0.05, "MVA": 1.0, "km": 0.1, "%": 0.5, "× IN": 0.1,
             "Ω/km": 0.01, "°": 1.0, "°C": 5.0}
+RING_IK = "netz_ring_ik_quelle"                       # Ik-Quelle der Ringstaffelung (Entscheidung 17.11.2026)
+RING_IK_BERECHNET = "Berechnet je Lage"
+RING_IK_EINGEGEBEN = "Eingegeben (gleich in allen Lagen)"
 EDIT = "netz_edit"          # {"art": "knoten" | "element" | "parameter", "id": ...} oder fehlt
 PA = "netz_pa_"             # Widget-Schluessel des Parameter-Editors: PA + Parameterschluessel
 
@@ -578,6 +581,11 @@ def _kurzschluss(netz: Netz):
     return netz_r, True
 
 
+def _ring_ik_ersetzen() -> bool:
+    """Ringstaffelung mit je Lage berechnetem Ik? Standard ja (Entscheidung 17.11.2026)."""
+    return st.session_state.get(RING_IK, RING_IK_BERECHNET) != RING_IK_EINGEGEBEN
+
+
 def _kurzschluss_lagen(netz: Netz, zustaende) -> None:
     """Ring: berechnete Werte je Trennstellenlage, nur fuer Knoten, deren Wert sich aendert."""
     kn = netz.knoten
@@ -615,9 +623,11 @@ def _kurzschluss_lagen(netz: Netz, zustaende) -> None:
                "Betriebszustand der Staffelung, zeigt aber den größten Ik″ max beim Umschalten "
                "ohne Unterbrechung.")
     if hinweise:
+        wirkt = ("Die Ringstaffelung rechnet je Lage mit den berechneten Werten, wo sie berechenbar "
+                 "sind." if _ring_ik_ersetzen() else
+                 "Die Ringstaffelung rechnet weiter mit den eingegebenen Werten.")
         st.warning("Die eingegebenen Werte passen nicht zu jeder Trennstellenlage: "
-                   + "; ".join(hinweise) + ". Die Ringstaffelung rechnet weiter mit den "
-                   "eingegebenen Werten.")
+                   + "; ".join(hinweise) + ". " + wirkt)
 
 
 # ── 5. Schutzstufen ──────────────────────────────────────────────────────────
@@ -700,6 +710,7 @@ def _staffelung(netz: Netz, adapter, ziel: Netz | None = None, ik_an: bool = Fal
         "Ampel": AMPEL_EMOJI[p.status], "unten (Last)": p.unten, "Stufe unten": p.stufe_unten or "–",
         "t unten [s]": _zeit(p.t_unten_s), "oben (Quelle)": p.oben, "Stufe oben": p.stufe_oben or "–",
         "t oben [s]": _zeit(p.t_oben_s), "Δt [s]": _zeit(p.dt_s),
+        "Zuschlag AMZ [s]": "–" if not p.dt_zusatz_s else de(p.dt_zusatz_s, 3),
         "I [A bez.]": "–" if p.I_bez_A is None else de(p.I_bez_A, 0),
         "Bewertung": p.text,
     } for p in pruefungen]), width="stretch", hide_index=True)
@@ -707,7 +718,10 @@ def _staffelung(netz: Netz, adapter, ziel: Netz | None = None, ik_an: bool = Fal
                "anregen. Ströme auf die Bezugsspannung umgerechnet. Grün ab Soll, gelb zwischen "
                "Mindestwert und Soll, rot darunter. Nur Phasenstufen 50/51, Erdfehlerstufen "
                "werden nicht gestaffelt. Die Zeitprüfung rechnet in Nennübersetzung, Stufensteller "
-               "und Schaltgruppe berücksichtigt die Stromstaffelung im Staffelvorschlag.")
+               "und Schaltgruppe berücksichtigt die Stromstaffelung im Staffelvorschlag. "
+               "Bei AMZ-Stufen wächst der nötige Abstand mit der Auslösezeit (Zeittoleranz 5 % "
+               "plus 2 % Stromtoleranz, mindestens 30 ms, 7SJ66). Der Zuschlag steht in der "
+               "Spalte „Zuschlag AMZ“ und gilt für Soll und Mindestwert.")
     _staffeldiagramm(netz, erg, "Staffeldiagramm (Einstellwerte im Netz)", True)
     st.caption("Auslösezeit je Schutzort über dem Strom, beide Achsen logarithmisch. Selektiv "
                "ist ein Pfad, wenn jede Kennlinie mit Abstand über der des Schutzes darunter "
@@ -717,6 +731,7 @@ def _staffelung(netz: Netz, adapter, ziel: Netz | None = None, ik_an: bool = Fal
     if adapter.topologie is not None and adapter.topologie.netzform_erkannt == "ring":
         rv = _ring(ziel, float(dt_soll), adapter.topologie.trennstelle, ik_an)
     vor = _vorschlag(netz, adapter, float(dt_soll), ziel)
+    _anlauf(netz, adapter)
     _einstellliste(netz, adapter, float(dt_soll), vor, rv)
 
 
@@ -789,21 +804,31 @@ def _ring(netz: Netz, dt_soll: float, aktuell, ik_an: bool = False):
     einen Satz Werte vorschlagen, der in allen Lagen gilt (netz_ring.py).
     """
     grphead("Ring: Staffelung in allen Trennstellenlagen")
-    erg = netz_ring.pruefe_ringlagen(netz, dt_soll=dt_soll, ik_ergaenzen=ik_an)
+    st.radio("Kurzschlussströme in der Ringstaffelung", [RING_IK_BERECHNET, RING_IK_EINGEGEBEN],
+             key=RING_IK, horizontal=True,
+             help="Berechnet: In jeder Trennstellenlage gilt der für diese Lage berechnete Ik max "
+                  "und Ik min, wo er berechenbar ist. Sonst gilt der eingegebene Wert. "
+                  "Eingegeben: Ein Wert je Knoten für alle Lagen (nur Knoten ohne Wert bekommen "
+                  "den berechneten, wenn die Kurzschlussrechnung oben eingeschaltet ist). Im "
+                  "Strahlennetz gilt immer der eingegebene Wert. Herleitung: "
+                  "docs/tool_vorgabe_ring.md.")
+    ersetzen = _ring_ik_ersetzen()
+    erg = netz_ring.pruefe_ringlagen(netz, dt_soll=dt_soll, ik_ergaenzen=ik_an,
+                                     ik_ersetzen=ersetzen)
     _meldungen(erg.meldungen)
     if not erg.lagen:
         return
     _lagentabelle(erg, aktuell)
     st.caption("Jedes Ringelement kann Trennstelle werden. Je Zeile ist dieses Element offen, "
-               "geprüft werden die Einstellwerte im Netz. Spalte Strom: Stromstaffel und "
-               "Empfindlichkeit.")
+               "geprüft werden die Einstellwerte im Netz. Spalte Strom: Stromstaffel, "
+               "Empfindlichkeit und Anlauf der Motoren.")
     if not st.toggle("Ringvorschlag berechnen (ein Satz Werte für alle Lagen)",
                      key="netz_ring_vorschlag_an",
                      help="Je Lage erst Strom, dann Zeit. Je Wert gilt der größte über alle "
                           "Lagen, wiederholt bis sich nichts mehr ändert. Gegenläufige Ketten "
                           "werden namentlich gemeldet. Herleitung: docs/tool_vorgabe_ring.md."):
         return
-    rv = netz_ring.ringvorschlag(netz, dt_soll=dt_soll, ik_ergaenzen=ik_an)
+    rv = netz_ring.ringvorschlag(netz, dt_soll=dt_soll, ik_ergaenzen=ik_an, ik_ersetzen=ersetzen)
     _meldungen(rv.meldungen)
     if not rv.werte:
         return
@@ -928,7 +953,7 @@ def _vorschlag(netz: Netz, adapter, dt_soll: float, ziel: Netz | None = None):
             "Bestimmt durch": v.grund,
         } for v in vor.zeit.vorschlaege]), width="stretch", hide_index=True)
         if sp is not None and sp.pruefungen:
-            st.markdown("**3. Gegenprüfung Strom** (Stromstaffel und Empfindlichkeit)")
+            st.markdown("**3. Gegenprüfung Strom** (Stromstaffel, Empfindlichkeit und Anlauf)")
             st.dataframe(pd.DataFrame([{
                 "Ampel": AMPEL_EMOJI[x.status], "Prüfung": x.art, "unten (Last)": x.unten,
                 "oben (Quelle)": x.oben, "Stufe oben": x.stufe_oben,
@@ -939,8 +964,44 @@ def _vorschlag(netz: Netz, adapter, dt_soll: float, ziel: Netz | None = None):
         st.caption("„A bez.“ heißt: Strom auf die Bezugsspannung der Staffelprüfung umgerechnet. "
                    "Stromstaffel: I>> oben mindestens k_S × Strom hinter der nächsten Station. "
                    "Empfindlichkeit: Ik min (zweipolig, über Stufensteller und Schaltgruppe) "
-                   "mindestens γ × kleinster Ansprechwert oben.")
+                   "mindestens γ × kleinster Ansprechwert oben. Anlauf: I>-Stufen im Pfad eines "
+                   "Motors über k × Anlaufstrom.")
     return vor
+
+
+# ── 7a. Anlauf der Motoren ───────────────────────────────────────────────────
+def _anlauf(netz: Netz, adapter) -> None:
+    """
+    Anlaufpruefung (Tool-Vorgabe 17.11.2026): I>- und AMZ-Stufen auf dem Weg vom Motor zur Quelle
+    sollen beim Anlauf nicht ausloesen. Nur Anzeige, das Tool aendert nichts am Modell.
+    """
+    sp = netz_stromstaffel.pruefe_strom(netz, adapter)
+    zeilen = [x for x in sp.pruefungen if x.art == "Anlauf"]
+    if not zeilen:
+        return
+    grphead("Anlauf der Motoren gegen die I>-Stufen")
+    rot = [x for x in zeilen if x.status == netz_selektivitaet.ROT]
+    gelb = [x for x in zeilen if x.status == netz_selektivitaet.GELB]
+    if rot:
+        st.markdown(f"{AMPEL_EMOJI[netz_selektivitaet.ROT]} **{len(rot)} Stufen lösen beim Motoranlauf "
+                    f"aus:** " + ", ".join(f"{x.oben} {x.stufe_oben} (Anlauf {x.unten})" for x in rot))
+    elif gelb:
+        st.markdown(f"{AMPEL_EMOJI[netz_selektivitaet.GELB]} **{len(gelb)} Stufen liegen knapp über "
+                    f"dem Anlaufstrom.**")
+    else:
+        st.markdown(f"{AMPEL_EMOJI[netz_selektivitaet.OK]} **Keine I>-Stufe löst beim Anlauf aus.**")
+    st.dataframe(pd.DataFrame([{
+        "Ampel": AMPEL_EMOJI[x.status], "Motor": x.unten, "Schutzort": x.oben,
+        "Stufe": x.stufe_oben, "Untergrenze [A bez.]": "–" if x.I_soll_bez_A is None
+        else de(x.I_soll_bez_A, 0), "Ansprechwert [A bez.]": "–" if x.I_ist_bez_A is None
+        else de(x.I_ist_bez_A, 0), "Bewertung": x.text,
+    } for x in zeilen]), width="stretch", hide_index=True)
+    st.caption(f"Untergrenze = {de(KN.k_Anlauf_Strom, 1)} × Anlaufstrom (Tool-Vorgabe, Zusatzlast anderer "
+               "Abgänge nicht berücksichtigt). Alternativ darf eine Stufe erst nach Anlaufzeit plus "
+               "Staffelabstand auslösen. Ist der Anlauf im Motorrelais gesperrt (Blockierlogik), "
+               "im Parameter-Editor des Motors „Anlauf im Gerät gesperrt“ auf ja setzen, das gilt nur "
+               "für 50-1 des Motors. I>>-Stufen prüft die Stromstaffelung. "
+               "Herleitung: docs/tool_vorgabe_stromstaffelung.md, Abschnitt 8.")
 
 
 # ── 8. Einstellliste ─────────────────────────────────────────────────────────

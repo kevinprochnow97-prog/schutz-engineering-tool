@@ -56,6 +56,9 @@ def test_knoten_anlegen_fehler_laesst_netz_unveraendert(kid, un, ikmax, ikmin, t
     assert n.to_dict() == vorher
 
 
+IMMER_AKTIV = {"uebs_betriebsart": "Ein: immer aktiv"}
+
+
 def test_element_anlegen_mit_tab_parametern():
     n = _netz()
     p_tab = {"Sn_MVA": 16.0, "uk_pct": 6.0}
@@ -68,11 +71,22 @@ def test_element_anlegen_mit_tab_parametern():
     assert n.elemente["T3"].p["Sn_MVA"] == 16.0
     # ohne Tab-Daten: Hinweis, Parameter leer
     meldung = F.element_anlegen(n, "L3", "", "leitung", "K4", "K3", p_tab=None, tab_name="Leitung")
-    assert "noch keine Grunddaten" in meldung and n.elemente["L3"].p == {}
+    assert "noch keine Grunddaten" in meldung and n.elemente["L3"].p == IMMER_AKTIV
     # Haekchen aus: nichts uebernehmen, kein Hinweis
     meldung = F.element_anlegen(n, "L4", "", "leitung", "K4", "K3", p_tab=p_tab, tab_name="Leitung",
                                 uebernehmen=False)
-    assert meldung == "Element L4 angelegt." and n.elemente["L4"].p == {}
+    assert meldung == "Element L4 angelegt." and n.elemente["L4"].p == IMMER_AKTIV
+    # Leitung: Not-UMZ immer aktiv vorbelegt (Entscheidung 17.11.2026); Tab-Voreinstellung wird
+    # ersetzt und gemeldet, ein bewusst gesetztes "Aus" bleibt
+    meldung = F.element_anlegen(n, "L5", "", "leitung", "K4", "K3", tab_name="Leitung",
+                                p_tab={"uebs_betriebsart": "Ein: bei U-Ausfall", "Un_kV": 20.0})
+    assert n.elemente["L5"].p["uebs_betriebsart"] == "Ein: immer aktiv" and "Staffelung" in meldung
+    assert n.elemente["L5"].p["Un_kV"] == 20.0
+    F.element_anlegen(n, "L6", "", "leitung", "K4", "K3", tab_name="Leitung",
+                      p_tab={"uebs_betriebsart": "Aus"})
+    assert n.elemente["L6"].p["uebs_betriebsart"] == "Aus"
+    F.element_anlegen(n, "T4", "", "trafo", "K4", "K5", uebernehmen=False)
+    assert n.elemente["T4"].p == {}                          # nur die Leitung wird vorbelegt
 
 
 def test_element_anlegen_ignoriert_nicht_benoetigte_knoten_und_setzt_netzbetreiber():
