@@ -10,8 +10,12 @@ die Methoden von netz_modell.Netz.
 Ablauf:
   1. Steuerleiste: Netzform, Beispielnetz, neues Netz, Speichern/Laden (JSON)
   2. Einlinienbild und Topologie-Meldungen (nur wenn ein Netz vorhanden ist)
-  3. Baumeingabe: Knoten anlegen, Element anlegen (Parameter aus den Tabs)
-  4. Netz bearbeiten: schalten, Parameter uebernehmen, entfernen
+  3. Baumeingabe: Knoten anlegen, Element anlegen (Parameter aus den Tabs).
+     Bei abgewiesener Eingabe bleiben die Werte im Formular stehen, nach erfolgreichem
+     Anlegen ist das Formular wieder leer (Logik: netz_formular.py)
+  4. Netz bearbeiten: Knoten und Elemente aendern (ID, Typ, Parameter und Verbindungen
+     bleiben), Parameter direkt am Modell bearbeiten (netz_parameter.py), schalten,
+     Parameter aus dem Tab uebernehmen, entfernen
   4b. Kurzschlussstroeme aus den Netzdaten (netz_kurzschluss.py), per Schalter:
       eingegeben, berechnet, Abweichung, im Ring je Trennstellenlage. Eingegebene
       Werte haben immer Vorrang. Nur Knoten OHNE Eingabewert rechnen in der
@@ -40,11 +44,14 @@ import konstanten_netz as KN
 import netz_adapter
 import netz_bild
 import netz_diagramm
+import netz_formular
 import netz_kurzschluss
+import netz_parameter
 import netz_ring
 import netz_selektivitaet
 import netz_stromstaffel
 import netz_topologie
+from netz_formular import ELEMENT_LEER, KNOTEN_LEER, OHNE
 from netz_modell import ELEMENTTYPEN, STERNPUNKTE, ModellFehler, Netz
 from ui import grphead, inject_css, pill
 from utils import AMPEL_EMOJI, de
@@ -72,7 +79,23 @@ TYP_TEXT = {
 TAB_QUELLE = {"trafo": ("netz_p_trafo", "Transformator"),
               "leitung": ("netz_p_leitung", "Leitung"),
               "motor": ("netz_p_motor", "Motor")}
-OHNE = "—"
+
+# Widget-Schluessel der Anlegen-Formulare, Feldname (wie in netz_formular.*_LEER) -> key
+K_KEYS = {"id": "netz_k_id", "name": "netz_k_name", "UN_kV": "netz_k_un",
+          "sternpunkt": "netz_k_stp", "Ik_max_kA": "netz_k_ikmax", "Ik_min_kA": "netz_k_ikmin"}
+E_KEYS = {"id": "netz_e_id", "name": "netz_e_name", "typ": "netz_e_typ", "von": "netz_e_von",
+          "nach": "netz_e_nach", "zustand": "netz_e_zustand", "uebernehmen": "netz_e_uebern",
+          "I_nb_A": "netz_e_inb", "t_nb_s": "netz_e_tnb"}
+# Widget-Schluessel der Bearbeiten-Formulare (nur Entwurf, das Modell aendert erst "speichern")
+EK_KEYS = {"name": "netz_ed_k_name", "UN_kV": "netz_ed_k_un", "sternpunkt": "netz_ed_k_stp",
+           "Ik_max_kA": "netz_ed_k_ikmax", "Ik_min_kA": "netz_ed_k_ikmin"}
+EE_KEYS = {"name": "netz_ed_e_name", "von": "netz_ed_e_von", "nach": "netz_ed_e_nach",
+           "I_nb_A": "netz_ed_e_inb", "t_nb_s": "netz_ed_e_tnb"}
+# Schrittweite der Zahlenfelder im Parameter-Editor nach Einheit
+_SCHRITT = {"A": 10.0, "kW": 100.0, "s": 0.05, "MVA": 1.0, "km": 0.1, "%": 0.5, "× IN": 0.1,
+            "Ω/km": 0.01, "°": 1.0, "°C": 5.0}
+EDIT = "netz_edit"          # {"art": "knoten" | "element" | "parameter", "id": ...} oder fehlt
+PA = "netz_pa_"             # Widget-Schluessel des Parameter-Editors: PA + Parameterschluessel
 
 
 # ── Zustand ──────────────────────────────────────────────────────────────────
@@ -85,11 +108,17 @@ def _netz() -> Netz:
 def _setze_netz(netz: Netz, meldung: str) -> None:
     st.session_state[SCHLUESSEL] = netz
     st.session_state["netz_erfolg"] = meldung
+    st.session_state.pop(EDIT, None)        # ein offener Entwurf gehoert zum alten Netz
 
 
 def _erfolg(meldung: str) -> None:
-    """Erfolgsmeldung fuer den naechsten Lauf merken und neu zeichnen."""
+    """
+    Erfolgsmeldung fuer den naechsten Lauf merken und neu zeichnen. Jede erfolgreiche
+    Aenderung am Modell schliesst einen offenen Bearbeiten-Entwurf, damit er nicht veraltet
+    stehen bleibt und beim Speichern neuere Werte ueberschreibt.
+    """
     st.session_state["netz_erfolg"] = meldung
+    st.session_state.pop(EDIT, None)
     st.rerun()
 
 
@@ -104,8 +133,15 @@ def _p_aus_tab(typ: str):
             if isinstance(k, str) and (v is None or isinstance(v, (bool, int, float, str)))}
 
 
-def _zahl_oder_none(x):
-    return None if x is None else float(x)
+def _vorbelegen(keys: dict, werte: dict) -> None:
+    """
+    Widget-Werte setzen. Das geht nur, bevor das Widget in diesem Lauf gezeichnet wird,
+    deshalb stehen die Aufrufe vor den Formularen. Gesetzt wird der Wert und nicht
+    geloescht, damit das Formular im Browser sicher den neuen Wert zeigt.
+    """
+    for feld, key in keys.items():
+        if feld in werte:
+            st.session_state[key] = werte[feld]
 
 
 # ── Anzeige von Meldungen ────────────────────────────────────────────────────
@@ -165,9 +201,17 @@ def _steuerleiste(netz: Netz) -> None:
 
 
 # ── 3. Baumeingabe ───────────────────────────────────────────────────────────
+# Formular-Zustand (Streamlit):
+#  - Die Formulare loeschen sich nicht selbst (kein clear_on_submit). Wird eine Eingabe
+#    abgewiesen, bleiben alle Werte stehen und nur der falsche muss korrigiert werden.
+#  - Nach erfolgreichem Anlegen wird ein Reset-Merker gesetzt. Beim naechsten Lauf schreibt
+#    das Formular VOR dem Zeichnen die Vorbelegung (netz_formular.*_LEER) in die Widgets.
+#    Das geht nicht im selben Lauf, nachdem die Widgets gezeichnet sind.
 def _form_knoten(netz: Netz) -> None:
     grphead("Knoten anlegen (Sammelschiene)")
-    with st.form("netz_form_knoten", clear_on_submit=True):
+    if st.session_state.pop("netz_reset_k", False):
+        _vorbelegen(K_KEYS, KNOTEN_LEER)
+    with st.form("netz_form_knoten"):
         a, b, c = st.columns([1, 2, 1])
         kid = a.text_input("ID", placeholder="z. B. K6", key="netz_k_id")
         name = b.text_input("Bezeichnung", placeholder="z. B. Unterverteilung Halle 3", key="netz_k_name")
@@ -184,11 +228,12 @@ def _form_knoten(netz: Netz) -> None:
                                key="netz_k_ikmin", placeholder="optional")
         if st.form_submit_button("➕ Knoten anlegen"):
             try:
-                netz.knoten_hinzufuegen(kid.strip(), name.strip(), _zahl_oder_none(un), stp,
-                                        _zahl_oder_none(ikmax) or None, _zahl_oder_none(ikmin) or None)
-                _erfolg(f"Knoten {kid.strip()} angelegt.")
+                meldung = netz_formular.knoten_anlegen(netz, kid, name, un, stp, ikmax, ikmin)
             except ModellFehler as exc:
-                st.error(str(exc))
+                st.error(f"{exc} Die Eingaben bleiben stehen.")
+            else:
+                st.session_state["netz_reset_k"] = True
+                _erfolg(meldung)
 
 
 def _form_element(netz: Netz) -> None:
@@ -197,7 +242,15 @@ def _form_element(netz: Netz) -> None:
         st.caption("Zuerst mindestens einen Knoten anlegen.")
         return
     knoten = [OHNE] + sorted(netz.knoten)
-    with st.form("netz_form_element", clear_on_submit=True):
+    if st.session_state.pop("netz_reset_e", False):
+        _vorbelegen(E_KEYS, ELEMENT_LEER)
+    # Das Haekchen hat keinen value= im Widget, sonst warnt Streamlit beim Setzen ueber den Zustand
+    st.session_state.setdefault(E_KEYS["uebernehmen"], ELEMENT_LEER["uebernehmen"])
+    # Ein gemerkter Knoten kann inzwischen entfernt worden sein: dann zurueck auf "kein Knoten"
+    for key in (E_KEYS["von"], E_KEYS["nach"]):
+        if st.session_state.get(key, OHNE) not in knoten:
+            st.session_state[key] = OHNE
+    with st.form("netz_form_element"):
         a, b, c = st.columns([1, 2, 1.3])
         eid = a.text_input("ID", placeholder="z. B. L3", key="netz_e_id")
         name = b.text_input("Bezeichnung", placeholder="z. B. Kabel zur Halle 3", key="netz_e_name")
@@ -210,48 +263,194 @@ def _form_element(netz: Netz) -> None:
                    "Das jeweils andere Feld wird ignoriert.")
         g, h, i = st.columns([2, 1, 1])
         uebernehmen = g.checkbox("Parameter aus dem passenden Tab übernehmen "
-                                 "(Trafo, Leitung, Motor)", value=True, key="netz_e_uebern")
+                                 "(Trafo, Leitung, Motor)", key="netz_e_uebern")
         i_nb = h.number_input("Einspeisung: I> Netzbetreiber [A]", min_value=0.0, value=None,
                               key="netz_e_inb", placeholder="optional")
         t_nb = i.number_input("Einspeisung: t Netzbetreiber [s]", min_value=0.0, value=None,
                               key="netz_e_tnb", placeholder="optional")
         if st.form_submit_button("➕ Element anlegen"):
-            braucht_von, braucht_nach = ELEMENTTYPEN[typ]
-            v = von if (braucht_von and von != OHNE) else None
-            n = nach if (braucht_nach and nach != OHNE) else None
-            p, hinweis = {}, ""
-            if uebernehmen and typ in TAB_QUELLE:
-                p = _p_aus_tab(typ) or {}
-                hinweis = (f" Parameter aus dem Tab {TAB_QUELLE[typ][1]} übernommen." if p else
-                           f" Im Tab {TAB_QUELLE[typ][1]} sind noch keine Grunddaten berechnet, "
-                           f"Parameter bleiben leer.")
-            if typ == "einspeisung":
-                if i_nb:
-                    p["I_gt_NB_A"] = float(i_nb)
-                if t_nb:
-                    p["t_gt_NB_s"] = float(t_nb)
             try:
-                netz.element_hinzufuegen(eid.strip(), name.strip(), typ, v, n, p, zustand)
-                _erfolg(f"Element {eid.strip()} angelegt.{hinweis}")
+                meldung = netz_formular.element_anlegen(
+                    netz, eid, name, typ, von, nach, zustand,
+                    p_tab=_p_aus_tab(typ), tab_name=TAB_QUELLE[typ][1] if typ in TAB_QUELLE else None,
+                    uebernehmen=uebernehmen, I_nb_A=i_nb, t_nb_s=t_nb)
             except ModellFehler as exc:
-                st.error(str(exc))
+                st.error(f"{exc} Die Eingaben bleiben stehen.")
+            else:
+                st.session_state["netz_reset_e"] = True
+                _erfolg(meldung)
 
 
 # ── 4. Netz bearbeiten ───────────────────────────────────────────────────────
+def _bearbeitung_starten(netz: Netz, art: str, oid: str) -> None:
+    """
+    Entwurf aus dem Modell laden und das Bearbeiten-Formular oeffnen. Die Widget-Werte
+    werden im naechsten Lauf gezeichnet (Rerun), das Modell bleibt bis "speichern" unberuehrt.
+    """
+    if art == "knoten":
+        _vorbelegen(EK_KEYS, netz_formular.knoten_werte(netz, oid))
+    elif art == "parameter":
+        werte = netz_parameter.parameter_werte(netz, oid)
+        for f in netz_parameter.felder(netz.elemente[oid].typ):
+            st.session_state[PA + f.key] = (OHNE if werte[f.key] is None else werte[f.key]) \
+                if f.art == netz_parameter.WAHL else werte[f.key]
+    else:
+        _vorbelegen(EE_KEYS, netz_formular.element_werte(netz, oid))
+    st.session_state[EDIT] = {"art": art, "id": oid}
+    st.rerun()
+
+
+def _bearbeitungsziel(netz: Netz):
+    """Offener Entwurf oder None. Existiert das Objekt nicht mehr, wird der Entwurf verworfen."""
+    z = st.session_state.get(EDIT)
+    if not isinstance(z, dict):
+        return None
+    vorhanden = netz.knoten if z.get("art") == "knoten" else netz.elemente
+    if z.get("id") not in vorhanden:
+        st.session_state.pop(EDIT, None)
+        return None
+    return z
+
+
+def _form_parameter(netz: Netz, oid: str) -> bool:
+    """
+    Parameter-Editor (Variante 1): netzrelevante Parameter des Elements direkt am Modell.
+    Leeres Feld = Voreinstellung. Rueckgabe: wurde Abbrechen gedrueckt.
+    """
+    e = netz.elemente[oid]
+    felder = netz_parameter.felder(e.typ)
+    grphead(f"Parameter von {oid} bearbeiten ({TYP_TEXT[e.typ]})")
+    with st.form("netz_form_edit_parameter"):
+        st.caption("Leeres Feld = Voreinstellung (steht am Feld). Alles, was hier nicht aufgeführt ist, "
+                   "bleibt unverändert. Ik-Werte stehen an den Knoten. Gespeichert wird erst mit dem "
+                   "Knopf unten. * = Pflichtangabe für die Schutzstufen.")
+        werte = {}
+        for gruppe in netz_parameter.gruppen(e.typ):
+            st.markdown(f"**{gruppe}**")
+            gf = [f for f in felder if f.gruppe == gruppe]
+            for i in range(0, len(gf), 3):
+                spalten = st.columns(3)
+                for spalte, f in zip(spalten, gf[i:i + 3]):
+                    titel = f.titel + (" *" if f.pflicht else "")
+                    hilfe = f.vorgabe or None
+                    if f.art == netz_parameter.WAHL:
+                        w = spalte.selectbox(titel, [OHNE, *f.optionen], key=PA + f.key, help=hilfe)
+                        werte[f.key] = None if w == OHNE else w
+                    else:
+                        werte[f.key] = spalte.number_input(
+                            titel, value=None, step=_SCHRITT.get(f.einheit, 0.1), format="%g",
+                            key=PA + f.key, placeholder=f.vorgabe or "leer", help=hilfe)
+        s1, s2 = st.columns(2)
+        speichern = s1.form_submit_button("💾 Parameter speichern")
+        abbrechen = s2.form_submit_button("Abbrechen")
+        if speichern:
+            try:
+                meldung = netz_parameter.parameter_aendern(netz, oid, werte)
+            except ModellFehler as exc:
+                st.error("Nicht gespeichert, die Eingaben bleiben stehen:\n\n"
+                         + "\n".join(f"- {zeile}" for zeile in str(exc).splitlines()))
+            else:
+                _erfolg(meldung)
+    return abbrechen
+
+
+def _form_bearbeiten(netz: Netz) -> None:
+    """Formular zum Aendern des gewaehlten Knotens oder Elements (nur wenn geoeffnet)."""
+    z = _bearbeitungsziel(netz)
+    if z is None:
+        return
+    oid = z["id"]
+    if z["art"] == "knoten":
+        grphead(f"Knoten {oid} bearbeiten")
+        with st.form("netz_form_edit_knoten"):
+            st.caption("Die ID bleibt, damit die Verbindungen der Elemente erhalten bleiben. "
+                       "Gespeichert wird erst mit dem Knopf unten.")
+            a, b = st.columns([2, 1])
+            name = a.text_input("Bezeichnung", key=EK_KEYS["name"])
+            un = b.number_input("UN [kV]", min_value=0.0, value=None, step=1.0, key=EK_KEYS["UN_kV"])
+            d, e, f = st.columns(3)
+            stp = d.selectbox("Sternpunktbehandlung", STERNPUNKTE, format_func=STERNPUNKT_TEXT.get,
+                              key=EK_KEYS["sternpunkt"])
+            ikmax = e.number_input("Ik″ max [kA]", min_value=0.0, value=None, step=0.5,
+                                   key=EK_KEYS["Ik_max_kA"], placeholder="optional")
+            ikmin = f.number_input("Ik min 2-pol. [kA]", min_value=0.0, value=None, step=0.5,
+                                   key=EK_KEYS["Ik_min_kA"], placeholder="optional")
+            s1, s2 = st.columns(2)
+            speichern = s1.form_submit_button("💾 Änderungen speichern")
+            abbrechen = s2.form_submit_button("Abbrechen")
+            if speichern:
+                try:
+                    meldung = netz_formular.knoten_aendern(netz, oid, name, un, stp, ikmax, ikmin)
+                except ModellFehler as exc:
+                    st.error(f"{exc} Die Eingaben bleiben stehen.")
+                else:
+                    st.session_state.pop(EDIT, None)
+                    _erfolg(meldung)
+    elif z["art"] == "parameter":
+        abbrechen = _form_parameter(netz, oid)
+    else:
+        e_alt = netz.elemente[oid]
+        braucht_von, braucht_nach = ELEMENTTYPEN[e_alt.typ]
+        ids = sorted(netz.knoten)
+        for key, flag in ((EE_KEYS["von"], braucht_von), (EE_KEYS["nach"], braucht_nach)):
+            if flag and st.session_state.get(key) not in ids:
+                st.session_state[key] = ids[0]
+        grphead(f"Element {oid} bearbeiten ({TYP_TEXT[e_alt.typ]})")
+        with st.form("netz_form_edit_element"):
+            st.caption("ID, Typ und Parameter bleiben, ebenso die Verbindungen zu den übrigen "
+                       "Elementen. Ein/Aus schaltet der Knopf oben. Gespeichert wird erst mit dem "
+                       "Knopf unten.")
+            name = st.text_input("Bezeichnung", key=EE_KEYS["name"])
+            c1, c2 = st.columns(2)
+            von = c1.selectbox("von Knoten (Speiseseite, Trafo: OS)", ids,
+                               key=EE_KEYS["von"]) if braucht_von else None
+            nach = c2.selectbox("nach Knoten (Lastseite, Trafo: US)", ids,
+                                key=EE_KEYS["nach"]) if braucht_nach else None
+            i_nb = t_nb = None
+            if e_alt.typ == "einspeisung":
+                c3, c4 = st.columns(2)
+                i_nb = c3.number_input("I> Netzbetreiber [A]", min_value=0.0, value=None,
+                                       key=EE_KEYS["I_nb_A"], placeholder="optional")
+                t_nb = c4.number_input("t Netzbetreiber [s]", min_value=0.0, value=None,
+                                       key=EE_KEYS["t_nb_s"], placeholder="optional")
+            s1, s2 = st.columns(2)
+            speichern = s1.form_submit_button("💾 Änderungen speichern")
+            abbrechen = s2.form_submit_button("Abbrechen")
+            if speichern:
+                try:
+                    meldung = netz_formular.element_aendern(netz, oid, name, von, nach, i_nb, t_nb)
+                except ModellFehler as exc:
+                    st.error(f"{exc} Die Eingaben bleiben stehen.")
+                else:
+                    st.session_state.pop(EDIT, None)
+                    _erfolg(meldung)
+    if abbrechen:
+        st.session_state.pop(EDIT, None)
+        st.rerun()
+
+
 def _bearbeiten(netz: Netz) -> None:
     grphead("Netz bearbeiten")
     elemente = netz.elemente
     knoten = netz.knoten
     if elemente:
-        a, b, c, d = st.columns([1.4, 1, 1.4, 1])
+        a, b, c, d = st.columns([1.6, 1, 1, 1])
         eid = a.selectbox("Element", sorted(elemente), key="netz_b_element",
                           format_func=lambda x: f"{x} · {TYP_TEXT[elemente[x].typ]}")
         e = elemente[eid]
         if b.button("🔀 Ein/Aus schalten", key="netz_b_schalten", width="stretch"):
             netz.element_aendern(eid, zustand="aus" if e.zustand == "ein" else "ein")
             _erfolg(f"{eid} ist jetzt {'aus' if e.zustand == 'ein' else 'ein'}geschaltet.")
+        if c.button("✏️ Bearbeiten", key="netz_b_edit_element", width="stretch"):
+            _bearbeitung_starten(netz, "element", eid)
+        if d.button("🔧 Parameter bearbeiten", key="netz_b_edit_parameter", width="stretch",
+                    disabled=not netz_parameter.hat_felder(e.typ),
+                    help="Wandler, Ansprechwerte, Zeiten und weitere Parameter direkt am Netzmodell. "
+                         "Für Kupplung und Generator gibt es keine."):
+            _bearbeitung_starten(netz, "parameter", eid)
+        a, b, c = st.columns([1.6, 2, 1])
         kann_uebernehmen = e.typ in TAB_QUELLE
-        if c.button("📥 Parameter aus Tab übernehmen", key="netz_b_uebernehmen",
+        if b.button("📥 Parameter aus Tab übernehmen", key="netz_b_uebernehmen",
                     width="stretch", disabled=not kann_uebernehmen):
             p = _p_aus_tab(e.typ)
             if p:
@@ -259,18 +458,21 @@ def _bearbeiten(netz: Netz) -> None:
                 _erfolg(f"Parameter von {eid} aus dem Tab {TAB_QUELLE[e.typ][1]} übernommen.")
             else:
                 st.warning(f"Im Tab {TAB_QUELLE[e.typ][1]} sind noch keine Grunddaten berechnet.")
-        if d.button("❌ Element entfernen", key="netz_b_entf_element", width="stretch"):
+        if c.button("❌ Element entfernen", key="netz_b_entf_element", width="stretch"):
             netz.element_entfernen(eid)
             _erfolg(f"Element {eid} entfernt.")
     if knoten:
-        a, b, _ = st.columns([1.4, 1, 2.4])
+        a, b, c, _ = st.columns([1.4, 1, 1, 1.4])
         kid = a.selectbox("Knoten", sorted(knoten), key="netz_b_knoten")
-        if b.button("❌ Knoten entfernen", key="netz_b_entf_knoten", width="stretch"):
+        if b.button("✏️ Bearbeiten", key="netz_b_edit_knoten", width="stretch"):
+            _bearbeitung_starten(netz, "knoten", kid)
+        if c.button("❌ Knoten entfernen", key="netz_b_entf_knoten", width="stretch"):
             try:
                 netz.knoten_entfernen(kid)
                 _erfolg(f"Knoten {kid} entfernt.")
             except ModellFehler as exc:
                 st.error(str(exc))
+    _form_bearbeiten(netz)
 
     st.dataframe(pd.DataFrame([{
         "Knoten": k.id, "Bezeichnung": k.name, "UN [kV]": de(k.UN_kV, 1),

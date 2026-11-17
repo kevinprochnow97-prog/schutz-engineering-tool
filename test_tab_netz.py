@@ -18,6 +18,11 @@ Prueft:
 8. Ring: Beispielring laden, Lagentabelle, Ringvorschlag und Uebernahme.
 7. Staffelvorschlag (erst Strom, dann Zeit): Tabellen, Gegenpruefungen, Uebernahme ins
    Modell, danach ist die Staffelpruefung bis auf den Netzbetreiber (gelb) gruen.
+11. Formular-Zustand: Eingaben bleiben nach einer Abweisung stehen, nach dem Anlegen ist das
+    Formular wieder leer (Knoten und Element).
+12. Bearbeiten: Knoten und Element aendern statt loeschen, Verbindungen und Parameter bleiben.
+13. Parameter-Editor: Werte aus dem Modell, Speichern, Fehler behalten Eingaben, Wirkung in der
+    Staffelung, Entwurf schliesst bei jeder Aenderung am Modell.
 """
 
 from pathlib import Path
@@ -47,6 +52,11 @@ def _klick(at, key):
 def _absenden(at, label):
     [b for b in at.button if b.label == label][0].click().run()
     _keine_ausnahme(at)
+
+
+def _offen(at, key) -> bool:
+    """Ist das Eingabefeld mit diesem Schluessel gezeichnet (Bearbeiten-Formular offen)?"""
+    return any(t.key == key for t in at.text_input)
 
 
 def _texte(liste) -> str:
@@ -92,13 +102,15 @@ def test_knoten_und_element_anlegen():
     assert "K6" in netz.knoten and netz.knoten["K6"].sternpunkt == "isoliert"
     assert "K6 ist mit keinem Element" in _texte(at.warning)
 
-    # Doppelte ID wird abgewiesen, das Netz bleibt unveraendert
+    # Doppelte ID wird abgewiesen, das Netz bleibt unveraendert, die Eingaben bleiben stehen
     at.text_input(key="netz_k_id").set_value("K6")
     at.number_input(key="netz_k_un").set_value(10.0)
     _absenden(at, "➕ Knoten anlegen")
     assert "bereits vergeben" in _texte(at.error)
-    # Fehlende Spannung wird abgewiesen
+    assert at.text_input(key="netz_k_id").value == "K6" and at.number_input(key="netz_k_un").value == 10.0
+    # Fehlende Spannung wird abgewiesen (die Spannung steht noch von vorher im Formular)
     at.text_input(key="netz_k_id").set_value("K7")
+    at.number_input(key="netz_k_un").set_value(None)
     _absenden(at, "➕ Knoten anlegen")
     assert "Wert fehlt" in _texte(at.error)
     assert sorted(at.session_state["netz_modell"].knoten) == ["K1", "K2", "K3", "K4", "K5", "K6"]
@@ -375,6 +387,262 @@ def test_staffeldiagramm():
     print("Staffeldiagramm OK: Ist-Zustand, Pfadauswahl, Vorschlag im selben Pfad.")
 
 
+# ── 11. Formular-Zustand (Fehleingaben bleiben, nach dem Anlegen leer) ───────
+def test_knotenformular_behaelt_eingaben_und_wird_leer():
+    at = _beispiel()
+    at.text_input(key="netz_k_id").set_value("K6")
+    at.text_input(key="netz_k_name").set_value("Halle 3")
+    at.selectbox(key="netz_k_stp").set_value("kompensiert")
+    at.number_input(key="netz_k_ikmax").set_value(5.0)
+    at.number_input(key="netz_k_ikmin").set_value(6.0)            # Ik min > Ik max: ungueltig
+    at.number_input(key="netz_k_un").set_value(10.0)
+    _absenden(at, "➕ Knoten anlegen")
+    assert "größer als" in _texte(at.error) and "K6" not in at.session_state["netz_modell"].knoten
+    # alle Eingaben stehen noch da, nur der falsche Wert muss korrigiert werden
+    assert at.text_input(key="netz_k_id").value == "K6"
+    assert at.text_input(key="netz_k_name").value == "Halle 3"
+    assert at.selectbox(key="netz_k_stp").value == "kompensiert"
+    assert at.number_input(key="netz_k_ikmax").value == 5.0 and at.number_input(key="netz_k_un").value == 10.0
+    at.number_input(key="netz_k_ikmin").set_value(3.0)
+    _absenden(at, "➕ Knoten anlegen")
+    k = at.session_state["netz_modell"].knoten["K6"]
+    assert (k.name, k.sternpunkt, k.Ik_max_kA, k.Ik_min_kA) == ("Halle 3", "kompensiert", 5.0, 3.0)
+    assert "Knoten K6 angelegt" in _texte(at.success)
+    # danach ist das Formular wieder wie beim ersten Oeffnen
+    assert at.text_input(key="netz_k_id").value == "" and at.text_input(key="netz_k_name").value == ""
+    assert at.number_input(key="netz_k_un").value is None
+    assert at.number_input(key="netz_k_ikmax").value is None and at.number_input(key="netz_k_ikmin").value is None
+    assert at.selectbox(key="netz_k_stp").value == "isoliert"
+    print("Knotenformular OK: Eingaben bleiben bei Fehler, nach dem Anlegen leer.")
+
+
+def test_elementformular_behaelt_eingaben_und_wird_leer():
+    at = _beispiel()
+    at.text_input(key="netz_e_id").set_value("L3")
+    at.text_input(key="netz_e_name").set_value("Kabel Halle 3")
+    at.selectbox(key="netz_e_typ").set_value("leitung")
+    at.selectbox(key="netz_e_von").set_value("K4")
+    at.selectbox(key="netz_e_nach").set_value("K4")               # von = nach: ungueltig
+    at.radio(key="netz_e_zustand").set_value("aus")
+    at.checkbox(key="netz_e_uebern").set_value(False)
+    _absenden(at, "➕ Element anlegen")
+    assert "identisch" in _texte(at.error) and "L3" not in at.session_state["netz_modell"].elemente
+    assert at.text_input(key="netz_e_id").value == "L3"
+    assert at.text_input(key="netz_e_name").value == "Kabel Halle 3"
+    assert at.selectbox(key="netz_e_typ").value == "leitung"
+    assert at.selectbox(key="netz_e_von").value == "K4" and at.selectbox(key="netz_e_nach").value == "K4"
+    assert at.radio(key="netz_e_zustand").value == "aus" and at.checkbox(key="netz_e_uebern").value is False
+    at.selectbox(key="netz_e_nach").set_value("K3")
+    _absenden(at, "➕ Element anlegen")
+    e = at.session_state["netz_modell"].elemente["L3"]
+    assert (e.name, e.von, e.nach, e.zustand) == ("Kabel Halle 3", "K4", "K3", "aus") and e.p == {}
+    # Formular wie beim ersten Oeffnen: leer, erster Typ, kein Knoten, ein, Haekchen gesetzt
+    assert at.text_input(key="netz_e_id").value == "" and at.text_input(key="netz_e_name").value == ""
+    assert at.selectbox(key="netz_e_typ").value == "einspeisung"
+    assert at.selectbox(key="netz_e_von").value == "—" and at.selectbox(key="netz_e_nach").value == "—"
+    assert at.radio(key="netz_e_zustand").value == "ein" and at.checkbox(key="netz_e_uebern").value is True
+    assert at.number_input(key="netz_e_inb").value is None and at.number_input(key="netz_e_tnb").value is None
+    print("Elementformular OK: Eingaben bleiben bei Fehler, nach dem Anlegen leer.")
+
+
+def test_entferntes_knoten_im_elementformular():
+    # Ein im Formular gewaehlter Knoten verschwindet: kein Absturz, Auswahl faellt auf "kein Knoten"
+    at = _beispiel()
+    at.text_input(key="netz_k_id").set_value("K6")
+    at.number_input(key="netz_k_un").set_value(10.0)
+    _absenden(at, "➕ Knoten anlegen")
+    at.selectbox(key="netz_e_von").set_value("K6").run()
+    at.selectbox(key="netz_b_knoten").set_value("K6")
+    _klick(at, "netz_b_entf_knoten")
+    assert at.selectbox(key="netz_e_von").value == "—"
+    print("Entfernter Knoten im Formular OK.")
+
+
+# ── 12. Bearbeiten statt Loeschen und neu Anlegen ────────────────────────────
+def test_knoten_bearbeiten():
+    at = _beispiel()
+    vorher = at.session_state["netz_modell"].to_dict()
+    at.selectbox(key="netz_b_knoten").set_value("K4")
+    _klick(at, "netz_b_edit_knoten")
+    # Formular zeigt die Werte aus dem Modell
+    assert at.text_input(key="netz_ed_k_name").value == "Unterverteilung 10 kV"
+    assert at.number_input(key="netz_ed_k_un").value == 10.0
+    assert at.number_input(key="netz_ed_k_ikmax").value == 7.9 and at.selectbox(key="netz_ed_k_stp").value == "isoliert"
+    # Entwurf ausfuellen. Ungueltig: Ik min ueber Ik max. Modell unveraendert, Eingaben bleiben
+    at.text_input(key="netz_ed_k_name").set_value("Halle 2")
+    at.selectbox(key="netz_ed_k_stp").set_value("kompensiert")
+    at.number_input(key="netz_ed_k_ikmax").set_value(8.2)
+    at.number_input(key="netz_ed_k_ikmin").set_value(9.0)
+    _absenden(at, "💾 Änderungen speichern")
+    assert "größer als" in _texte(at.error) and at.session_state["netz_modell"].to_dict() == vorher
+    assert at.text_input(key="netz_ed_k_name").value == "Halle 2" and at.number_input(key="netz_ed_k_ikmax").value == 8.2
+    at.number_input(key="netz_ed_k_ikmin").set_value(6.0)
+    _absenden(at, "💾 Änderungen speichern")
+    netz = at.session_state["netz_modell"]
+    k = netz.knoten["K4"]
+    assert (k.name, k.sternpunkt, k.Ik_max_kA, k.Ik_min_kA, k.UN_kV) == ("Halle 2", "kompensiert", 8.2, 6.0, 10.0)
+    assert "Knoten K4 geändert" in _texte(at.success)
+    # Verbindungen bleiben: L2 und T2 haengen weiter an K4, Formular ist geschlossen
+    assert (netz.elemente["L2"].nach, netz.elemente["T2"].von) == ("K4", "K4")
+    assert not _offen(at, "netz_ed_k_name")
+    # Abbrechen verwirft den Entwurf
+    _klick(at, "netz_b_edit_knoten")
+    at.text_input(key="netz_ed_k_name").set_value("nicht speichern")
+    _absenden(at, "Abbrechen")
+    assert at.session_state["netz_modell"].knoten["K4"].name == "Halle 2"
+    assert not _offen(at, "netz_ed_k_name")
+    print("Knoten bearbeiten OK: Werte geladen, Fehler behalten Eingaben, Verbindungen bleiben.")
+
+
+def test_trafo_richtung_tauschen_und_umbenennen():
+    at = _beispiel()
+    vorher = at.session_state["netz_modell"].elemente["T1"]
+    at.selectbox(key="netz_b_element").set_value("T1")
+    _klick(at, "netz_b_edit_element")
+    assert (at.selectbox(key="netz_ed_e_von").value, at.selectbox(key="netz_ed_e_nach").value) == ("K1", "K2")
+    assert at.text_input(key="netz_ed_e_name").value == vorher.name
+    # Richtung vertauschen: Topologie meldet jetzt die falsche Richtung, Parameter bleiben unberuehrt
+    at.selectbox(key="netz_ed_e_von").set_value("K2")
+    at.selectbox(key="netz_ed_e_nach").set_value("K1")
+    at.text_input(key="netz_ed_e_name").set_value("Netztrafo 20 MVA")
+    _absenden(at, "💾 Änderungen speichern")
+    netz = at.session_state["netz_modell"]
+    t1 = netz.elemente["T1"]
+    assert (t1.von, t1.nach, t1.name) == ("K2", "K1", "Netztrafo 20 MVA")
+    assert t1.p == vorher.p and t1.typ == "trafo" and t1.zustand == vorher.zustand
+    assert "Richtung tauschen" in _texte(at.error)             # Topologie erkennt die falsche Richtung
+    assert "von K1 → K2" in _texte(at.success)
+    # Zurueck tauschen: Topologie wieder in Ordnung, alle anderen Elemente unveraendert
+    _klick(at, "netz_b_edit_element")
+    at.selectbox(key="netz_ed_e_von").set_value("K1")
+    at.selectbox(key="netz_ed_e_nach").set_value("K2")
+    _absenden(at, "💾 Änderungen speichern")
+    netz = at.session_state["netz_modell"]
+    assert (netz.elemente["T1"].von, netz.elemente["T1"].nach) == ("K1", "K2")
+    assert len(at.error) == 0
+    print("Element bearbeiten OK: Trafo-Richtung getauscht, Parameter und Verbindungen bleiben.")
+
+
+def test_element_bearbeiten_fehler_und_einspeisung():
+    at = _beispiel()
+    at.selectbox(key="netz_b_element").set_value("L1")
+    _klick(at, "netz_b_edit_element")
+    # Leitung: von = nach wird abgewiesen, die Eingaben bleiben stehen, das Element bleibt wie es war
+    vorher = at.session_state["netz_modell"].elemente["L1"]
+    at.selectbox(key="netz_ed_e_nach").set_value("K2")
+    at.text_input(key="netz_ed_e_name").set_value("Kabel neu")
+    _absenden(at, "💾 Änderungen speichern")
+    assert "identisch" in _texte(at.error)
+    assert at.text_input(key="netz_ed_e_name").value == "Kabel neu"
+    assert at.session_state["netz_modell"].elemente["L1"].to_dict() == vorher.to_dict()
+    _absenden(at, "Abbrechen")
+    # Einspeisung: nur nach-Knoten und die Netzbetreiber-Werte sind bearbeitbar
+    at.selectbox(key="netz_b_element").set_value("E1")
+    _klick(at, "netz_b_edit_element")
+    assert [s.key for s in at.selectbox if s.key and s.key.startswith("netz_ed_e_")] == ["netz_ed_e_nach"]
+    assert at.number_input(key="netz_ed_e_inb").value == 160.0 and at.number_input(key="netz_ed_e_tnb").value == 1.2
+    at.number_input(key="netz_ed_e_tnb").set_value(1.5)
+    _absenden(at, "💾 Änderungen speichern")
+    e1 = at.session_state["netz_modell"].elemente["E1"]
+    assert e1.p["t_gt_NB_s"] == 1.5 and e1.p["I_gt_NB_A"] == 160.0 and e1.p["Sk_max_MVA"] == 3000
+    print("Element bearbeiten OK: Fehler behalten Eingaben, Einspeisung mit Netzbetreiber-Werten.")
+
+
+def test_entwurf_verfaellt_mit_dem_objekt():
+    at = _beispiel()
+    at.selectbox(key="netz_b_element").set_value("L1")
+    _klick(at, "netz_b_edit_element")
+    assert _offen(at, "netz_ed_e_name")
+    _klick(at, "netz_b_entf_element")                       # das bearbeitete Element wird entfernt
+    assert not _offen(at, "netz_ed_e_name")
+    _klick(at, "netz_b_edit_knoten")
+    assert _offen(at, "netz_ed_k_name")
+    _klick(at, "netz_btn_neu")                              # neues Netz verwirft den Entwurf
+    assert not _offen(at, "netz_ed_k_name")
+    print("Entwurf OK: verfaellt mit dem Objekt und mit dem Netzwechsel.")
+
+
+# ── 13. Parameter-Editor (Variante 1) ────────────────────────────────────────
+def test_parameter_editor_speichern_und_leeren():
+    at = _beispiel()
+    vorher = at.session_state["netz_modell"].elemente["T2"].p
+    at.selectbox(key="netz_b_element").set_value("T2").run()
+    _klick(at, "netz_b_edit_parameter")
+    assert at.number_input(key="netz_pa_Sn_MVA").value == 1.6
+    assert at.number_input(key="netz_pa_CT_OS_Prim").value == 100.0
+    assert at.selectbox(key="netz_pa_Schaltgruppe").value == "Dyn5"
+    assert at.number_input(key="netz_pa_t_I_Ph").value is None            # nicht gesetzt: Voreinstellung
+    at.number_input(key="netz_pa_CT_OS_Prim").set_value(150.0)
+    at.number_input(key="netz_pa_t_I_Ph").set_value(0.8)
+    at.selectbox(key="netz_pa_Schaltgruppe").set_value("Dyn11")
+    _absenden(at, "💾 Parameter speichern")
+    p = at.session_state["netz_modell"].elemente["T2"].p
+    assert (p["CT_OS_Prim"], p["t_I_Ph"], p["Schaltgruppe"]) == (150.0, 0.8, "Dyn11")
+    assert p["Sn_MVA"] == vorher["Sn_MVA"] and p["CT_US_Prim"] == vorher["CT_US_Prim"]
+    assert "Parameter von T2 geändert" in _texte(at.success) and not _offen(at, "netz_pa_Sn_MVA")
+    # die Staffelung rechnet mit dem neuen Wert: T2 I> OS ist 0,8 s statt 0,5 s
+    assert "0,80" in at.dataframe[2].value.to_string()
+    # Feld leeren: Schluessel verschwindet, die Voreinstellung gilt wieder
+    _klick(at, "netz_b_edit_parameter")
+    assert at.number_input(key="netz_pa_t_I_Ph").value == 0.8
+    at.number_input(key="netz_pa_t_I_Ph").set_value(None)
+    _absenden(at, "💾 Parameter speichern")
+    assert "t_I_Ph" not in at.session_state["netz_modell"].elemente["T2"].p
+    print("Parameter-Editor OK: Werte geladen, gespeichert, geleert, Staffelung rechnet mit.")
+
+
+def test_parameter_editor_fehler_behalten_eingaben():
+    at = _beispiel()
+    vorher = at.session_state["netz_modell"].to_dict()
+    at.selectbox(key="netz_b_element").set_value("T2").run()
+    _klick(at, "netz_b_edit_parameter")
+    at.number_input(key="netz_pa_Sn_MVA").set_value(-2.0)
+    at.number_input(key="netz_pa_t_I_Ph").set_value(0.9)
+    at.number_input(key="netz_pa_Stufensteller_pm").set_value(55.0)
+    _absenden(at, "💾 Parameter speichern")
+    fehler = _texte(at.error)
+    assert "Sn: muss größer als 0" in fehler and "Stufensteller ±: darf höchstens 40" in fehler
+    assert at.session_state["netz_modell"].to_dict() == vorher
+    # alles steht noch im Formular, nur die falschen Werte muessen korrigiert werden
+    assert at.number_input(key="netz_pa_t_I_Ph").value == 0.9 and at.number_input(key="netz_pa_Sn_MVA").value == -2.0
+    at.number_input(key="netz_pa_Sn_MVA").set_value(2.5)
+    at.number_input(key="netz_pa_Stufensteller_pm").set_value(10.0)
+    _absenden(at, "💾 Parameter speichern")
+    p = at.session_state["netz_modell"].elemente["T2"].p
+    assert (p["Sn_MVA"], p["t_I_Ph"], p["Stufensteller_pm"]) == (2.5, 0.9, 10.0)
+    print("Parameter-Editor OK: Fehler behalten die Eingaben, danach korrigiert gespeichert.")
+
+
+def test_parameter_editor_typen_und_entwurf():
+    at = _beispiel()
+    # Leitung: Betriebsart ist eine Auswahl, Einspeisung hat die Netzbetreiber-Felder
+    at.selectbox(key="netz_b_element").set_value("L1").run()
+    _klick(at, "netz_b_edit_parameter")
+    assert at.selectbox(key="netz_pa_uebs_betriebsart").value == "Ein: immer aktiv"
+    at.selectbox(key="netz_pa_uebs_betriebsart").set_value("Aus")
+    _absenden(at, "💾 Parameter speichern")
+    assert at.session_state["netz_modell"].elemente["L1"].p["uebs_betriebsart"] == "Aus"
+    at.selectbox(key="netz_b_element").set_value("E1").run()
+    _klick(at, "netz_b_edit_parameter")
+    assert at.number_input(key="netz_pa_I_gt_NB_A").value == 160.0
+    at.number_input(key="netz_pa_I_gt_NB_A").set_value(None)              # nur I> leer: nur als Paar zulaessig
+    _absenden(at, "💾 Parameter speichern")
+    assert "gehören zusammen" in _texte(at.error)
+    assert at.session_state["netz_modell"].elemente["E1"].p["I_gt_NB_A"] == 160.0
+    # Jede erfolgreiche Aenderung am Modell schliesst den offenen Entwurf (waere sonst veraltet)
+    _klick(at, "netz_b_schalten")
+    assert not any(
+        t.key and t.key.startswith("netz_pa_") for t in at.number_input)
+    # Kupplung und Generator haben keine Parameter: Knopf gesperrt, Trafo: frei
+    at.session_state["netz_modell"].element_hinzufuegen("KU1", "Kupplung", "kupplung", "K3", "K4")
+    at.run()
+    at.selectbox(key="netz_b_element").set_value("KU1").run()
+    assert at.button(key="netz_b_edit_parameter").disabled
+    at.selectbox(key="netz_b_element").set_value("T1").run()
+    assert not at.button(key="netz_b_edit_parameter").disabled
+    print("Parameter-Editor OK: Auswahlfeld, Netzbetreiber-Paar, Entwurf schliesst bei Aenderung.")
+
+
 if __name__ == "__main__":
     test_leerstart()
     test_beispielnetz()
@@ -387,4 +655,14 @@ if __name__ == "__main__":
     test_kurzschluss_anzeige()
     test_kurzschluss_ring()
     test_staffeldiagramm()
+    test_knotenformular_behaelt_eingaben_und_wird_leer()
+    test_elementformular_behaelt_eingaben_und_wird_leer()
+    test_entferntes_knoten_im_elementformular()
+    test_knoten_bearbeiten()
+    test_trafo_richtung_tauschen_und_umbenennen()
+    test_element_bearbeiten_fehler_und_einspeisung()
+    test_entwurf_verfaellt_mit_dem_objekt()
+    test_parameter_editor_speichern_und_leeren()
+    test_parameter_editor_fehler_behalten_eingaben()
+    test_parameter_editor_typen_und_entwurf()
     print("\nAlle Prüfungen bestanden.")
