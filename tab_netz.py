@@ -28,6 +28,8 @@ Ablauf:
   6b. Ring: Pruefung und Vorschlag ueber alle Trennstellenlagen (netz_ring.py)
   7. Staffelvorschlag: erst I>>-Ansprechwerte (Strom), dann Zeiten, Gegenpruefung
      beider, Uebernahme ins Modell (netz_stromstaffel.py)
+  8. Einstellliste: alle Schutzstufen mit Wandler, primaer/sekundaer, Zeit und DIGSI-Adresse,
+     auf Wunsch mit den neuen Werten eines Vorschlags, Export als CSV (netz_einstellliste.py)
 
 Bezug zu test_app.py: Bei leerem Netz zeigt die Seite genau einen st.info,
 keine Expander und keine Tabellen. Dadurch aendern sich in der Inventur nur
@@ -35,6 +37,7 @@ die Zahl der Tabs (6 -> 7) und der Hinweise (5 -> 6). Mit geladenem Netz
 zeigt der Tab vier Tabellen (Knoten, Elemente, Schutzstufen, Staffelung).
 """
 
+from datetime import date
 from pathlib import Path
 
 import pandas as pd
@@ -44,6 +47,7 @@ import konstanten_netz as KN
 import netz_adapter
 import netz_bild
 import netz_diagramm
+import netz_einstellliste
 import netz_formular
 import netz_kurzschluss
 import netz_parameter
@@ -709,9 +713,11 @@ def _staffelung(netz: Netz, adapter, ziel: Netz | None = None, ik_an: bool = Fal
                "ist ein Pfad, wenn jede Kennlinie mit Abstand über der des Schutzes darunter "
                "liegt. Jede Kennlinie endet bei Ik max an ihrem Messort. Unverzögerte Stufen "
                "stehen auf der Linie 0,01 s.")
+    rv = None
     if adapter.topologie is not None and adapter.topologie.netzform_erkannt == "ring":
-        _ring(ziel, float(dt_soll), adapter.topologie.trennstelle, ik_an)
-    _vorschlag(netz, adapter, float(dt_soll), ziel)
+        rv = _ring(ziel, float(dt_soll), adapter.topologie.trennstelle, ik_an)
+    vor = _vorschlag(netz, adapter, float(dt_soll), ziel)
+    _einstellliste(netz, adapter, float(dt_soll), vor, rv)
 
 
 # ── 6a. Staffeldiagramm ──────────────────────────────────────────────────────
@@ -777,7 +783,7 @@ def _aenderungsliste(zeilen, titel: str) -> None:
     st.dataframe(pd.DataFrame(zeilen), width="stretch", hide_index=True)
 
 
-def _ring(netz: Netz, dt_soll: float, aktuell, ik_an: bool = False) -> None:
+def _ring(netz: Netz, dt_soll: float, aktuell, ik_an: bool = False):
     """
     Ring: Ist-Einstellungen in jeder moeglichen Trennstellenlage pruefen und auf Wunsch
     einen Satz Werte vorschlagen, der in allen Lagen gilt (netz_ring.py).
@@ -833,10 +839,11 @@ def _ring(netz: Netz, dt_soll: float, aktuell, ik_an: bool = False) -> None:
         } for w in rv.werte]), width="stretch", hide_index=True)
         st.caption(f"{rv.runden} Runden bis zum Fixpunkt. Zeiten in s, Ansprechwerte als "
                    "Faktor × IN. Geschrieben werden die Parameter in der Spalte Parameter.")
+    return rv
 
 
 # ── 7. Staffelvorschlag ──────────────────────────────────────────────────────
-def _vorschlag(netz: Netz, adapter, dt_soll: float, ziel: Netz | None = None) -> None:
+def _vorschlag(netz: Netz, adapter, dt_soll: float, ziel: Netz | None = None):
     """
     Vorschlag von der Last zur Quelle: erst die I>>-Ansprechwerte (Stromstaffelung),
     dann die Zeiten mit diesen Werten, dann Gegenpruefung. Oben steht nur, was zu aendern
@@ -933,6 +940,47 @@ def _vorschlag(netz: Netz, adapter, dt_soll: float, ziel: Netz | None = None) ->
                    "Stromstaffel: I>> oben mindestens k_S × Strom hinter der nächsten Station. "
                    "Empfindlichkeit: Ik min (zweipolig, über Stufensteller und Schaltgruppe) "
                    "mindestens γ × kleinster Ansprechwert oben.")
+    return vor
+
+
+# ── 8. Einstellliste ─────────────────────────────────────────────────────────
+def _einstellliste(netz: Netz, adapter, dt_soll: float, vor, rv) -> None:
+    """
+    Alle Schutzstufen als Liste mit CSV-Export. Die Liste rechnet nichts selbst: Stufen kommen
+    aus dem Adapter, neue Werte aus dem gewaehlten Vorschlag (vor: Staffelvorschlag, rv: Ringvorschlag,
+    jeweils None, wenn dessen Schalter aus ist). Nur berechnet, wenn der Schalter an ist.
+    """
+    grphead("Einstellliste (Export)")
+    if not st.toggle("Einstellliste anzeigen und als CSV exportieren", key="netz_liste_an",
+                     help="Je Schutzstufe eine Zeile mit Messort, Wandler, Ansprechwert primär und "
+                          "sekundär, Zeit und DIGSI-Adresse. Mit gewähltem Vorschlag zusätzlich die "
+                          "neuen Werte mit Begründung. Herleitung: docs/tool_vorgabe_einstellliste.md."):
+        return
+    quellen = {"Einstellwerte im Netz (Ist)": ("", {})}
+    if vor is not None and vor.zeit is not None and vor.zeit.pruefung is not None:
+        quellen["Staffelvorschlag"] = ("Staffelvorschlag", netz_einstellliste.aus_gesamtvorschlag(vor))
+    if rv is not None and rv.werte:
+        quellen["Ringvorschlag"] = ("Ringvorschlag", netz_einstellliste.aus_ringvorschlag(rv))
+    if st.session_state.get("netz_liste_quelle") not in quellen:    # Vorschlag-Schalter wurde ausgeschaltet
+        st.session_state["netz_liste_quelle"] = next(iter(quellen))
+    wahl = st.radio("Inhalt der Liste", list(quellen), horizontal=True, key="netz_liste_quelle")
+    if len(quellen) == 1:
+        st.caption("Für eine Liste mit den neuen Werten oben den Staffelvorschlag (im Ring auch den "
+                   "Ringvorschlag) einschalten.")
+    name, aenderungen = quellen[wahl]
+    liste = netz_einstellliste.erstelle(netz, adapter, aenderungen or None, quelle_vorschlag=name,
+                                        dt_soll=dt_soll)
+    _meldungen(liste.meldungen)
+    if not liste.zeilen:
+        return
+    st.dataframe(pd.DataFrame(netz_einstellliste.als_tabelle(liste)), width="stretch", hide_index=True)
+    st.caption("Von der Quelle zur Last. Sekundärwert = Primärwert / Wandlerübersetzung des Messorts. "
+               "Adressen stehen nur dort, wo das Tool sie aus dem Betriebsmittel-Tab kennt, leere "
+               "Felder werden nicht geraten. Die Liste ändert das Netz nicht, übernommen wird über die "
+               "Schaltflächen bei den Vorschlägen.")
+    st.download_button("💾 Einstellliste als CSV", key="netz_liste_csv", mime="text/csv",
+                       data=netz_einstellliste.als_csv(liste, stand=date.today().strftime("%d.%m.%Y")),
+                       file_name="einstellliste.csv")
 
 
 # ── Einstieg ─────────────────────────────────────────────────────────────────

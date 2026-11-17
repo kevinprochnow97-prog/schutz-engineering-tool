@@ -10,7 +10,7 @@ Prueft:
  3. Staffelvorschlag: geaenderte Zeilen entsprechen den Vorschlagswerten, Begruendung vorhanden.
  4. Ringvorschlag im Ringnetz.
  5. CSV: BOM, Semikolon, Dezimalkomma, gleiche Zeilenzahl, Kopfzeilen.
- 6. DIGSI-Adressen nur aus HERST, nie geraten.
+ 6. DIGSI-Adressen nur aus HERST, nie geraten (auch die I>-Stufen).
  7. Fehlerfaelle: leeres Netz, unbekannte Stufe im Vorschlag, nie eine Ausnahme.
 """
 
@@ -132,6 +132,25 @@ def test_adressen_nur_aus_herst():
     print("Adressen OK: nur aus HERST, sonst leer.")
 
 
+def test_adressen_der_i_stufen():
+    """Prüfpunkt 1: I>-Stufen haben jetzt eine Adresse, soweit HERST sie kennt. Nichts wird geraten."""
+    liste = E.erstelle(_netz())
+    z = {(x.element, x.stufe): x for x in liste.zeilen}
+    assert z[("T1", "I> OS")].adresse_strom == "Adr.2014" and z[("T1", "I> OS")].adresse_zeit == "Adr.2016"
+    assert z[("T1", "I>> OS")].adresse_strom == "Adr.2011"            # unveraendert
+    assert z[("L1", "Iph>")].adresse_strom.startswith("Iph> Adr.2620")
+    assert z[("M1", "I> (50-1)")].adresse_strom == "Adr.1204" and z[("M1", "Ip")].adresse_strom == "Adr.1207"
+    # nicht geraten: Trafo I> US (HERST kennt nur die OS-Adresse), 50-1 und 51 Zeit, Netzbetreiber
+    assert z[("T1", "I> US")].adresse_strom == "" and z[("T2", "I> US")].adresse_strom == ""
+    assert z[("M1", "I> (50-1)")].adresse_zeit == "" and z[("M1", "Ip")].adresse_zeit == ""
+    assert z[("E1", "I> NB")].adresse_strom == "" and z[("E1", "I> NB")].adresse_zeit == ""
+    assert sum(1 for x in liste.zeilen if x.adresse_strom) == 13       # vorher 7 von 16
+    assert sum(1 for x in liste.zeilen if x.adresse_zeit) == 13
+    # die I>-Stufen sind trotzdem keine Stromvorschlag-Stufen
+    assert "I> OS" not in netz_adapter.STROM_PARAMETER["trafo"]
+    print("I>-Adressen OK: 13 von 16 Stufen, nichts geraten.")
+
+
 def test_fehlerfaelle():
     leer = E.erstelle(Netz())
     assert leer.zeilen == [] and E.als_csv(leer).startswith("﻿")
@@ -150,5 +169,6 @@ if __name__ == "__main__":
     test_ringvorschlag()
     test_csv()
     test_adressen_nur_aus_herst()
+    test_adressen_der_i_stufen()
     test_fehlerfaelle()
     print("\nAlle Prüfungen bestanden.")

@@ -47,6 +47,19 @@ from utils import de
 _HERST = {"trafo": konstanten_trafo, "leitung": konstanten_leitung, "motor": konstanten_motor}
 _EPS = 1e-9
 
+# Stufen, die nur fuer die ADRESSE des Ansprechwerts nachgeschlagen werden: Stufenname -> HERST-Schluessel.
+# netz_adapter.STROM_PARAMETER kennt nur die I>>-Stufen, weil der Stromvorschlag nur diese schreibt.
+# Die I>-Stufen gehoeren bewusst nicht dorthin (sie wuerden sonst vom Stromvorschlag mitgestaffelt).
+# Die Zuordnung stimmt mit den Adresspaaren in HERST ueberein (Ansprechwert, Zeit): Trafo 2014/2016,
+# Leitung 2620/2621, Motor 50-1 1204 (Zeit-Adresse steht nicht in HERST).
+# Trafo "I> US": f_I_Ph gilt fuer beide Seiten, in HERST steht nur die OS-Adresse 2014. Die
+# US-Adresse wird nicht geraten, das Feld bleibt leer (docs/tool_vorgabe_einstellliste.md, Punkt 1).
+_STROM_ADRESSE_ZUSATZ = {
+    "trafo":   {"I> OS": "f_I_Ph"},
+    "leitung": {"Iph>": "iph_h"},
+    "motor":   {"I> (50-1)": "f_50_1", "Ip": "f_51"},
+}
+
 
 def warum_zeit(grund: str, dt_soll: float) -> str:
     """Kurzbegruendung einer Zeit: 'Staffelabstand ueber <Stufe darunter>'."""
@@ -229,7 +242,8 @@ def _erstelle(netz, adapter, aenderungen, liste, dt_soll) -> Einstellliste:
             I_sek_A=None if ue is None else s.I_prim_A / ue,
             faktor_IN=None if IN is None else s.I_prim_A / IN,
             t_s=s.t_s, T_mult=s.T_mult,
-            adresse_strom=_adresse(e.typ, netz_adapter.STROM_PARAMETER.get(e.typ, {}).get(s.stufe)),
+            adresse_strom=_adresse(e.typ, {**netz_adapter.STROM_PARAMETER.get(e.typ, {}),
+                                           **_STROM_ADRESSE_ZUSATZ.get(e.typ, {})}.get(s.stufe)),
             adresse_zeit=_adresse(e.typ, netz_adapter.ZEIT_PARAMETER.get(e.typ, {}).get(s.stufe)),
             I_neu_prim_A=I_neu,
             I_neu_sek_A=None if I_neu is None or ue is None else I_neu / ue,

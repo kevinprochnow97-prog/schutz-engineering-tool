@@ -23,6 +23,7 @@ Prueft:
 12. Bearbeiten: Knoten und Element aendern statt loeschen, Verbindungen und Parameter bleiben.
 13. Parameter-Editor: Werte aus dem Modell, Speichern, Fehler behalten Eingaben, Wirkung in der
     Staffelung, Entwurf schliesst bei jeder Aenderung am Modell.
+14. Einstellliste: Schalter, Quelle Ist/Staffelvorschlag/Ringvorschlag, Tabelle, CSV-Export.
 """
 
 from pathlib import Path
@@ -643,6 +644,52 @@ def test_parameter_editor_typen_und_entwurf():
     print("Parameter-Editor OK: Auswahlfeld, Netzbetreiber-Paar, Entwurf schliesst bei Aenderung.")
 
 
+# ── 14. Einstellliste ────────────────────────────────────────────────────────
+def test_einstellliste_ist_und_vorschlag():
+    at = _beispiel()
+    assert len(at.dataframe) == 4 and len(at.get("download_button")) == 1   # nur Netz speichern, Liste aus
+    at.toggle(key="netz_liste_an").set_value(True).run()
+    _keine_ausnahme(at)
+    assert len(at.dataframe) == 5 and len(at.get("download_button")) == 2
+    liste = at.dataframe[4].value
+    assert len(liste) == 16 and "geändert" not in liste.columns          # Ist-Liste ohne Vorschlagsspalten
+    z = liste[(liste["Element"] == "T1") & (liste["Stufe"] == "I> OS")].iloc[0]
+    assert z["Adresse Ansprechwert"] == "Adr.2014" and z["Wandler"] == "150/1 A"
+    assert "Staffelvorschlag" not in at.radio(key="netz_liste_quelle").options
+    # Staffelvorschlag einschalten: neue Quelle, geaenderte Zeilen mit Begruendung
+    at.toggle(key="netz_vorschlag_an").set_value(True).run()
+    _keine_ausnahme(at)
+    wahl = at.radio(key="netz_liste_quelle")
+    assert wahl.options == ["Einstellwerte im Netz (Ist)", "Staffelvorschlag"]
+    wahl.set_value("Staffelvorschlag").run()
+    _keine_ausnahme(at)
+    liste = at.dataframe[-1].value
+    assert list(liste["geändert"]).count("ja") == 9      # 3 Ansprechwerte + 8 Zeiten auf 9 Stufen (L1/L2 Iph>>, T1 I>> OS haben beides)
+    z = liste[(liste["Element"] == "L2") & (liste["Stufe"] == "Iph>>")].iloc[0]
+    assert z["I prim. neu [A]"] == "1680,0" and "Ansprechwert" in z["Begründung"]
+    # Schalter aus: Liste weg, Modell nie veraendert
+    vorher = at.session_state["netz_modell"].to_dict()
+    at.toggle(key="netz_vorschlag_an").set_value(False).run()
+    _keine_ausnahme(at)
+    assert at.radio(key="netz_liste_quelle").value == "Einstellwerte im Netz (Ist)"
+    assert at.session_state["netz_modell"].to_dict() == vorher
+    print("Einstellliste OK: Ist, Staffelvorschlag, Quelle fällt zurück.")
+
+
+def test_einstellliste_ring():
+    at = _start()
+    _klick(at, "netz_btn_beispiel_ring")
+    at.toggle(key="netz_liste_an").set_value(True).run()
+    at.toggle(key="netz_ring_vorschlag_an").set_value(True).run()
+    _keine_ausnahme(at)
+    assert "Ringvorschlag" in at.radio(key="netz_liste_quelle").options
+    at.radio(key="netz_liste_quelle").set_value("Ringvorschlag").run()
+    _keine_ausnahme(at)
+    liste = at.dataframe[-1].value
+    assert "geändert" in liste.columns and "ja" in set(liste["geändert"])
+    print("Einstellliste Ring OK.")
+
+
 if __name__ == "__main__":
     test_leerstart()
     test_beispielnetz()
@@ -665,4 +712,6 @@ if __name__ == "__main__":
     test_parameter_editor_speichern_und_leeren()
     test_parameter_editor_fehler_behalten_eingaben()
     test_parameter_editor_typen_und_entwurf()
+    test_einstellliste_ist_und_vorschlag()
+    test_einstellliste_ring()
     print("\nAlle Prüfungen bestanden.")
