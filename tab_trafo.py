@@ -132,6 +132,13 @@ def show():
             _hreg("f_I_Ph")
             t_I    = st.number_input("t I> [s]", 0.05, 2.0, K.t_I_Ph_def, 0.05, format="%.2f")
             _hreg("t_I_Ph")
+            # Leer = wie OS. Eigene US-Zeit nur fuer die netzweite Staffelung noetig.
+            t_I_US = st.number_input("t I> US [s] (leer = wie OS)", 0.05, 2.0, None, 0.05,
+                                     format="%.2f", placeholder="wie OS",
+                                     help="Eigene Verzögerung der US-Stufe (Adr.2116). Für die "
+                                          "netzweite Staffelung liegt die US-Zeit einen "
+                                          "Staffelabstand unter der OS-Zeit.")
+            _hreg("t_I_Ph_US")
 
             # I>> OS: Auto aus 1,2/uk bzw. Ik″ max US (mit Override)
             f_IHH_OS_emp = empfehlung_IHH_OS(
@@ -152,6 +159,10 @@ def show():
             _hreg("f_I_Ph_HH_US")
             t_IHH  = st.number_input("t I>> [s]", 0.0, 1.0, K.t_I_Ph_HH_def, 0.05, format="%.2f")
             _hreg("t_I_Ph_HH")
+            t_IHH_US = st.number_input("t I>> US [s] (leer = wie OS)", 0.0, 1.0, None, 0.05,
+                                       format="%.2f", placeholder="wie OS",
+                                       help="Eigene Verzögerung der US-Hochstromstufe (Adr.2113).")
+            _hreg("t_I_Ph_HH_US")
 
             kfak   = st.slider("49  k-Faktor [x IN]", 1.0, 1.5, K.k_Faktor_def, 0.05)
             _hreg("k_Faktor")
@@ -255,7 +266,7 @@ def show():
         I_DIFF=k_DIFF, I_DIFF_HH=k_DIFFH, Steigung_1=steig1, Steigung_2=steig2,
         Fusspunkt_2=fp2, Harm_2=harm2,
         f_I_Ph=f_I, t_I_Ph=t_I, f_I_Ph_HH_OS=f_IHH_OS, f_I_Ph_HH_US=f_IHH_US,
-        t_I_Ph_HH=t_IHH,
+        t_I_Ph_HH=t_IHH, t_I_Ph_US=t_I_US, t_I_Ph_HH_US=t_IHH_US,
         k_Faktor=kfak, tau_min=tau, I2_zul=i2zul,
         k_S_I=kSI, k_S_IGG=kSIGG, gamma=gamma, Inrush_Faktor=inrush,
         # Spannungsmesseingänge + 27/59/81/24
@@ -420,8 +431,8 @@ def show():
         dfu = pd.DataFrame([
             ("I> OS (51)",  f"{deg(umz['f_I'])}",       "I/InS", f"{de(umz['OS']['I_sek'], 4)}",   f"{de(umz['OS']['I_prim'], 1)}",   f"{de(umz['t_I'], 2)}",   "2015 (I/InS) bzw. 2014 (A) · t 2016"),
             ("I>> OS (50)", f"{deg(umz['f_IHH_OS'])}",   "I/InS", f"{de(umz['OS']['IHH_sek'], 4)}", f"{de(umz['OS']['IHH_prim'], 1)}", f"{de(umz['t_IHH'], 2)}", "2012 (I/InS) bzw. 2011 (A) · t 2013"),
-            ("I> US (51)",  f"{deg(umz['f_I'])}",        "I/InS", f"{de(umz['US']['I_sek'], 4)}",   f"{de(umz['US']['I_prim'], 1)}",   f"{de(umz['t_I'], 2)}",   "2115 (I/InS) bzw. 2114 (A) · t 2116"),
-            ("I>> US (50)", f"{deg(umz['f_IHH_US'])}",   "I/InS", f"{de(umz['US']['IHH_sek'], 4)}", f"{de(umz['US']['IHH_prim'], 1)}", f"{de(umz['t_IHH'], 2)}", "2112 (I/InS) bzw. 2111 (A) · t 2113"),
+            ("I> US (51)",  f"{deg(umz['f_I'])}",        "I/InS", f"{de(umz['US']['I_sek'], 4)}",   f"{de(umz['US']['I_prim'], 1)}",   f"{de(umz['US']['t_I'], 2)}",   "2115 (I/InS) bzw. 2114 (A) · t 2116"),
+            ("I>> US (50)", f"{deg(umz['f_IHH_US'])}",   "I/InS", f"{de(umz['US']['IHH_sek'], 4)}", f"{de(umz['US']['IHH_prim'], 1)}", f"{de(umz['US']['t_IHH'], 2)}", "2112 (I/InS) bzw. 2111 (A) · t 2113"),
         ], columns=["Funktion", "Faktor", "Einheit", "I_Soll [A sek.]", "I_Soll [A prim.]", "t [s]", "DIGSI-Adresse"])
         st.dataframe(dfu, width="stretch", hide_index=True)
         st.caption("Je Stufe genau einen Ansprechwert eintragen: Bei Zuordnung des UMZ zu einer "

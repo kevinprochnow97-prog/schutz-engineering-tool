@@ -51,6 +51,7 @@ Ziel: Neuer Netz-Tab. Betriebsmittel (Trafo, Motor, Leitung u. a.) werden zu ein
 - Eingabe: zuerst Baumeingabe, Drag & Drop später. Robustheit vor Funktionsumfang.
 - Rahmen: ca. 4 Tage à 5 h pro Woche, Ziel 18.12.2026, Gesamtzeitraum 2 Monate ab 05.11.2026.
 - Änderungen vom Betreuer (datiert ergänzen):
+  - 25.11.2026: Die Netzausgestaltung soll nicht weiter an Komplexität gewinnen, der aktuelle Umfang (Strahl, offener Ring, eine Einspeisung) ist in Ordnung. Ergänzt wird die Fehlerart Erdfehler (einpolig), zuerst nur im Strahlennetz (docs/tool_vorgabe_erdfehler.md).
 
 ## Zusätzliche Regeln für diese Aufgabe
 

@@ -10,29 +10,61 @@ die Methoden von netz_modell.Netz.
 Ablauf:
   1. Steuerleiste: Netzform, Beispielnetz, neues Netz, Speichern/Laden (JSON)
   2. Einlinienbild und Topologie-Meldungen (nur wenn ein Netz vorhanden ist)
-  3. Baumeingabe: Knoten anlegen, Element anlegen (Parameter aus den Tabs)
-  4. Netz bearbeiten: schalten, Parameter uebernehmen, entfernen
+  3. Baumeingabe: Knoten anlegen, Element anlegen (Parameter aus den Tabs).
+     Bei abgewiesener Eingabe bleiben die Werte im Formular stehen, nach erfolgreichem
+     Anlegen ist das Formular wieder leer (Logik: netz_formular.py)
+  4. Netz bearbeiten: Knoten und Elemente aendern (ID, Typ, Parameter und Verbindungen
+     bleiben), Parameter direkt am Modell bearbeiten (netz_parameter.py), schalten,
+     Parameter aus dem Tab uebernehmen, entfernen
+  4b. Kurzschlussstroeme aus den Netzdaten (netz_kurzschluss.py), per Schalter:
+      eingegeben, berechnet, Abweichung, im Ring je Trennstellenlage. Eingegebene
+      Werte haben immer Vorrang. Nur Knoten OHNE Eingabewert rechnen in der
+      Staffelung mit dem berechneten Wert (Kopie, das Modell bleibt unveraendert).
   5. Schutzstufen aus den Betriebsmittel-Tabs (Adapter)
+  6. Zeitstaffelung: Pfade, Ampel je benachbartem Paar, Meldungen
+     (netz_selektivitaet.py)
+  6a. Staffeldiagramm: Strom-Zeit-Kennlinien je Pfad (netz_diagramm.py), fuer den
+      Ist-Zustand und, wenn berechnet, fuer den Staffelvorschlag
+  6b. Ring: Pruefung und Vorschlag ueber alle Trennstellenlagen (netz_ring.py)
+  7. Staffelvorschlag: erst I>>-Ansprechwerte (Strom), dann Zeiten, Gegenpruefung
+     beider, Uebernahme ins Modell (netz_stromstaffel.py)
+  8. Einstellliste: alle Schutzstufen mit Wandler, primaer/sekundaer, Zeit und DIGSI-Adresse,
+     auf Wunsch mit den neuen Werten eines Vorschlags, Export als CSV (netz_einstellliste.py)
 
 Bezug zu test_app.py: Bei leerem Netz zeigt die Seite genau einen st.info,
 keine Expander und keine Tabellen. Dadurch aendern sich in der Inventur nur
-die Zahl der Tabs (6 -> 7) und der Hinweise (5 -> 6).
+die Zahl der Tabs (6 -> 7) und der Hinweise (5 -> 6). Mit geladenem Netz
+zeigt der Tab vier Tabellen (Knoten, Elemente, Schutzstufen, Staffelung).
 """
 
+from datetime import date
 from pathlib import Path
 
 import pandas as pd
 import streamlit as st
 
+import konstanten_netz as KN
 import netz_adapter
 import netz_bild
+import netz_diagramm
+import netz_einstellliste
+import netz_erdfehler
+import netz_formular
+import netz_kurzschluss
+import netz_parameter
+import netz_ring
+import netz_selektivitaet
+import netz_stromstaffel
 import netz_topologie
+from netz_formular import ELEMENT_LEER, KNOTEN_LEER, OHNE
 from netz_modell import ELEMENTTYPEN, STERNPUNKTE, ModellFehler, Netz
-from ui import grphead, inject_css
-from utils import de
+from ui import grphead, inject_css, pill
+from utils import AMPEL_EMOJI, de
 
 SCHLUESSEL = "netz_modell"
 BEISPIELNETZ = Path(__file__).parent / "beispielnetze" / "industrie_10kV.json"
+BEISPIELNETZ_RING = Path(__file__).parent / "beispielnetze" / "industrie_10kV_ring.json"
+BEISPIELNETZ_NOE = Path(__file__).parent / "beispielnetze" / "industrie_10kV_noe.json"
 
 NETZFORM_TEXT = {"strahl": "Strahlennetz", "ring": "Ringnetz (offen betrieben)"}
 STERNPUNKT_TEXT = {
@@ -53,7 +85,27 @@ TYP_TEXT = {
 TAB_QUELLE = {"trafo": ("netz_p_trafo", "Transformator"),
               "leitung": ("netz_p_leitung", "Leitung"),
               "motor": ("netz_p_motor", "Motor")}
-OHNE = "—"
+
+# Widget-Schluessel der Anlegen-Formulare, Feldname (wie in netz_formular.*_LEER) -> key
+K_KEYS = {"id": "netz_k_id", "name": "netz_k_name", "UN_kV": "netz_k_un",
+          "sternpunkt": "netz_k_stp", "Ik_max_kA": "netz_k_ikmax", "Ik_min_kA": "netz_k_ikmin",
+          "I_E_begr_A": "netz_k_ie"}
+E_KEYS = {"id": "netz_e_id", "name": "netz_e_name", "typ": "netz_e_typ", "von": "netz_e_von",
+          "nach": "netz_e_nach", "zustand": "netz_e_zustand", "uebernehmen": "netz_e_uebern",
+          "I_nb_A": "netz_e_inb", "t_nb_s": "netz_e_tnb"}
+# Widget-Schluessel der Bearbeiten-Formulare (nur Entwurf, das Modell aendert erst "speichern")
+EK_KEYS = {"name": "netz_ed_k_name", "UN_kV": "netz_ed_k_un", "sternpunkt": "netz_ed_k_stp",
+           "Ik_max_kA": "netz_ed_k_ikmax", "Ik_min_kA": "netz_ed_k_ikmin", "I_E_begr_A": "netz_ed_k_ie"}
+EE_KEYS = {"name": "netz_ed_e_name", "von": "netz_ed_e_von", "nach": "netz_ed_e_nach",
+           "I_nb_A": "netz_ed_e_inb", "t_nb_s": "netz_ed_e_tnb"}
+# Schrittweite der Zahlenfelder im Parameter-Editor nach Einheit
+_SCHRITT = {"A sek.": 0.05, "A": 10.0, "kW": 100.0, "s": 0.05, "MVA": 1.0, "km": 0.1, "%": 0.5, "× IN": 0.1,
+            "Ω/km": 0.01, "°": 1.0, "°C": 5.0}
+RING_IK = "netz_ring_ik_quelle"                       # Ik-Quelle der Ringstaffelung (Entscheidung 17.11.2026)
+RING_IK_BERECHNET = "Berechnet je Lage"
+RING_IK_EINGEGEBEN = "Eingegeben (gleich in allen Lagen)"
+EDIT = "netz_edit"          # {"art": "knoten" | "element" | "parameter", "id": ...} oder fehlt
+PA = "netz_pa_"             # Widget-Schluessel des Parameter-Editors: PA + Parameterschluessel
 
 
 # ── Zustand ──────────────────────────────────────────────────────────────────
@@ -66,11 +118,17 @@ def _netz() -> Netz:
 def _setze_netz(netz: Netz, meldung: str) -> None:
     st.session_state[SCHLUESSEL] = netz
     st.session_state["netz_erfolg"] = meldung
+    st.session_state.pop(EDIT, None)        # ein offener Entwurf gehoert zum alten Netz
 
 
 def _erfolg(meldung: str) -> None:
-    """Erfolgsmeldung fuer den naechsten Lauf merken und neu zeichnen."""
+    """
+    Erfolgsmeldung fuer den naechsten Lauf merken und neu zeichnen. Jede erfolgreiche
+    Aenderung am Modell schliesst einen offenen Bearbeiten-Entwurf, damit er nicht veraltet
+    stehen bleibt und beim Speichern neuere Werte ueberschreibt.
+    """
     st.session_state["netz_erfolg"] = meldung
+    st.session_state.pop(EDIT, None)
     st.rerun()
 
 
@@ -85,8 +143,15 @@ def _p_aus_tab(typ: str):
             if isinstance(k, str) and (v is None or isinstance(v, (bool, int, float, str)))}
 
 
-def _zahl_oder_none(x):
-    return None if x is None else float(x)
+def _vorbelegen(keys: dict, werte: dict) -> None:
+    """
+    Widget-Werte setzen. Das geht nur, bevor das Widget in diesem Lauf gezeichnet wird,
+    deshalb stehen die Aufrufe vor den Formularen. Gesetzt wird der Wert und nicht
+    geloescht, damit das Formular im Browser sicher den neuen Wert zeigt.
+    """
+    for feld, key in keys.items():
+        if feld in werte:
+            st.session_state[key] = werte[feld]
 
 
 # ── Anzeige von Meldungen ────────────────────────────────────────────────────
@@ -118,6 +183,21 @@ def _steuerleiste(netz: Netz) -> None:
                 st.rerun()
             except (OSError, ModellFehler) as exc:
                 st.error(f"Beispielnetz konnte nicht geladen werden: {exc}")
+        if st.button("🔁 Ring-Beispiel laden", key="netz_btn_beispiel_ring", width="stretch"):
+            try:
+                _setze_netz(Netz.laden(BEISPIELNETZ_RING), "Ring-Beispielnetz „Industrie 10 kV Ring“ geladen.")
+                st.rerun()
+            except (OSError, ModellFehler) as exc:
+                st.error(f"Beispielnetz konnte nicht geladen werden: {exc}")
+        if st.button("⏚ Erdfehler-Beispiel laden", key="netz_btn_beispiel_noe", width="stretch",
+                     help="Referenznetz mit niederohmig geerdetem 10-kV-Bereich "
+                          "(Sternpunktbildner an K2, 2000 A) und zweitem Motor M2."):
+            try:
+                _setze_netz(Netz.laden(BEISPIELNETZ_NOE),
+                            "Beispielnetz „Industrie 10 kV, niederohmig geerdet“ geladen.")
+                st.rerun()
+            except (OSError, ModellFehler) as exc:
+                st.error(f"Beispielnetz konnte nicht geladen werden: {exc}")
     with c3:
         if st.button("🗑️ Neues leeres Netz", key="netz_btn_neu", width="stretch"):
             _setze_netz(Netz(), "Neues leeres Netz angelegt.")
@@ -140,9 +220,17 @@ def _steuerleiste(netz: Netz) -> None:
 
 
 # ── 3. Baumeingabe ───────────────────────────────────────────────────────────
+# Formular-Zustand (Streamlit):
+#  - Die Formulare loeschen sich nicht selbst (kein clear_on_submit). Wird eine Eingabe
+#    abgewiesen, bleiben alle Werte stehen und nur der falsche muss korrigiert werden.
+#  - Nach erfolgreichem Anlegen wird ein Reset-Merker gesetzt. Beim naechsten Lauf schreibt
+#    das Formular VOR dem Zeichnen die Vorbelegung (netz_formular.*_LEER) in die Widgets.
+#    Das geht nicht im selben Lauf, nachdem die Widgets gezeichnet sind.
 def _form_knoten(netz: Netz) -> None:
     grphead("Knoten anlegen (Sammelschiene)")
-    with st.form("netz_form_knoten", clear_on_submit=True):
+    if st.session_state.pop("netz_reset_k", False):
+        _vorbelegen(K_KEYS, KNOTEN_LEER)
+    with st.form("netz_form_knoten"):
         a, b, c = st.columns([1, 2, 1])
         kid = a.text_input("ID", placeholder="z. B. K6", key="netz_k_id")
         name = b.text_input("Bezeichnung", placeholder="z. B. Unterverteilung Halle 3", key="netz_k_name")
@@ -153,15 +241,24 @@ def _form_knoten(netz: Netz) -> None:
                           key="netz_k_stp")
         ikmax = e.number_input("Ik″ max [kA]", min_value=0.0, value=None, step=0.5,
                                key="netz_k_ikmax", placeholder="optional")
-        ikmin = f.number_input("Ik min [kA]", min_value=0.0, value=None, step=0.5,
+        ikmin = f.number_input("Ik min 2-pol. [kA]", min_value=0.0, value=None, step=0.5,
+                               help="Kleinster zweipoliger Kurzschlussstrom (Tool-Vorgabe). "
+                                    "Er geht in die Empfindlichkeitsprüfung ein.",
                                key="netz_k_ikmin", placeholder="optional")
+        ie = st.number_input("Erdfehlerstrom-Begrenzung [A] (nur niederohmig)", min_value=0.0,
+                             value=None, step=100.0, key="netz_k_ie",
+                             placeholder="leer = an diesem Knoten nicht geerdet",
+                             help="Nur bei niederohmiger Erdung: Hier ist das Netz geerdet (Sternpunktbildner "
+                                  "oder Sternpunkt eines Trafos an diesem Knoten), der Erdfehlerstrom ist "
+                                  "auf diesen Wert begrenzt. Ein Eintrag je geerdetem Bereich genügt.")
         if st.form_submit_button("➕ Knoten anlegen"):
             try:
-                netz.knoten_hinzufuegen(kid.strip(), name.strip(), _zahl_oder_none(un), stp,
-                                        _zahl_oder_none(ikmax) or None, _zahl_oder_none(ikmin) or None)
-                _erfolg(f"Knoten {kid.strip()} angelegt.")
+                meldung = netz_formular.knoten_anlegen(netz, kid, name, un, stp, ikmax, ikmin, ie)
             except ModellFehler as exc:
-                st.error(str(exc))
+                st.error(f"{exc} Die Eingaben bleiben stehen.")
+            else:
+                st.session_state["netz_reset_k"] = True
+                _erfolg(meldung)
 
 
 def _form_element(netz: Netz) -> None:
@@ -170,7 +267,15 @@ def _form_element(netz: Netz) -> None:
         st.caption("Zuerst mindestens einen Knoten anlegen.")
         return
     knoten = [OHNE] + sorted(netz.knoten)
-    with st.form("netz_form_element", clear_on_submit=True):
+    if st.session_state.pop("netz_reset_e", False):
+        _vorbelegen(E_KEYS, ELEMENT_LEER)
+    # Das Haekchen hat keinen value= im Widget, sonst warnt Streamlit beim Setzen ueber den Zustand
+    st.session_state.setdefault(E_KEYS["uebernehmen"], ELEMENT_LEER["uebernehmen"])
+    # Ein gemerkter Knoten kann inzwischen entfernt worden sein: dann zurueck auf "kein Knoten"
+    for key in (E_KEYS["von"], E_KEYS["nach"]):
+        if st.session_state.get(key, OHNE) not in knoten:
+            st.session_state[key] = OHNE
+    with st.form("netz_form_element"):
         a, b, c = st.columns([1, 2, 1.3])
         eid = a.text_input("ID", placeholder="z. B. L3", key="netz_e_id")
         name = b.text_input("Bezeichnung", placeholder="z. B. Kabel zur Halle 3", key="netz_e_name")
@@ -183,48 +288,200 @@ def _form_element(netz: Netz) -> None:
                    "Das jeweils andere Feld wird ignoriert.")
         g, h, i = st.columns([2, 1, 1])
         uebernehmen = g.checkbox("Parameter aus dem passenden Tab übernehmen "
-                                 "(Trafo, Leitung, Motor)", value=True, key="netz_e_uebern")
+                                 "(Trafo, Leitung, Motor)", key="netz_e_uebern")
         i_nb = h.number_input("Einspeisung: I> Netzbetreiber [A]", min_value=0.0, value=None,
                               key="netz_e_inb", placeholder="optional")
         t_nb = i.number_input("Einspeisung: t Netzbetreiber [s]", min_value=0.0, value=None,
                               key="netz_e_tnb", placeholder="optional")
         if st.form_submit_button("➕ Element anlegen"):
-            braucht_von, braucht_nach = ELEMENTTYPEN[typ]
-            v = von if (braucht_von and von != OHNE) else None
-            n = nach if (braucht_nach and nach != OHNE) else None
-            p, hinweis = {}, ""
-            if uebernehmen and typ in TAB_QUELLE:
-                p = _p_aus_tab(typ) or {}
-                hinweis = (f" Parameter aus dem Tab {TAB_QUELLE[typ][1]} übernommen." if p else
-                           f" Im Tab {TAB_QUELLE[typ][1]} sind noch keine Grunddaten berechnet, "
-                           f"Parameter bleiben leer.")
-            if typ == "einspeisung":
-                if i_nb:
-                    p["I_gt_NB_A"] = float(i_nb)
-                if t_nb:
-                    p["t_gt_NB_s"] = float(t_nb)
             try:
-                netz.element_hinzufuegen(eid.strip(), name.strip(), typ, v, n, p, zustand)
-                _erfolg(f"Element {eid.strip()} angelegt.{hinweis}")
+                meldung = netz_formular.element_anlegen(
+                    netz, eid, name, typ, von, nach, zustand,
+                    p_tab=_p_aus_tab(typ), tab_name=TAB_QUELLE[typ][1] if typ in TAB_QUELLE else None,
+                    uebernehmen=uebernehmen, I_nb_A=i_nb, t_nb_s=t_nb)
             except ModellFehler as exc:
-                st.error(str(exc))
+                st.error(f"{exc} Die Eingaben bleiben stehen.")
+            else:
+                st.session_state["netz_reset_e"] = True
+                _erfolg(meldung)
 
 
 # ── 4. Netz bearbeiten ───────────────────────────────────────────────────────
+def _bearbeitung_starten(netz: Netz, art: str, oid: str) -> None:
+    """
+    Entwurf aus dem Modell laden und das Bearbeiten-Formular oeffnen. Die Widget-Werte
+    werden im naechsten Lauf gezeichnet (Rerun), das Modell bleibt bis "speichern" unberuehrt.
+    """
+    if art == "knoten":
+        _vorbelegen(EK_KEYS, netz_formular.knoten_werte(netz, oid))
+    elif art == "parameter":
+        werte = netz_parameter.parameter_werte(netz, oid)
+        for f in netz_parameter.felder(netz.elemente[oid].typ):
+            st.session_state[PA + f.key] = (OHNE if werte[f.key] is None else werte[f.key]) \
+                if f.art == netz_parameter.WAHL else werte[f.key]
+    else:
+        _vorbelegen(EE_KEYS, netz_formular.element_werte(netz, oid))
+    st.session_state[EDIT] = {"art": art, "id": oid}
+    st.rerun()
+
+
+def _bearbeitungsziel(netz: Netz):
+    """Offener Entwurf oder None. Existiert das Objekt nicht mehr, wird der Entwurf verworfen."""
+    z = st.session_state.get(EDIT)
+    if not isinstance(z, dict):
+        return None
+    vorhanden = netz.knoten if z.get("art") == "knoten" else netz.elemente
+    if z.get("id") not in vorhanden:
+        st.session_state.pop(EDIT, None)
+        return None
+    return z
+
+
+def _form_parameter(netz: Netz, oid: str) -> bool:
+    """
+    Parameter-Editor (Variante 1): netzrelevante Parameter des Elements direkt am Modell.
+    Leeres Feld = Voreinstellung. Rueckgabe: wurde Abbrechen gedrueckt.
+    """
+    e = netz.elemente[oid]
+    felder = netz_parameter.felder(e.typ)
+    grphead(f"Parameter von {oid} bearbeiten ({TYP_TEXT[e.typ]})")
+    with st.form("netz_form_edit_parameter"):
+        st.caption("Leeres Feld = Voreinstellung (steht am Feld). Alles, was hier nicht aufgeführt ist, "
+                   "bleibt unverändert. Ik-Werte stehen an den Knoten. Gespeichert wird erst mit dem "
+                   "Knopf unten. * = Pflichtangabe für die Schutzstufen.")
+        werte = {}
+        for gruppe in netz_parameter.gruppen(e.typ):
+            st.markdown(f"**{gruppe}**")
+            gf = [f for f in felder if f.gruppe == gruppe]
+            for i in range(0, len(gf), 3):
+                spalten = st.columns(3)
+                for spalte, f in zip(spalten, gf[i:i + 3]):
+                    titel = f.titel + (" *" if f.pflicht else "")
+                    hilfe = f.vorgabe or None
+                    if f.art == netz_parameter.WAHL:
+                        w = spalte.selectbox(titel, [OHNE, *f.optionen], key=PA + f.key, help=hilfe)
+                        werte[f.key] = None if w == OHNE else w
+                    else:
+                        werte[f.key] = spalte.number_input(
+                            titel, value=None, step=_SCHRITT.get(f.einheit, 0.1), format="%g",
+                            key=PA + f.key, placeholder=f.vorgabe or "leer", help=hilfe)
+        s1, s2 = st.columns(2)
+        speichern = s1.form_submit_button("💾 Parameter speichern")
+        abbrechen = s2.form_submit_button("Abbrechen")
+        if speichern:
+            try:
+                meldung = netz_parameter.parameter_aendern(netz, oid, werte)
+            except ModellFehler as exc:
+                st.error("Nicht gespeichert, die Eingaben bleiben stehen:\n\n"
+                         + "\n".join(f"- {zeile}" for zeile in str(exc).splitlines()))
+            else:
+                _erfolg(meldung)
+    return abbrechen
+
+
+def _form_bearbeiten(netz: Netz) -> None:
+    """Formular zum Aendern des gewaehlten Knotens oder Elements (nur wenn geoeffnet)."""
+    z = _bearbeitungsziel(netz)
+    if z is None:
+        return
+    oid = z["id"]
+    if z["art"] == "knoten":
+        grphead(f"Knoten {oid} bearbeiten")
+        with st.form("netz_form_edit_knoten"):
+            st.caption("Die ID bleibt, damit die Verbindungen der Elemente erhalten bleiben. "
+                       "Gespeichert wird erst mit dem Knopf unten.")
+            a, b = st.columns([2, 1])
+            name = a.text_input("Bezeichnung", key=EK_KEYS["name"])
+            un = b.number_input("UN [kV]", min_value=0.0, value=None, step=1.0, key=EK_KEYS["UN_kV"])
+            d, e, f = st.columns(3)
+            stp = d.selectbox("Sternpunktbehandlung", STERNPUNKTE, format_func=STERNPUNKT_TEXT.get,
+                              key=EK_KEYS["sternpunkt"])
+            ikmax = e.number_input("Ik″ max [kA]", min_value=0.0, value=None, step=0.5,
+                                   key=EK_KEYS["Ik_max_kA"], placeholder="optional")
+            ikmin = f.number_input("Ik min 2-pol. [kA]", min_value=0.0, value=None, step=0.5,
+                                   key=EK_KEYS["Ik_min_kA"], placeholder="optional")
+            ie = st.number_input("Erdfehlerstrom-Begrenzung [A] (nur niederohmig)", min_value=0.0,
+                                 value=None, step=100.0, key=EK_KEYS["I_E_begr_A"],
+                                 placeholder="leer = an diesem Knoten nicht geerdet",
+                                 help="Nur bei niederohmiger Erdung: Hier ist das Netz geerdet (Sternpunktbildner "
+                                      "oder Sternpunkt eines Trafos an diesem Knoten), der Erdfehlerstrom ist "
+                                      "auf diesen Wert begrenzt. Ein Eintrag je geerdetem Bereich genügt.")
+            s1, s2 = st.columns(2)
+            speichern = s1.form_submit_button("💾 Änderungen speichern")
+            abbrechen = s2.form_submit_button("Abbrechen")
+            if speichern:
+                try:
+                    meldung = netz_formular.knoten_aendern(netz, oid, name, un, stp, ikmax, ikmin, ie)
+                except ModellFehler as exc:
+                    st.error(f"{exc} Die Eingaben bleiben stehen.")
+                else:
+                    st.session_state.pop(EDIT, None)
+                    _erfolg(meldung)
+    elif z["art"] == "parameter":
+        abbrechen = _form_parameter(netz, oid)
+    else:
+        e_alt = netz.elemente[oid]
+        braucht_von, braucht_nach = ELEMENTTYPEN[e_alt.typ]
+        ids = sorted(netz.knoten)
+        for key, flag in ((EE_KEYS["von"], braucht_von), (EE_KEYS["nach"], braucht_nach)):
+            if flag and st.session_state.get(key) not in ids:
+                st.session_state[key] = ids[0]
+        grphead(f"Element {oid} bearbeiten ({TYP_TEXT[e_alt.typ]})")
+        with st.form("netz_form_edit_element"):
+            st.caption("ID, Typ und Parameter bleiben, ebenso die Verbindungen zu den übrigen "
+                       "Elementen. Ein/Aus schaltet der Knopf oben. Gespeichert wird erst mit dem "
+                       "Knopf unten.")
+            name = st.text_input("Bezeichnung", key=EE_KEYS["name"])
+            c1, c2 = st.columns(2)
+            von = c1.selectbox("von Knoten (Speiseseite, Trafo: OS)", ids,
+                               key=EE_KEYS["von"]) if braucht_von else None
+            nach = c2.selectbox("nach Knoten (Lastseite, Trafo: US)", ids,
+                                key=EE_KEYS["nach"]) if braucht_nach else None
+            i_nb = t_nb = None
+            if e_alt.typ == "einspeisung":
+                c3, c4 = st.columns(2)
+                i_nb = c3.number_input("I> Netzbetreiber [A]", min_value=0.0, value=None,
+                                       key=EE_KEYS["I_nb_A"], placeholder="optional")
+                t_nb = c4.number_input("t Netzbetreiber [s]", min_value=0.0, value=None,
+                                       key=EE_KEYS["t_nb_s"], placeholder="optional")
+            s1, s2 = st.columns(2)
+            speichern = s1.form_submit_button("💾 Änderungen speichern")
+            abbrechen = s2.form_submit_button("Abbrechen")
+            if speichern:
+                try:
+                    meldung = netz_formular.element_aendern(netz, oid, name, von, nach, i_nb, t_nb)
+                except ModellFehler as exc:
+                    st.error(f"{exc} Die Eingaben bleiben stehen.")
+                else:
+                    st.session_state.pop(EDIT, None)
+                    _erfolg(meldung)
+    if abbrechen:
+        st.session_state.pop(EDIT, None)
+        st.rerun()
+
+
 def _bearbeiten(netz: Netz) -> None:
     grphead("Netz bearbeiten")
     elemente = netz.elemente
     knoten = netz.knoten
     if elemente:
-        a, b, c, d = st.columns([1.4, 1, 1.4, 1])
+        a, b, c, d = st.columns([1.6, 1, 1, 1])
         eid = a.selectbox("Element", sorted(elemente), key="netz_b_element",
                           format_func=lambda x: f"{x} · {TYP_TEXT[elemente[x].typ]}")
         e = elemente[eid]
         if b.button("🔀 Ein/Aus schalten", key="netz_b_schalten", width="stretch"):
             netz.element_aendern(eid, zustand="aus" if e.zustand == "ein" else "ein")
             _erfolg(f"{eid} ist jetzt {'aus' if e.zustand == 'ein' else 'ein'}geschaltet.")
+        if c.button("✏️ Bearbeiten", key="netz_b_edit_element", width="stretch"):
+            _bearbeitung_starten(netz, "element", eid)
+        if d.button("🔧 Parameter bearbeiten", key="netz_b_edit_parameter", width="stretch",
+                    disabled=not netz_parameter.hat_felder(e.typ),
+                    help="Wandler, Ansprechwerte, Zeiten und weitere Parameter direkt am Netzmodell. "
+                         "Für Kupplung und Generator gibt es keine."):
+            _bearbeitung_starten(netz, "parameter", eid)
+        a, b, c = st.columns([1.6, 2, 1])
         kann_uebernehmen = e.typ in TAB_QUELLE
-        if c.button("📥 Parameter aus Tab übernehmen", key="netz_b_uebernehmen",
+        if b.button("📥 Parameter aus Tab übernehmen", key="netz_b_uebernehmen",
                     width="stretch", disabled=not kann_uebernehmen):
             p = _p_aus_tab(e.typ)
             if p:
@@ -232,24 +489,29 @@ def _bearbeiten(netz: Netz) -> None:
                 _erfolg(f"Parameter von {eid} aus dem Tab {TAB_QUELLE[e.typ][1]} übernommen.")
             else:
                 st.warning(f"Im Tab {TAB_QUELLE[e.typ][1]} sind noch keine Grunddaten berechnet.")
-        if d.button("❌ Element entfernen", key="netz_b_entf_element", width="stretch"):
+        if c.button("❌ Element entfernen", key="netz_b_entf_element", width="stretch"):
             netz.element_entfernen(eid)
             _erfolg(f"Element {eid} entfernt.")
     if knoten:
-        a, b, _ = st.columns([1.4, 1, 2.4])
+        a, b, c, _ = st.columns([1.4, 1, 1, 1.4])
         kid = a.selectbox("Knoten", sorted(knoten), key="netz_b_knoten")
-        if b.button("❌ Knoten entfernen", key="netz_b_entf_knoten", width="stretch"):
+        if b.button("✏️ Bearbeiten", key="netz_b_edit_knoten", width="stretch"):
+            _bearbeitung_starten(netz, "knoten", kid)
+        if c.button("❌ Knoten entfernen", key="netz_b_entf_knoten", width="stretch"):
             try:
                 netz.knoten_entfernen(kid)
                 _erfolg(f"Knoten {kid} entfernt.")
             except ModellFehler as exc:
                 st.error(str(exc))
+    _form_bearbeiten(netz)
 
     st.dataframe(pd.DataFrame([{
         "Knoten": k.id, "Bezeichnung": k.name, "UN [kV]": de(k.UN_kV, 1),
         "Sternpunkt": STERNPUNKT_TEXT[k.sternpunkt],
         "Ik″ max [kA]": "–" if k.Ik_max_kA is None else de(k.Ik_max_kA, 1),
-        "Ik min [kA]": "–" if k.Ik_min_kA is None else de(k.Ik_min_kA, 1),
+        "Ik min 2-pol. [kA]": "–" if k.Ik_min_kA is None else de(k.Ik_min_kA, 1),
+        "Erdung": (f"hier, begrenzt auf {de(k.I_E_begr_A, 0)} A"
+                   if k.I_E_begr_A is not None and k.sternpunkt == "niederohmig" else "–"),
     } for k in sorted(knoten.values(), key=lambda k: k.id)]), width="stretch", hide_index=True)
     if elemente:
         st.dataframe(pd.DataFrame([{
@@ -259,19 +521,159 @@ def _bearbeiten(netz: Netz) -> None:
         } for e in sorted(elemente.values(), key=lambda e: e.id)]), width="stretch", hide_index=True)
 
 
+# ── 4b. Kurzschlussstroeme aus den Netzdaten ─────────────────────────────────
+def _ka(wert, stellen: int = 2) -> str:
+    return "–" if wert is None else de(wert, stellen)
+
+
+def _abw(v) -> str:
+    a = v.abweichung
+    if a is None:
+        return "–"
+    return f"{'+' if a >= 0 else '−'}{de(abs(a) * 100, 1)} %" + (" ⚠️" if v.auffaellig else "")
+
+
+def _kurzschluss(netz: Netz):
+    """
+    Berechnete Kurzschlussstroeme neben den eingegebenen zeigen. Rueckgabe (Rechennetz, an):
+    Das Rechennetz ist eine Kopie, in der NUR Knoten ohne Eingabewert den berechneten Ik
+    tragen. Ohne Schalter das Netz selbst. Geschrieben wird immer ins Modell, nie in die Kopie.
+    """
+    grphead("Kurzschlussströme aus den Netzdaten")
+    if not st.toggle("Kurzschlussströme berechnen und mit den eingegebenen Werten vergleichen",
+                     key="netz_ik_an",
+                     help="Vereinfachte Rechnung in Anlehnung an IEC 60909-0 aus Sk″ der "
+                          "Einspeisung, uk der Trafos und den Leitungsbelägen. Eingegebene Werte "
+                          "haben immer Vorrang und werden nie überschrieben. Nur wo kein Wert "
+                          "eingegeben ist, rechnet die Staffelung mit dem berechneten. "
+                          "Annahmen: docs/tool_vorgabe_kurzschluss.md."):
+        return netz, False
+    zustaende = netz_kurzschluss.berechne_schaltzustaende(netz)
+    akt = zustaende[0]
+    _meldungen(akt.meldungen)
+    if not any(k.Ik_max_kA is not None or k.Ik_min_kA is not None for k in akt.knoten.values()):
+        st.caption("Noch nichts berechenbar. Nötig sind eine Einspeisung mit Sk″ und die "
+                   "Impedanzdaten der Trafos (Sn, uk) und Leitungen (Länge, X′).")
+        return netz, True
+    vgl = {(v.knoten, v.groesse): v for v in netz_kurzschluss.vergleiche(netz, akt)}
+    netz_r, ergaenzt, meld = netz_kurzschluss.ergaenze_ik(netz, akt)
+    _meldungen(meld)
+    gilt = {}
+    for e in ergaenzt:
+        gilt.setdefault(e.knoten, []).append("Ik max" if e.groesse == "max" else "Ik min")
+
+    def zeile(kid):
+        r, vmax, vmin = akt.knoten[kid], vgl[(kid, "max")], vgl[(kid, "min")]
+        return {
+            "Knoten": kid, "UN [kV]": de(r.UN_kV, 1),
+            "Ik″ max eingegeben [kA]": _ka(vmax.eingegeben_kA),
+            "Ik″ max berechnet [kA]": _ka(vmax.berechnet_kA), "Abw. max": _abw(vmax),
+            "Ik min eingegeben [kA]": _ka(vmin.eingegeben_kA),
+            "Ik min berechnet [kA]": _ka(vmin.berechnet_kA), "Abw. min": _abw(vmin),
+            "Ik″ max nur Netz [kA]": _ka(r.Ik_max_ohne_Motor_kA),
+            "Staffelung rechnet mit": ("berechnet: " + ", ".join(gilt[kid])) if kid in gilt
+                                      else "eingegeben",
+        }
+
+    st.dataframe(pd.DataFrame([zeile(k) for k in sorted(akt.knoten)]),
+                 width="stretch", hide_index=True)
+    titel = "" if akt.art == netz_kurzschluss.AKTUELL else f" Lage: {akt.bezeichnung}."
+    st.caption("Ik″ max dreipolig mit den Motoren, die gleichzeitig laufen (DIN EN 60909-0, "
+               "7.1.2 e), „nur Netz“ zum Vergleich. Ik min zweipolig, ohne Motoren, mit der "
+               "Leitertemperatur am Ende des Kurzschlusses (Gl. 32, Details unten). Ein Motor, "
+               "der nicht gleichzeitig läuft, wird im Parameter-Editor ausgenommen. "
+               "Abweichung = berechnet gegen eingegeben, ⚠️ ab "
+               f"{de(KN.Ik_Abweichung_Hinweis * 100, 0)} %. Eingegebene Werte bleiben gültig."
+               + titel)
+    if ergaenzt:
+        st.caption("Ohne Eingabewert, deshalb berechnet in der Staffelung verwendet: "
+                   + ", ".join(f"{e.knoten} {'Ik max' if e.groesse == 'max' else 'Ik min'} "
+                               f"{de(e.wert_kA, 2)} kA" for e in ergaenzt) + ".")
+
+    if len(zustaende) > 1:
+        _kurzschluss_lagen(netz, zustaende)
+
+    with st.expander("Details: Impedanzen und Annahmen der Kurzschlussrechnung"):
+        st.dataframe(pd.DataFrame([{
+            "Element": i.element, "Typ": TYP_TEXT.get(i.typ, i.typ),
+            "bezogen auf [kV]": de(i.UN_kV, 1),
+            "Z für Ik max": netz_kurzschluss.polar_text(i.Z_max),
+            "Z für Ik min": netz_kurzschluss.polar_text(i.Z_min),
+            "Annahmen": "; ".join(i.annahmen) or "–",
+        } for i in akt.impedanzen]), width="stretch", hide_index=True)
+        st.caption(
+            f"Spannungsfaktor c: über 1 kV {de(KN.c_max_HS, 2)} (max) und {de(KN.c_min_HS, 2)} "
+            f"(min), bis 1 kV {de(KN.c_max_NS, 2)} und {de(KN.c_min_NS, 2)}. Ik min = √3/2 × "
+            "dreipoliger Strom. Erdfehler (Ik1) stehen im Abschnitt Erdfehler. Nicht "
+            "berücksichtigt: Generatoren, Lastströme, "
+            "Lichtbogenwiderstand. Alle Annahmen sind Tool-Vorgaben "
+            "(docs/tool_vorgabe_kurzschluss.md).")
+    return netz_r, True
+
+
+def _ring_ik_ersetzen() -> bool:
+    """Ringstaffelung mit je Lage berechnetem Ik? Standard ja (Entscheidung 17.11.2026)."""
+    return st.session_state.get(RING_IK, RING_IK_BERECHNET) != RING_IK_EINGEGEBEN
+
+
+def _kurzschluss_lagen(netz: Netz, zustaende) -> None:
+    """Ring: berechnete Werte je Trennstellenlage, nur fuer Knoten, deren Wert sich aendert."""
+    kn = netz.knoten
+
+    def paar(z, kid):
+        r = z.knoten.get(kid)
+        return (None, None) if r is None else (r.Ik_max_kA, r.Ik_min_kA)
+
+    def verschieden(kid):
+        werte = [paar(z, kid) for z in zustaende]
+        return any(a is not None and b is not None and abs(a - b) > 1e-6 * max(a, b)
+                   for w in werte for a, b in zip(w, werte[0]))
+
+    wechselnd = [k for k in sorted(kn) if verschieden(k)]
+    if not wechselnd:
+        st.caption("Im Ring ändert sich kein berechneter Wert mit der Trennstellenlage.")
+        return
+    st.markdown("**Berechnet je Trennstellenlage** (Ik″ max / Ik min 2-pol. in kA)")
+    zeilen = [{"Schaltzustand": "eingegeben (gilt in der Staffelung für alle Lagen)",
+               **{k: f"{_ka(kn[k].Ik_max_kA)} / {_ka(kn[k].Ik_min_kA)}" for k in wechselnd}}]
+    hinweise = []
+    for z in zustaende:
+        zeilen.append({"Schaltzustand": z.bezeichnung,
+                       **{k: f"{_ka(paar(z, k)[0])} / {_ka(paar(z, k)[1])}" for k in wechselnd}})
+        if z.art != netz_kurzschluss.LAGE:
+            continue
+        for v in netz_kurzschluss.vergleiche(netz, z):
+            if v.knoten in wechselnd and v.auffaellig:
+                hinweise.append(
+                    f"{v.knoten} {'Ik max' if v.groesse == 'max' else 'Ik min'} in Lage "
+                    f"„{z.bezeichnung}“: berechnet {de(v.berechnet_kA, 2)} kA, eingegeben "
+                    f"{de(v.eingegeben_kA, 2)} kA ({_abw(v).replace(' ⚠️', '')})")
+    st.dataframe(pd.DataFrame(zeilen), width="stretch", hide_index=True)
+    st.caption("Nur Knoten, deren Wert sich mit der Lage ändert. „Ring geschlossen“ ist kein "
+               "Betriebszustand der Staffelung, zeigt aber den größten Ik″ max beim Umschalten "
+               "ohne Unterbrechung.")
+    if hinweise:
+        wirkt = ("Die Ringstaffelung rechnet je Lage mit den berechneten Werten, wo sie berechenbar "
+                 "sind." if _ring_ik_ersetzen() else
+                 "Die Ringstaffelung rechnet weiter mit den eingegebenen Werten.")
+        st.warning("Die eingegebenen Werte passen nicht zu jeder Trennstellenlage: "
+                   + "; ".join(hinweise) + ". " + wirkt)
+
+
 # ── 5. Schutzstufen ──────────────────────────────────────────────────────────
-def _schutzstufen(netz: Netz, topo) -> None:
+def _schutzstufen(netz: Netz, topo):
+    """Schutzstufen anzeigen. Liefert das Adapter-Ergebnis fuer die Staffelung (oder None)."""
     grphead("Schutzstufen aus den Betriebsmittel-Tabs")
     if not topo.ok:
         st.caption("Erst die Topologie-Fehler oben beheben, dann werden die Schutzstufen erzeugt.")
-        return
+        return None
     erg = netz_adapter.erzeuge_schutzstufen(netz, topo)
     _meldungen(erg.meldungen)
     if not erg.stufen:
         st.caption("Noch keine Schutzstufen. Elemente brauchen Parameter aus den Tabs.")
-        return
+        return None
     st.caption("Werte aus den Rechenkernen der Tabs (Werksvoreinstellung, sofern im Tab nicht "
-               "geändert). Die Staffelung über das Netz folgt im nächsten Ausbauschritt.")
+               "geändert). Die Zeiten werden im nächsten Abschnitt gegeneinander gestaffelt.")
     st.dataframe(pd.DataFrame([{
         "Element": s.element, "Stufe": s.stufe, "ANSI": s.ansi, "Messort": s.messort,
         "UN [kV]": de(s.UN_kV, 1), "I prim. [A]": de(s.I_prim_A, 1), "Kennlinie": s.kennlinie,
@@ -280,6 +682,536 @@ def _schutzstufen(netz: Netz, topo) -> None:
         "aktiv": "ja" if s.aktiv else "nein", "Herkunft": s.quelle,
     } for s in sorted(erg.stufen, key=lambda s: (-s.UN_kV, s.element, s.stufe))]),
         width="stretch", hide_index=True)
+    return erg
+
+
+# ── 6. Zeitstaffelung ────────────────────────────────────────────────────────
+def _zeit(t) -> str:
+    return "–" if t is None else de(t, 2)
+
+
+def _staffelung(netz: Netz, adapter, ziel: Netz | None = None, ik_an: bool = False) -> None:
+    """
+    Ergebnis von netz_selektivitaet.pruefe_selektivitaet anzeigen.
+    Der Sollabstand ist hier einstellbar (Tool-Vorgabe 0,30 s), der technische
+    Mindestwert bleibt fest, damit die rote Ampel nicht weggeregelt werden kann.
+    netz ist das Rechennetz (ggf. mit berechnet ergaenzten Ik), ziel das Modell, in das
+    Vorschlaege geschrieben werden.
+    """
+    ziel = netz if ziel is None else ziel
+    grphead("Zeitstaffelung entlang der Versorgungspfade")
+    if adapter is None:
+        st.caption("Die Staffelprüfung läuft, sobald Schutzstufen vorhanden sind.")
+        return
+    a, b = st.columns([1, 3])
+    dt_soll = a.number_input("Staffelabstand Soll [s]", min_value=KN.dt_Staffel_min,
+                             max_value=1.0, value=KN.dt_Staffel_soll, step=0.05,
+                             format="%.2f", key="netz_dt_soll",
+                             help="Tool-Vorgabe, Herleitung in docs/tool_vorgabe_staffelabstand.md. "
+                                  f"Technischer Mindestwert {de(KN.dt_Staffel_min, 2)} s "
+                                  "(Schalterzeit, Rückfallzeit, Toleranzen, Sicherheitszuschlag).")
+    erg = netz_selektivitaet.pruefe_selektivitaet(netz, adapter, dt_soll=float(dt_soll))
+    _meldungen(erg.meldungen)
+    if not erg.pruefungen:
+        if erg.ok:
+            st.caption("Keine Paare zu prüfen: es gibt nur einen Schutzort je Pfad.")
+        _erdfehler(netz, adapter, ziel, float(dt_soll))
+        return
+
+    anz = {k: sum(1 for p in erg.pruefungen if p.status == k)
+           for k in (netz_selektivitaet.OK, netz_selektivitaet.GELB, netz_selektivitaet.ROT)}
+    with b:
+        st.markdown(
+            f'<div style="margin-top:28px">{AMPEL_EMOJI[erg.status]} <b>Gesamt: {erg.status}</b> &nbsp; '
+            + " ".join(pill(k, n) for k, n in anz.items() if n)
+            + f'<br><span style="font-size:0.8rem;color:#5d6b82">Bezugsspannung '
+            f'{de(erg.U_bezug_kV, 1)} kV · Soll {de(erg.dt_soll_s, 2)} s · '
+            f'Mindestwert {de(erg.dt_min_s, 2)} s · {len(erg.pruefungen)} Paare</span></div>',
+            unsafe_allow_html=True)
+    for pfad in erg.pfade:
+        st.caption("🔗 " + " → ".join(pfad))
+
+    # Reihenfolge wie in den Pfaden (von der Last zur Quelle), nicht nach Element-ID
+    rang = {}
+    for pfad in erg.pfade:
+        for i, name in enumerate(pfad):
+            rang.setdefault(name, (len(rang), i))
+    pruefungen = sorted(erg.pruefungen, key=lambda p: rang.get(p.unten, (99, 99)))
+    st.dataframe(pd.DataFrame([{
+        "Ampel": AMPEL_EMOJI[p.status], "unten (Last)": p.unten, "Stufe unten": p.stufe_unten or "–",
+        "t unten [s]": _zeit(p.t_unten_s), "oben (Quelle)": p.oben, "Stufe oben": p.stufe_oben or "–",
+        "t oben [s]": _zeit(p.t_oben_s), "Δt [s]": _zeit(p.dt_s),
+        "Zuschlag AMZ [s]": "–" if not p.dt_zusatz_s else de(p.dt_zusatz_s, 3),
+        "I [A bez.]": "–" if p.I_bez_A is None else de(p.I_bez_A, 0),
+        "Bewertung": p.text,
+    } for p in pruefungen]), width="stretch", hide_index=True)
+    st.caption("Je Paar der kleinste Zeitabstand über alle Ströme, bei denen beide Schutzorte "
+               "anregen. Ströme auf die Bezugsspannung umgerechnet. Grün ab Soll, gelb zwischen "
+               "Mindestwert und Soll, rot darunter. Nur Phasenstufen 50/51, die Erdstufen "
+               "stehen im Abschnitt Erdfehler. Die Zeitprüfung rechnet in Nennübersetzung, Stufensteller "
+               "und Schaltgruppe berücksichtigt die Stromstaffelung im Staffelvorschlag. "
+               "Bei AMZ-Stufen wächst der nötige Abstand mit der Auslösezeit (Zeittoleranz 5 % "
+               "plus 2 % Stromtoleranz, mindestens 30 ms, 7SJ66). Der Zuschlag steht in der "
+               "Spalte „Zuschlag AMZ“ und gilt für Soll und Mindestwert.")
+    _staffeldiagramm(netz, erg, "Staffeldiagramm (Einstellwerte im Netz)", True)
+    st.caption("Auslösezeit je Schutzort über dem Strom, beide Achsen logarithmisch. Selektiv "
+               "ist ein Pfad, wenn jede Kennlinie mit Abstand über der des Schutzes darunter "
+               "liegt. Jede Kennlinie endet bei Ik max an ihrem Messort. Unverzögerte Stufen "
+               "stehen auf der Linie 0,01 s.")
+    rv = None
+    if adapter.topologie is not None and adapter.topologie.netzform_erkannt == "ring":
+        rv = _ring(ziel, float(dt_soll), adapter.topologie.trennstelle, ik_an)
+    vor = _vorschlag(netz, adapter, float(dt_soll), ziel)
+    _anlauf(netz, adapter)
+    ev = _erdfehler(netz, adapter, ziel, float(dt_soll))
+    _einstellliste(netz, adapter, float(dt_soll), vor, rv, ev)
+
+
+# ── 6a. Staffeldiagramm ──────────────────────────────────────────────────────
+def _staffeldiagramm(netz: Netz, pruefung, titel: str, mit_auswahl: bool) -> None:
+    """
+    Strom-Zeit-Kennlinien eines Pfades. Die Pfadauswahl gibt es einmal (beim Ist-Zustand),
+    das Diagramm des Vorschlags zeigt denselben Pfad, damit beide vergleichbar sind.
+    """
+    diagramme = [d for d in netz_diagramm.erzeuge_diagramme(netz, pruefung) if d.kurven]
+    if not diagramme:
+        return
+    st.markdown(f"**{titel}**")
+    nr = 0
+    if mit_auswahl and len(diagramme) > 1:
+        nr = st.selectbox("Pfad im Diagramm", range(len(diagramme)), key="netz_diag_pfad",
+                          format_func=lambda i: diagramme[i].titel)
+    elif not mit_auswahl:
+        nr = st.session_state.get("netz_diag_pfad", 0)
+    d = diagramme[nr if isinstance(nr, int) and 0 <= nr < len(diagramme) else 0]
+    if not mit_auswahl or len(diagramme) == 1:
+        st.caption("🔗 " + d.titel)
+    st.vega_lite_chart(netz_diagramm.vega_spec(d), width="stretch")
+    _meldungen(d.meldungen)
+
+
+# ── 6b. Ring: alle Trennstellenlagen ─────────────────────────────────────────
+def _lagentabelle(erg, aktuell) -> None:
+    zeilen = []
+    for l in erg.lagen:
+        z = l.zeit.pruefungen if l.zeit else []
+        n = {k: sum(1 for p in z if p.status == k)
+             for k in (netz_selektivitaet.OK, netz_selektivitaet.GELB, netz_selektivitaet.ROT)}
+        sp = l.schlechtestes_paar
+        zeilen.append({
+            "Ampel": AMPEL_EMOJI[l.status] if l.status else "–",
+            "Trennstelle": l.trennstelle + (" (aktuell)" if l.trennstelle == aktuell else ""),
+            "grün / gelb / rot": f"{n[netz_selektivitaet.OK]} / {n[netz_selektivitaet.GELB]} / "
+                                 f"{n[netz_selektivitaet.ROT]}",
+            "Strom": AMPEL_EMOJI[l.strom.status] if l.strom and l.strom.status else "–",
+            "Schlechtestes Paar": "–" if sp is None else
+                                  f"{sp.unten} → {sp.oben}, Δt {_zeit(sp.dt_s)} s",
+        })
+    st.dataframe(pd.DataFrame(zeilen), width="stretch", hide_index=True)
+
+
+def _strom_text(I_A, faktor) -> str:
+    """Ansprechwert fuer die Aenderungsliste: primaer in A, dahinter der Faktor."""
+    return f"{de(I_A, 0)} A" if faktor is None else f"{de(I_A, 0)} A ({de(faktor, 2)} × IN)"
+
+
+def _warum_zeit(grund: str, dt_soll: float) -> str:
+    """Kurzbegruendung einer Zeit: 'Staffelabstand ueber <Stufe darunter>'."""
+    if grund.startswith("Lage ") and ": " in grund:
+        lage, rest = grund.split(": ", 1)
+        return f"{lage}: {_warum_zeit(rest, dt_soll)}"
+    if grund.startswith(("Mindestzeit", "Untergrenze", "Endpunkt", "Netzbetreiber", "AMZ", "Reihenfolge")):
+        return grund
+    return f"{de(dt_soll, 2)} s über {grund}"
+
+
+def _aenderungsliste(zeilen, titel: str) -> None:
+    st.markdown(f"**{titel}**")
+    st.dataframe(pd.DataFrame(zeilen), width="stretch", hide_index=True)
+
+
+def _ring(netz: Netz, dt_soll: float, aktuell, ik_an: bool = False):
+    """
+    Ring: Ist-Einstellungen in jeder moeglichen Trennstellenlage pruefen und auf Wunsch
+    einen Satz Werte vorschlagen, der in allen Lagen gilt (netz_ring.py).
+    """
+    grphead("Ring: Staffelung in allen Trennstellenlagen")
+    st.radio("Kurzschlussströme in der Ringstaffelung", [RING_IK_BERECHNET, RING_IK_EINGEGEBEN],
+             key=RING_IK, horizontal=True,
+             help="Berechnet: In jeder Trennstellenlage gilt der für diese Lage berechnete Ik max "
+                  "und Ik min, wo er berechenbar ist. Sonst gilt der eingegebene Wert. "
+                  "Eingegeben: Ein Wert je Knoten für alle Lagen (nur Knoten ohne Wert bekommen "
+                  "den berechneten, wenn die Kurzschlussrechnung oben eingeschaltet ist). Im "
+                  "Strahlennetz gilt immer der eingegebene Wert. Herleitung: "
+                  "docs/tool_vorgabe_ring.md.")
+    ersetzen = _ring_ik_ersetzen()
+    erg = netz_ring.pruefe_ringlagen(netz, dt_soll=dt_soll, ik_ergaenzen=ik_an,
+                                     ik_ersetzen=ersetzen)
+    _meldungen(erg.meldungen)
+    if not erg.lagen:
+        return
+    _lagentabelle(erg, aktuell)
+    st.caption("Jedes Ringelement kann Trennstelle werden. Je Zeile ist dieses Element offen, "
+               "geprüft werden die Einstellwerte im Netz. Spalte Strom: Stromstaffel, "
+               "Empfindlichkeit und Anlauf der Motoren.")
+    if not st.toggle("Ringvorschlag berechnen (ein Satz Werte für alle Lagen)",
+                     key="netz_ring_vorschlag_an",
+                     help="Je Lage erst Strom, dann Zeit. Je Wert gilt der größte über alle "
+                          "Lagen, wiederholt bis sich nichts mehr ändert. Gegenläufige Ketten "
+                          "werden namentlich gemeldet. Herleitung: docs/tool_vorgabe_ring.md."):
+        return
+    rv = netz_ring.ringvorschlag(netz, dt_soll=dt_soll, ik_ergaenzen=ik_an, ik_ersetzen=ersetzen)
+    _meldungen(rv.meldungen)
+    if not rv.werte:
+        return
+    if rv.geaendert:
+        _aenderungsliste([{
+            "Element": w.element, "Stufe": w.stufe,
+            "Größe": "Ansprechwert" if w.art == "Strom" else "Zeit",
+            "bisher": _strom_text(w.alt * w.IN_A, w.alt) if w.art == "Strom" and w.IN_A
+                      else f"{de(w.alt, 2)} s",
+            "neu": _strom_text(w.neu * w.IN_A, w.neu) if w.art == "Strom" and w.IN_A
+                   else f"{de(w.neu, 2)} s",
+            "Warum": w.kurz if w.art == "Strom" else _warum_zeit(w.kurz, dt_soll),
+        } for w in rv.geaendert], "Was ist zu ändern (gilt in allen Lagen)")
+    else:
+        st.caption("Keine Änderung nötig, die Werte im Netz gelten bereits in allen Lagen.")
+    if rv.pruefung is not None and rv.pruefung.lagen:
+        st.markdown("**Ergebnis mit diesen Werten, je Lage**")
+        _lagentabelle(rv.pruefung, aktuell)
+    if rv.uebernehmbar:
+        if st.button("✅ Ringvorschlag ins Netz übernehmen", key="netz_ring_uebernehmen"):
+            je_element = rv.parameter_je_element()
+            for eid, p_neu in je_element.items():
+                p_alt = dict(netz.elemente[eid].p)
+                p_alt.update(p_neu)
+                netz.parameter_setzen(eid, p_alt)
+            _erfolg(f"Ringvorschlag übernommen: {len(rv.geaendert)} Werte in "
+                    f"{len(je_element)} Elementen gesetzt.")
+    with st.expander("Details: alle Werte mit Herleitung"):
+        st.dataframe(pd.DataFrame([{
+            "Element": w.element, "Stufe": w.stufe, "Parameter": w.parameter, "Art": w.art,
+            "bisher": de(w.alt, 2), "Vorschlag": de(w.neu, 2),
+            "Änderung": "✏️" if w.geaendert else "", "Bestimmt durch": w.grund or "–",
+        } for w in rv.werte]), width="stretch", hide_index=True)
+        st.caption(f"{rv.runden} Runden bis zum Fixpunkt. Zeiten in s, Ansprechwerte als "
+                   "Faktor × IN. Geschrieben werden die Parameter in der Spalte Parameter.")
+    return rv
+
+
+# ── 7. Staffelvorschlag ──────────────────────────────────────────────────────
+def _vorschlag(netz: Netz, adapter, dt_soll: float, ziel: Netz | None = None):
+    """
+    Vorschlag von der Last zur Quelle: erst die I>>-Ansprechwerte (Stromstaffelung),
+    dann die Zeiten mit diesen Werten, dann Gegenpruefung. Oben steht nur, was zu aendern
+    ist. Alle Stufen mit Herleitung stehen im aufklappbaren Bereich. Der Vorschlag wird bei
+    jedem Lauf neu aus dem Modell gerechnet (Modell ist die Wahrheit).
+    netz ist das Rechennetz, ziel das Modell, in das die Uebernahme schreibt.
+    """
+    ziel = netz if ziel is None else ziel
+    ring = adapter.topologie is not None and adapter.topologie.netzform_erkannt == "ring"
+    grphead("Staffelvorschlag nur für die aktuelle Trennstellenlage" if ring
+            else "Staffelvorschlag (erst Strom, dann Zeit)")
+    if ring:
+        st.caption("Im Ring gilt dieser Vorschlag nur für die aktuelle Trennstellenlage. "
+                   "Für alle Lagen den Ringvorschlag oben verwenden.")
+    if not st.toggle("Staffelvorschlag berechnen", key="netz_vorschlag_an",
+                     help="Erst die I>>-Ansprechwerte über Ik max der nächsten Station (mit "
+                          "Stufensteller und Schaltgruppe), dann jede UMZ-Stufe so schnell wie "
+                          "möglich, aber einen Staffelabstand über allem, was darunter bei "
+                          "demselben Strom auslöst. Endpunkte (Motor, unterste Trafoseite) und "
+                          "Netzbetreiber bleiben unverändert. Herleitung: "
+                          "docs/tool_vorgabe_stromstaffelung.md."):
+        return
+    vor = netz_stromstaffel.gesamtvorschlag(netz, adapter, dt_soll=dt_soll)
+    _meldungen(vor.meldungen)
+    if vor.zeit is None or vor.zeit.pruefung is None:
+        return
+
+    n_strom, n_zeit = len(vor.strom.geaendert), len(vor.zeit.geaendert)
+    if n_strom or n_zeit:
+        zeilen = [{
+            "Element": v.element, "Stufe": v.stufe, "Größe": "Ansprechwert",
+            "bisher": _strom_text(v.I_alt_A, v.faktor_alt), "neu": _strom_text(v.I_neu_A, v.faktor_neu),
+            "Warum": v.kurz or v.status,
+        } for v in vor.strom.geaendert] + [{
+            "Element": v.element, "Stufe": v.stufe, "Größe": "Zeit",
+            "bisher": f"{de(v.t_alt_s, 2)} s", "neu": f"{de(v.t_neu_s, 2)} s",
+            "Warum": _warum_zeit(v.grund, dt_soll),
+        } for v in vor.zeit.geaendert]
+        _aenderungsliste(zeilen, "Was ist zu ändern")
+    else:
+        st.caption("Keine Änderung nötig, die Werte im Netz entsprechen bereits dem Vorschlag.")
+
+    p, sp = vor.zeit.pruefung, vor.strom.pruefung
+    anz = {k: sum(1 for x in p.pruefungen if x.status == k)
+           for k in (netz_selektivitaet.OK, netz_selektivitaet.GELB, netz_selektivitaet.ROT)}
+    strom_text = "" if sp is None or sp.status is None else (
+        f" &nbsp;·&nbsp; {AMPEL_EMOJI[sp.status]} **Strom: {sp.status}**")
+    st.markdown(f"Ergebnis mit diesen Werten: {AMPEL_EMOJI[p.status]} **Zeit: {p.status}** &nbsp; "
+                + " ".join(pill(k, n) for k, n in anz.items() if n) + strom_text,
+                unsafe_allow_html=True)
+    _staffeldiagramm(netz, p, "Staffeldiagramm mit dem Vorschlag", False)
+    if n_strom or n_zeit:
+        st.caption(f"{n_strom} Ansprechwerte und {n_zeit} Zeiten würden geändert. Die Übernahme "
+                   "schreibt sie in die Element-Parameter des Netzes (nicht in die Betriebsmittel-"
+                   "Tabs).")
+        if st.button("✅ Vorschlag ins Netz übernehmen", key="netz_vorschlag_uebernehmen"):
+            je_element = vor.parameter_je_element()
+            for eid, p_neu in je_element.items():
+                p_alt = dict(ziel.elemente[eid].p)
+                p_alt.update(p_neu)
+                ziel.parameter_setzen(eid, p_alt)
+            _erfolg(f"Staffelvorschlag übernommen: {n_strom} Ansprechwerte und {n_zeit} Zeiten in "
+                    f"{len(je_element)} Elementen gesetzt.")
+
+    with st.expander("Details: alle Stufen, Herleitung und Gegenprüfung"):
+        st.markdown("**1. Strom: I>>-Ansprechwerte**")
+        st.dataframe(pd.DataFrame([{
+            "Element": v.element, "Stufe": v.stufe, "Parameter": v.parameter or "–",
+            "I bisher [A]": de(v.I_alt_A, 0), "I Vorschlag [A]": de(v.I_neu_A, 0),
+            "Faktor bisher": "–" if v.faktor_alt is None else de(v.faktor_alt, 2),
+            "Faktor Vorschlag": "–" if v.faktor_neu is None else de(v.faktor_neu, 2),
+            "Änderung": "✏️" if v.geaendert else "", "Status": v.status,
+            "Begründung": v.grund,
+        } for v in vor.strom.vorschlaege]), width="stretch", hide_index=True)
+        st.markdown("**2. Zeit** (mit den Ansprechwerten aus Schritt 1)")
+        st.dataframe(pd.DataFrame([{
+            "Element": v.element, "Stufe": v.stufe,
+            "Parameter": v.parameter or "–",
+            "t bisher [s]": "–" if v.t_alt_s != v.t_alt_s else de(v.t_alt_s, 2),
+            "t Vorschlag [s]": "–" if v.t_neu_s != v.t_neu_s else de(v.t_neu_s, 2),
+            "Änderung": "✏️" if v.geaendert else "",
+            "Bestimmt durch": v.grund,
+        } for v in vor.zeit.vorschlaege]), width="stretch", hide_index=True)
+        if sp is not None and sp.pruefungen:
+            st.markdown("**3. Gegenprüfung Strom** (Stromstaffel, Empfindlichkeit und Anlauf)")
+            st.dataframe(pd.DataFrame([{
+                "Ampel": AMPEL_EMOJI[x.status], "Prüfung": x.art, "unten (Last)": x.unten,
+                "oben (Quelle)": x.oben, "Stufe oben": x.stufe_oben,
+                "Soll [A bez.]": "–" if x.I_soll_bez_A is None else de(x.I_soll_bez_A, 0),
+                "Ist [A bez.]": "–" if x.I_ist_bez_A is None else de(x.I_ist_bez_A, 0),
+                "Bewertung": x.text,
+            } for x in sp.pruefungen]), width="stretch", hide_index=True)
+        st.caption("„A bez.“ heißt: Strom auf die Bezugsspannung der Staffelprüfung umgerechnet. "
+                   "Stromstaffel: I>> oben mindestens k_S × Strom hinter der nächsten Station. "
+                   "Empfindlichkeit: Ik min (zweipolig, über Stufensteller und Schaltgruppe) "
+                   "mindestens γ × kleinster Ansprechwert oben. Anlauf: I>-Stufen im Pfad eines "
+                   "Motors über k × Anlaufstrom.")
+    return vor
+
+
+# ── 7b. Erdfehler (einpoliger Erdkurzschluss) ────────────────────────────────
+_STP_KURZ = {"isoliert": "isoliert", "kompensiert": "kompensiert", "niederohmig": "niederohmig",
+             "direkt": "starr geerdet"}
+
+
+def _erdfehler(netz: Netz, adapter, ziel: Netz, dt_soll: float):
+    """
+    Erdfehler: Ik1 je Knoten, Erdungsbereiche, Staffelung der Erdstufen und Vorschlag
+    (Entscheidung 25.11.2026, zunaechst nur Strahlennetz). Rueckgabe: Erdvorschlag oder None.
+    Geschrieben wird nur ueber den Knopf, und nur in das Modell (ziel).
+    """
+    grphead("Erdfehler (einpoliger Erdkurzschluss)")
+    if not st.toggle("Erdfehler berechnen und die Erdstufen staffeln", key="netz_erde_an",
+                     help="Ik1 aus Mit- und Nullsystem (Z2 = Z1), nur in starr oder niederohmig "
+                          "geerdeten Bereichen. Gestaffelt werden die Erdstufen der Tabs: Leitung "
+                          "67N (3I0), Motor 50N/51N, Trafo IE> am Sternpunktwandler. Isolierte und "
+                          "kompensierte Bereiche bekommen nur einen Hinweis. Herleitung: "
+                          "docs/tool_vorgabe_erdfehler.md."):
+        return None
+    ks = netz_kurzschluss.berechne(netz)
+    ef = netz_erdfehler.pruefe_erdfehler(netz, adapter, ks, dt_soll=dt_soll)
+
+    st.dataframe(pd.DataFrame([{
+        "Bereich (Knoten)": b.name, "UN [kV]": de(b.UN_kV, 1),
+        "Sternpunkt": _STP_KURZ.get(b.sternpunkt, b.sternpunkt), "Erdung": b.erdung or "–",
+        "Ik1 max [kA]": _ka(b.Ik1_max_kA), "Ik1 min [kA]": _ka(b.Ik1_min_kA),
+        "Bewertung": b.text,
+    } for b in ef.bereiche]), width="stretch", hide_index=True)
+    st.caption("Ein Bereich ist eine galvanisch verbundene Spannungsebene. Ein Trafo mit "
+               "Dreieckwicklung trennt die Bereiche: ein Erdfehler dahinter ist als Erdstrom "
+               "nicht zu sehen. Ik1 max / min sind der größte und kleinste Wert im Bereich.")
+    _meldungen([m for m in ks.meldungen
+                if any(w in m.text for w in ("Erd", "Nullsystem", "Schaltgruppe", "Sternpunkt"))])
+    _meldungen(ef.meldungen)
+
+    with st.expander("Details: Ik1 je Knoten und Nullimpedanzen"):
+        st.dataframe(pd.DataFrame([{
+            "Knoten": kid, "UN [kV]": de(r.UN_kV, 1),
+            "Ik1 max [kA]": _ka(r.Ik1_max_kA), "Ik1 min [kA]": _ka(r.Ik1_min_kA),
+            "Ik″ max 3-pol. [kA]": _ka(r.Ik_max_kA),
+            "Z0 am Knoten": netz_kurzschluss.polar_text(r.Z0_max_Ohm), "Erdung": r.erdung,
+        } for kid, r in sorted(ks.knoten.items())]), width="stretch", hide_index=True)
+        if ks.impedanzen0:
+            st.dataframe(pd.DataFrame([{
+                "Element / Erdung": i.element, "bezogen auf [kV]": de(i.UN_kV, 1),
+                "Z0 für Ik1 max": netz_kurzschluss.polar_text(i.Z_max),
+                "Z0 für Ik1 min": netz_kurzschluss.polar_text(i.Z_min),
+                "Annahmen": "; ".join(i.annahmen) or "–",
+            } for i in ks.impedanzen0]), width="stretch", hide_index=True)
+        st.caption("Ik1 = 3 · c · UN/√3 / |2·Z1 + Z0|. Ik1 max mit c max, Sk max und K_T, Ik1 min "
+                   "mit c min, Sk min und warmem Leiter. Trafo mit Sternpunkt gegen Dreieck: "
+                   f"Z0T = {de(KN.Z0_Z1_Trafo, 2)} · Z1T. Erdung über R_E = UN / (√3 · I_E), im "
+                   "Nullsystem 3 · R_E. Leitung ohne R0′/X0′: aus RE/RL und XE/XL. Kein "
+                   "Fehlerwiderstand. Gegen pandapower 3.5.6 geprüft (Beispielnetze).")
+
+    if not ef.pruefungen and not ef.empfindlichkeit:
+        return None
+
+    if ef.pruefungen:
+        anz = {k: sum(1 for p in ef.pruefungen if p.status == k)
+               for k in (netz_selektivitaet.OK, netz_selektivitaet.GELB, netz_selektivitaet.ROT)}
+        st.markdown(f"{AMPEL_EMOJI[ef.status]} <b>Erdstaffelung: {ef.status}</b> &nbsp; "
+                    + " ".join(pill(k, n) for k, n in anz.items() if n)
+                    + f' &nbsp; <span style="font-size:0.8rem;color:#5d6b82">Soll '
+                    f'{de(ef.dt_soll_s, 2)} s · Mindestwert {de(ef.dt_min_s, 2)} s · '
+                    f'{len(ef.pruefungen)} Paare</span>', unsafe_allow_html=True)
+    for pfad in ef.pfade:
+        st.caption("🔗 " + " → ".join(pfad))
+    if ef.pruefungen:
+        st.dataframe(pd.DataFrame([{
+            "Ampel": AMPEL_EMOJI[p.status], "unten (Fehler)": p.unten,
+            "Stufe unten": p.stufe_unten or "–", "t unten [s]": _zeit(p.t_unten_s),
+            "oben (Erdung)": p.oben, "Stufe oben": p.stufe_oben or "–",
+            "t oben [s]": _zeit(p.t_oben_s), "Δt [s]": _zeit(p.dt_s),
+            "3I0 [A]": "–" if p.I_bez_A is None else de(p.I_bez_A, 0),
+            "Bewertung": p.text,
+        } for p in ef.pruefungen]), width="stretch", hide_index=True)
+        st.caption("Reihenfolge aus dem Erdstrom: ein Schutzort liegt unter einem anderen, wenn dieser "
+                   "bei allen seinen Erdfehlern ebenfalls Strom führt. Geprüft wie bei den Phasen "
+                   "(gleicher Soll- und Mindestabstand), Grenzstrom ist der größte 3I0 durch den "
+                   "unteren Schutzort. Stufen mit Richtung „Rückwärts“ zählen nicht.")
+    if ef.empfindlichkeit:
+        st.dataframe(pd.DataFrame([{
+            "Ampel": AMPEL_EMOJI[e.status], "Schutzort": e.ort, "Stufe": e.stufe,
+            "Ansprechwert [A]": de(e.I_an_A, 0),
+            "kleinster 3I0 [A]": "–" if e.I_min_A is None else de(e.I_min_A, 0),
+            "bei Fehler an": e.fehlerort or "–",
+            "Reserve": "–" if e.reserve is None else de(e.reserve, 2), "Bewertung": e.text,
+        } for e in ef.empfindlichkeit]), width="stretch", hide_index=True)
+        st.caption(f"Empfindlichkeit: kleinster Erdstrom bei Ik1 min mindestens "
+                   f"{de(KN.gamma_Reserve, 2)} × kleinster Ansprechwert (wie bei den Phasen). "
+                   "Ein Fehlerwiderstand ist nicht berücksichtigt.")
+    if not ef.pruefungen:
+        return None
+
+    if not st.toggle("Erdstaffelvorschlag berechnen", key="netz_erde_vorschlag_an",
+                     help="Jede UMZ-Erdstufe so schnell wie möglich, aber einen Staffelabstand über "
+                          "allem, was darunter beim selben Erdstrom auslöst. Motoren (Endpunkte) "
+                          "bleiben unverändert, AMZ-Stufen werden nur berücksichtigt. Im Gerät "
+                          "löst eine Stufe mit kleinerem Ansprechwert mindestens "
+                          f"{de(KN.dt_Raster, 2)} s später aus."):
+        return None
+    ev = netz_erdfehler.erdvorschlag(netz, adapter, ks, dt_soll=dt_soll)
+    _meldungen(ev.meldungen)
+    if ev.geaendert:
+        _aenderungsliste([{
+            "Element": v.element, "Stufe": v.stufe, "Größe": "Zeit",
+            "bisher": f"{de(v.t_alt_s, 2)} s", "neu": f"{de(v.t_neu_s, 2)} s",
+            "Warum": _warum_zeit(v.grund, dt_soll),
+        } for v in ev.geaendert], "Was ist zu ändern (Erdstufen)")
+    else:
+        st.caption("Keine Änderung nötig, die Erdstufen im Netz entsprechen bereits dem Vorschlag.")
+    if ev.pruefung is not None and ev.pruefung.status is not None:
+        st.markdown(f"Ergebnis mit diesen Werten: {AMPEL_EMOJI[ev.pruefung.status]} "
+                    f"**Erdstaffelung: {ev.pruefung.status}**")
+    if ev.geaendert:
+        st.caption(f"{len(ev.geaendert)} Zeiten würden geändert. Die Übernahme schreibt sie in die "
+                   "Element-Parameter des Netzes (nicht in die Betriebsmittel-Tabs).")
+        if st.button("✅ Erdvorschlag ins Netz übernehmen", key="netz_erde_uebernehmen"):
+            geaendert = netz_erdfehler.vorschlag_uebernehmen(ziel, ev)
+            _erfolg(f"Erdvorschlag übernommen: {len(ev.geaendert)} Zeiten in "
+                    f"{len(geaendert)} Elementen gesetzt.")
+    with st.expander("Details: alle Erdstufen und Herleitung"):
+        st.dataframe(pd.DataFrame([{
+            "Element": v.element, "Stufe": v.stufe, "Parameter": v.parameter or "–",
+            "t bisher [s]": "–" if v.t_alt_s != v.t_alt_s else de(v.t_alt_s, 2),
+            "t Vorschlag [s]": "–" if v.t_neu_s != v.t_neu_s else de(v.t_neu_s, 2),
+            "Änderung": "✏️" if v.geaendert else "", "Bestimmt durch": v.grund,
+        } for v in ev.vorschlaege]), width="stretch", hide_index=True)
+    return ev
+
+
+# ── 7a. Anlauf der Motoren ───────────────────────────────────────────────────
+def _anlauf(netz: Netz, adapter) -> None:
+    """
+    Anlaufpruefung (Tool-Vorgabe 17.11.2026): I>- und AMZ-Stufen auf dem Weg vom Motor zur Quelle
+    sollen beim Anlauf nicht ausloesen. Nur Anzeige, das Tool aendert nichts am Modell.
+    """
+    sp = netz_stromstaffel.pruefe_strom(netz, adapter)
+    zeilen = [x for x in sp.pruefungen if x.art == "Anlauf"]
+    if not zeilen:
+        return
+    grphead("Anlauf der Motoren gegen die I>-Stufen")
+    rot = [x for x in zeilen if x.status == netz_selektivitaet.ROT]
+    gelb = [x for x in zeilen if x.status == netz_selektivitaet.GELB]
+    if rot:
+        st.markdown(f"{AMPEL_EMOJI[netz_selektivitaet.ROT]} **{len(rot)} Stufen lösen beim Motoranlauf "
+                    f"aus:** " + ", ".join(f"{x.oben} {x.stufe_oben} (Anlauf {x.unten})" for x in rot))
+    elif gelb:
+        st.markdown(f"{AMPEL_EMOJI[netz_selektivitaet.GELB]} **{len(gelb)} Stufen liegen knapp über "
+                    f"dem Anlaufstrom.**")
+    else:
+        st.markdown(f"{AMPEL_EMOJI[netz_selektivitaet.OK]} **Keine I>-Stufe löst beim Anlauf aus.**")
+    st.dataframe(pd.DataFrame([{
+        "Ampel": AMPEL_EMOJI[x.status], "Motor": x.unten, "Schutzort": x.oben,
+        "Stufe": x.stufe_oben, "Untergrenze [A bez.]": "–" if x.I_soll_bez_A is None
+        else de(x.I_soll_bez_A, 0), "Ansprechwert [A bez.]": "–" if x.I_ist_bez_A is None
+        else de(x.I_ist_bez_A, 0), "Bewertung": x.text,
+    } for x in zeilen]), width="stretch", hide_index=True)
+    st.caption(f"Untergrenze = {de(KN.k_Anlauf_Strom, 1)} × Anlaufstrom (Tool-Vorgabe, Zusatzlast anderer "
+               "Abgänge nicht berücksichtigt). Alternativ darf eine Stufe erst nach Anlaufzeit plus "
+               "Staffelabstand auslösen. Ist der Anlauf im Motorrelais gesperrt (Blockierlogik), "
+               "im Parameter-Editor des Motors „Anlauf im Gerät gesperrt“ auf ja setzen, das gilt nur "
+               "für 50-1 des Motors. I>>-Stufen prüft die Stromstaffelung. "
+               "Herleitung: docs/tool_vorgabe_stromstaffelung.md, Abschnitt 8.")
+
+
+# ── 8. Einstellliste ─────────────────────────────────────────────────────────
+def _einstellliste(netz: Netz, adapter, dt_soll: float, vor, rv, ev=None) -> None:
+    """
+    Alle Schutzstufen als Liste mit CSV-Export. Die Liste rechnet nichts selbst: Stufen kommen
+    aus dem Adapter, neue Werte aus dem gewaehlten Vorschlag (vor: Staffelvorschlag, rv: Ringvorschlag,
+    jeweils None, wenn dessen Schalter aus ist). Nur berechnet, wenn der Schalter an ist.
+    """
+    grphead("Einstellliste (Export)")
+    if not st.toggle("Einstellliste anzeigen und als CSV exportieren", key="netz_liste_an",
+                     help="Je Schutzstufe eine Zeile mit Messort, Wandler, Ansprechwert primär und "
+                          "sekundär, Zeit und DIGSI-Adresse. Mit gewähltem Vorschlag zusätzlich die "
+                          "neuen Werte mit Begründung. Herleitung: docs/tool_vorgabe_einstellliste.md."):
+        return
+    quellen = {"Einstellwerte im Netz (Ist)": ("", {})}
+    if vor is not None and vor.zeit is not None and vor.zeit.pruefung is not None:
+        quellen["Staffelvorschlag"] = ("Staffelvorschlag", netz_einstellliste.aus_gesamtvorschlag(vor))
+    if rv is not None and rv.werte:
+        quellen["Ringvorschlag"] = ("Ringvorschlag", netz_einstellliste.aus_ringvorschlag(rv))
+    if ev is not None and ev.geaendert:
+        erd = netz_einstellliste.aus_erdvorschlag(ev)
+        quellen["Erdvorschlag"] = ("Erdvorschlag", erd)
+        if "Staffelvorschlag" in quellen:
+            quellen["Staffel- und Erdvorschlag"] = ("Staffel- und Erdvorschlag",
+                                                    {**quellen["Staffelvorschlag"][1], **erd})
+    if st.session_state.get("netz_liste_quelle") not in quellen:    # Vorschlag-Schalter wurde ausgeschaltet
+        st.session_state["netz_liste_quelle"] = next(iter(quellen))
+    wahl = st.radio("Inhalt der Liste", list(quellen), horizontal=True, key="netz_liste_quelle")
+    if len(quellen) == 1:
+        st.caption("Für eine Liste mit den neuen Werten oben den Staffelvorschlag (im Ring auch den "
+                   "Ringvorschlag) einschalten.")
+    name, aenderungen = quellen[wahl]
+    liste = netz_einstellliste.erstelle(netz, adapter, aenderungen or None, quelle_vorschlag=name,
+                                        dt_soll=dt_soll)
+    _meldungen(liste.meldungen)
+    if not liste.zeilen:
+        return
+    st.dataframe(pd.DataFrame(netz_einstellliste.als_tabelle(liste)), width="stretch", hide_index=True)
+    st.caption("Von der Quelle zur Last. Sekundärwert = Primärwert / Wandlerübersetzung des Messorts. "
+               "Adressen stehen nur dort, wo das Tool sie aus dem Betriebsmittel-Tab kennt, leere "
+               "Felder werden nicht geraten. Die Liste ändert das Netz nicht, übernommen wird über die "
+               "Schaltflächen bei den Vorschlägen.")
+    st.download_button("💾 Einstellliste als CSV", key="netz_liste_csv", mime="text/csv",
+                       data=netz_einstellliste.als_csv(liste, stand=date.today().strftime("%d.%m.%Y")),
+                       file_name="einstellliste.csv")
 
 
 # ── Einstieg ─────────────────────────────────────────────────────────────────
@@ -311,4 +1243,7 @@ def show():
     _form_element(netz)
     if not leer:
         _bearbeiten(netz)
-        _schutzstufen(netz, topo)
+        netz_r, ik_an = _kurzschluss(netz)
+        adapter = _schutzstufen(netz_r, topo)
+        if topo.ok:
+            _staffelung(netz_r, adapter, netz, ik_an)

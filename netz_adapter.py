@@ -15,6 +15,10 @@ Aufgabe:
   3. Die unterschiedlichen Ergebnisformate in eine einheitliche Liste von
      Schutzstufen uebersetzen. Diese Liste ist die Eingabe fuer die
      Staffelung (netz_selektivitaet.py, Woche 2).
+  4. Erdstufen (Trafo IE> / IE>> am Sternpunktwandler, Leitung 67N 3I0, Motor
+     50N/51N) in eine EIGENE Liste erdstufen (Entscheidung 25.11.2026). Die
+     Phasenstaffelung sieht sie nicht. Probleme dabei stehen in erd_meldungen
+     und sind nie ein FEHLER, damit die Phasenstaffelung weiterlaeuft.
 
 Die Rechenkerne werden NICHT veraendert. Alle Werte (Faktoren, Zeiten,
 Kennlinien) stammen aus ihnen bzw. aus den Werksvoreinstellungen in
@@ -34,6 +38,7 @@ import calc_trafo
 import konstanten_leitung
 import konstanten_motor
 import konstanten_trafo
+import netz_kurzschluss
 from netz_modell import Netz
 from netz_topologie import FEHLER, HINWEIS, WARNUNG, Meldung, analysiere
 
@@ -78,12 +83,83 @@ PFLICHT = {
 # Motor-Rechenkern zum Absturz bringen.
 OPTIONAL_ZAHL = {
     "trafo":   ("Stufensteller_pm", "Ik_max_OS_kA", "Ik_max_US_kA", "k_S_IGG",
-                "f_I_Ph", "t_I_Ph", "t_I_Ph_HH", "f_I_Ph_HH_OS", "f_I_Ph_HH_US"),
+                "f_I_Ph", "t_I_Ph", "t_I_Ph_HH", "f_I_Ph_HH_OS", "f_I_Ph_HH_US",
+                "t_I_Ph_US", "t_I_Ph_HH_US"),
     "leitung": ("L_km", "X_Belag", "phi_Ltg", "Ik_max_kA", "Ik_min_kA",
                 "iph_h", "t_iph_h", "iph_hh", "t_iph_hh"),
     "motor":   ("Pn_kW", "IN_direkt", "cos_phi", "eta", "I_Anlauf_Verh", "t_Anlauf",
-                "f_50_2", "t_50_2", "f_50_1", "t_50_1", "f_51", "T_51"),
+                "f_50_2", "t_50_2", "f_50_1", "t_50_1", "f_51", "T_51",
+                "f_50N2", "t_50N2", "f_50N1", "t_50N1", "f_51N", "T_51N"),
 }
+# Erdstufen-Felder: dieselbe Pruefung, ergaenzt um die Zahlenfelder des Erdschutzes
+OPTIONAL_ZAHL["trafo"] += ("CT_E_Prim", "CT_E_Sek", "I_E", "t_I_E", "I_E_HH", "t_I_E_HH",
+                           "UrT_OS_kV", "UrT_US_kV", "R0_R_T", "X0_X_T")
+OPTIONAL_ZAHL["leitung"] += ("i_3I0H", "t_3I0H", "i_3I0HH", "t_3I0HH", "i_3I0HHH", "t_3I0HHH",
+                             "R0_Belag", "X0_Belag", "RE_RL", "XE_XL", "A_mm2", "t_KS_s")
+
+# Anzeigename der Stufe -> Schluessel der Verzoegerung im Element-Parametersatz.
+# Damit kann ein Staffelvorschlag (netz_selektivitaet) ins Netzmodell zurueck-
+# geschrieben werden, ohne die Rechenkerne zu kennen. Ein Test prueft, dass jeder
+# Schluessel in OPTIONAL_ZAHL steht und den Rechenkern erreicht.
+ZEIT_PARAMETER = {
+    "trafo":   {"I> OS": "t_I_Ph", "I>> OS": "t_I_Ph_HH",
+                "I> US": "t_I_Ph_US", "I>> US": "t_I_Ph_HH_US"},
+    "leitung": {"Iph>": "t_iph_h", "Iph>>": "t_iph_hh"},
+    "motor":   {"I> (50-1)": "t_50_1", "I>> (50-2)": "t_50_2"},
+}
+
+# Erdstufen: Anzeigename -> Schluessel der Verzoegerung bzw. des Ansprechwerts im
+# Element-Parametersatz (fuer Vorschlaege aus netz_erdfehler). Einheit des Ansprechwerts:
+# Trafo IE und Motor 50N in A sekundaer (Wandler: Trafo CT_E, Motor Phasenwandler),
+# Leitung 3I0 als Faktor x IN_Ltg. Siehe erd_einheit().
+ERD_ZEIT_PARAMETER = {
+    "trafo":   {"IE>": "t_I_E", "IE>>": "t_I_E_HH"},
+    "leitung": {"3I0>": "t_3I0H", "3I0>>": "t_3I0HH", "3I0>>>": "t_3I0HHH"},
+    "motor":   {"50N-1": "t_50N1", "50N-2": "t_50N2"},
+}
+ERD_STROM_PARAMETER = {
+    "trafo":   {"IE>": "I_E", "IE>>": "I_E_HH"},
+    "leitung": {"3I0>": "i_3I0H", "3I0>>": "i_3I0HH", "3I0>>>": "i_3I0HHH"},
+    "motor":   {"50N-1": "f_50N1", "50N-2": "f_50N2", "51N": "f_51N"},
+}
+
+# Anzeigename der I>>-Stufe -> Schluessel des Ansprechfaktors (x IN) im Element-
+# Parametersatz. Damit kann ein Stromvorschlag (netz_stromstaffel) ins Netzmodell
+# zurueckgeschrieben werden. Ein Test prueft, dass jeder Schluessel in OPTIONAL_ZAHL
+# steht und den Rechenkern erreicht (primaerer Ansprechwert = Faktor * IN).
+STROM_PARAMETER = {
+    "trafo":   {"I>> OS": "f_I_Ph_HH_OS", "I>> US": "f_I_Ph_HH_US"},
+    "leitung": {"Iph>>": "iph_hh"},
+    "motor":   {"I>> (50-2)": "f_50_2"},
+}
+
+
+def nennstrom_A(typ: str, stufe: str, p: dict):
+    """
+    Bezugsstrom IN [A primaer], mit dem der Rechenkern den Faktor der Stufe
+    multipliziert (I_prim = Faktor * IN). None, wenn nicht ermittelbar.
+    Trafo: IN der jeweiligen Seite, Leitung: IN_Ltg, Motor: IN des Motors.
+    """
+    try:
+        if typ == "trafo":
+            g = calc_trafo.grundgroessen(p)
+            return g["IN_OS_prim"] if stufe.endswith("OS") else g["IN_US_prim"]
+        if typ == "leitung":
+            return calc_leitung.grundgroessen(p)["IN_Ltg"]
+        if typ == "motor":
+            return calc_motor.grundgroessen(p)["IN_prim"]
+    except Exception:
+        return None
+    return None
+
+
+def anlaufstrom_A(p: dict):
+    """Anlaufstrom des Motors [A primaer] aus dem Rechenkern, None wenn nicht ermittelbar."""
+    try:
+        I = calc_motor.grundgroessen(p)["I_Anlauf_prim"]
+    except Exception:
+        return None
+    return I if _ist_zahl(I) and I > 0 else None       # 0 A bedeutet: Rechenkern kennt den Motor nicht
 
 
 @dataclass(frozen=True)
@@ -100,6 +176,7 @@ class Schutzstufe:
     aktiv: bool
     quelle: str           # Herkunft, z. B. "calc_trafo.schutz_5051_phase (OS)"
     hinweis: str = ""
+    richtung: str = ""    # nur Erdstufen der Leitung: "Vorwärts", "Rückwärts", "Ungerichtet"
 
 
 @dataclass
@@ -108,6 +185,8 @@ class AdapterErgebnis:
     meldungen: list = field(default_factory=list)
     p_voll: dict = field(default_factory=dict)      # Element-ID -> vollstaendiger Parametersatz
     topologie: object = None
+    erdstufen: list = field(default_factory=list)   # Erdstufen, getrennt von den Phasenstufen
+    erd_meldungen: list = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
@@ -185,9 +264,9 @@ def _stufen_trafo(eid, e, p, kn) -> list:
     for seite, ort in (("OS", e.von), ("US", e.nach)):
         UN = kn[ort].UN_kV
         stufen.append(Schutzstufe(eid, f"I> {seite}", "51", ort, UN, r[seite]["I_prim"],
-                                  UMZ, r["t_I"], None, True, f"{q} ({seite})"))
+                                  UMZ, r[seite]["t_I"], None, True, f"{q} ({seite})"))
         stufen.append(Schutzstufe(eid, f"I>> {seite}", "50", ort, UN, r[seite]["IHH_prim"],
-                                  UMZ, r["t_IHH"], None, True, f"{q} ({seite})"))
+                                  UMZ, r[seite]["t_IHH"], None, True, f"{q} ({seite})"))
     return stufen
 
 
@@ -224,6 +303,85 @@ def _stufen_motor(eid, e, p, kn) -> list:
         Schutzstufe(eid, "I>> (50-2)", "50", e.von, UN, r["I_50_2_prim"], UMZ,
                     r["t_50_2"], None, True, q),
     ]
+
+
+# ── Erdstufen ────────────────────────────────────────────────────────────────
+def erd_einheit(typ: str) -> str:
+    """Einheit des Ansprechwerts im Parametersatz: 'A sek.' oder 'x IN'."""
+    return "x IN" if typ == "leitung" else "A sek."
+
+
+def erd_wandler(typ: str, p: dict, g: dict | None = None):
+    """Umrechnungsfaktor Parameterwert -> A primaer. None, wenn nicht ermittelbar."""
+    try:
+        if typ == "trafo":
+            g = g or calc_trafo.grundgroessen(p)
+            return g["kCT_E"] or None
+        if typ == "motor":
+            g = g or calc_motor.grundgroessen(p)
+            return g["kCT"] or None
+        if typ == "leitung":
+            g = g or calc_leitung.grundgroessen(p)
+            return g["IN_Ltg"] or None
+    except Exception:
+        return None
+    return None
+
+
+def _erdstufen_trafo(eid, e, p, kn, netz) -> tuple:
+    """IE> / IE>> am Sternpunktwandler, nur wenn der Sternpunkt des Trafos geerdet ist."""
+    ort = netz_kurzschluss.erdung_am_trafo(netz, eid)
+    if ort is None:
+        return [], []
+    g = calc_trafo.grundgroessen(p)
+    r = calc_trafo.schutz_5051_erde(g, p)
+    if not r["anwendbar"]:
+        return [], [Meldung(
+            HINWEIS, f"{eid}: Der Sternpunkt an {ort} ist geerdet, aber es ist kein "
+                     f"Sternpunktwandler (CT_E_Prim, CT_E_Sek) eingetragen. Ohne ihn keine "
+                     f"Erdstufe IE> am Trafo.", (eid,))]
+    q = "calc_trafo.schutz_5051_erde"
+    UN = kn[ort].UN_kV
+    return [
+        Schutzstufe(eid, "IE>", "51N", ort, UN, r["IE_prim"], UMZ, r["t_IE"], None, True, q),
+        Schutzstufe(eid, "IE>>", "50N", ort, UN, r["IEHH_prim"], UMZ, r["t_IEHH"], None, True, q),
+    ], []
+
+
+def _erdstufen_leitung(eid, e, p, kn, anfang) -> tuple:
+    g = calc_leitung.grundgroessen(p)
+    r = calc_leitung.schutz_67N(g, p)
+    if not r["geerdet"]:
+        return [], []
+    if not r["aktiv"]:
+        return [], [Meldung(
+            HINWEIS, f"{eid}: Erdkurzschlussschutz 67N ist ausgeschaltet, die Leitung hat "
+                     f"keine Erdstufe.", (eid,))]
+    q = "calc_leitung.schutz_67N"
+    UN = kn[anfang].UN_kV
+    out = []
+    for name, key in (("3I0>>>", "3I0HHH"), ("3I0>>", "3I0HH"), ("3I0>", "3I0H")):
+        d = r[key]
+        out.append(Schutzstufe(eid, name, "67N", anfang, UN, d["i_prim"], UMZ, d["t"], None,
+                               d["aktiv"], q, richtung=d["modus"]))
+    return out, []
+
+
+def _erdstufen_motor(eid, e, p, kn) -> tuple:
+    g = calc_motor.grundgroessen(p)
+    r = calc_motor.schutz_50N51N(g, p)
+    if not r["niederohmig"]:
+        return [], []
+    q = "calc_motor.schutz_50N51N"
+    UN = kn[e.von].UN_kV
+    return [
+        Schutzstufe(eid, "51N", "51N", e.von, UN, r["f_51N_prim"], r["kennlinie_51N"],
+                    None, r["T_51N"], True, q),
+        Schutzstufe(eid, "50N-1", "50N", e.von, UN, r["f_50N1_prim"], UMZ,
+                    r["t_50N1"], None, True, q),
+        Schutzstufe(eid, "50N-2", "50N", e.von, UN, r["f_50N2_prim"], UMZ,
+                    r["t_50N2"], None, True, q),
+    ], []
 
 
 def _stufen_einspeisung(eid, e, p, kn) -> tuple:
@@ -303,6 +461,21 @@ def erzeuge_schutzstufen(netz: Netz, topologie=None) -> AdapterErgebnis:
         except Exception as exc:          # Rechenkern darf die Oberflaeche nie abstuerzen lassen
             erg.meldungen.append(Meldung(
                 FEHLER, f"{eid}: Rechenkern meldet {type(exc).__name__}: {exc}", (eid,)))
+            continue
+        # Erdstufen getrennt: ein Problem hier ist nie ein FEHLER der Phasenstaffelung
+        try:
+            if e.typ == "trafo":
+                st, m = _erdstufen_trafo(eid, e, p, kn, netz)
+            elif e.typ == "leitung":
+                st, m = _erdstufen_leitung(eid, e, p, kn, zusp[eid])
+            else:
+                st, m = _erdstufen_motor(eid, e, p, kn)
+            erg.erdstufen += st
+            erg.erd_meldungen += m
+        except Exception as exc:
+            erg.erd_meldungen.append(Meldung(
+                WARNUNG, f"{eid}: Erdstufen nicht ermittelbar ({type(exc).__name__}: {exc}).",
+                (eid,)))
 
     for s in erg.stufen:
         if s.hinweis and s.stufe in ("Iph>",):

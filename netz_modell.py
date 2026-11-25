@@ -127,6 +127,10 @@ class Knoten:
     sternpunkt: str
     Ik_max_kA: float | None = None
     Ik_min_kA: float | None = None
+    # Nur bei sternpunkt == "niederohmig": hier ist das Netz geerdet, der Erdfehlerstrom ist
+    # auf diesen Wert begrenzt (R_E = UN / (sqrt(3) * I_E)). Bei anderer Sternpunktbehandlung
+    # bleibt der Wert gespeichert, die Kurzschlussrechnung ignoriert ihn mit Hinweis.
+    I_E_begr_A: float | None = None
 
     def __post_init__(self):
         _pruefe_id(self.id, "Knoten")
@@ -137,6 +141,8 @@ class Knoten:
         self.sternpunkt = _pruefe_auswahl(self.sternpunkt, STERNPUNKTE, f"{was} Sternpunkt")
         self.Ik_max_kA = _pruefe_zahl(self.Ik_max_kA, f"{was} Ik max", erlaubt_none=True, groesser_null=True)
         self.Ik_min_kA = _pruefe_zahl(self.Ik_min_kA, f"{was} Ik min", erlaubt_none=True, groesser_null=True)
+        self.I_E_begr_A = _pruefe_zahl(self.I_E_begr_A, f"{was} Erdfehlerstrom-Begrenzung",
+                                       erlaubt_none=True, groesser_null=True)
         if (self.Ik_max_kA is not None and self.Ik_min_kA is not None
                 and self.Ik_min_kA > self.Ik_max_kA):
             raise ModellFehler(
@@ -149,6 +155,7 @@ class Knoten:
             "id": self.id, "name": self.name, "UN_kV": self.UN_kV,
             "sternpunkt": self.sternpunkt,
             "Ik_max_kA": self.Ik_max_kA, "Ik_min_kA": self.Ik_min_kA,
+            "I_E_begr_A": self.I_E_begr_A,
         }
 
 
@@ -229,11 +236,12 @@ class Netz:
     # ── Knoten ───────────────────────────────────────────────────────────────
     def knoten_hinzufuegen(self, id: str, name: str, UN_kV: float, sternpunkt: str,
                            Ik_max_kA: float | None = None,
-                           Ik_min_kA: float | None = None) -> Knoten:
+                           Ik_min_kA: float | None = None,
+                           I_E_begr_A: float | None = None) -> Knoten:
         _pruefe_id(id, "Knoten")
         if id in self._knoten or id in self._elemente:
             raise ModellFehler(f"ID {id} ist bereits vergeben.")
-        k = Knoten(id, name, UN_kV, sternpunkt, Ik_max_kA, Ik_min_kA)
+        k = Knoten(id, name, UN_kV, sternpunkt, Ik_max_kA, Ik_min_kA, I_E_begr_A)
         self._knoten[id] = k
         return copy.deepcopy(k)
 

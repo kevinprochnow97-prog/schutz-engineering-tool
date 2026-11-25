@@ -125,7 +125,8 @@
         "I_Anlauf_Verh": 5.5,
         "t_Anlauf": 8,
         "CT_Prim": 150,
-        "CT_Sek": 1
+        "CT_Sek": 1,
+        "f_50_2": 8.81
       }
     },
     {
