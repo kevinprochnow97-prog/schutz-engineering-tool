@@ -103,20 +103,21 @@ def test_referenznetz_handrechnung():
     v = _v(erg, "L1", "Iph>>")
     assert v.status == SS.ANGEHOBEN and v.faktor_neu == 4.82 and abs(v.I_neu_A - 1446.0) < 1e-9
     assert v.I_alt_A == 600.0 and v.parameter == "iph_hh" and "Anlaufstrom" in v.grund
-    # L2: T2 (OS) darunter. Ik max K5 35 kA * 0,4/10 = 1400 A, * 1,2 = 1680 A, / 300 A = 5,6
+    # L2: T2 (OS) darunter. Ik max K5 35,4 kA * 0,4/10 = 1416 A, * 1,2 = 1699,2 A, / 300 A = 5,664
+    # -> aufgerundet 5,67 -> 1701 A
     v = _v(erg, "L2", "Iph>>")
-    assert v.status == SS.ANGEHOBEN and v.faktor_neu == 5.6 and abs(v.I_neu_A - 1680.0) < 1e-9
+    assert v.status == SS.ANGEHOBEN and v.faktor_neu == 5.67 and abs(v.I_neu_A - 1701.0) < 1e-9
     assert "Ik max K5" in v.grund and "T2" in v.grund
-    # T2 (OS): derselbe Bezug 1680 A, der Tab liefert 1680,3 A. Reicht, bleibt.
+    # T2 (OS): derselbe Bezug 1699,2 A, der Tab liefert 1698,8 A (innerhalb 0,1 %). Reicht, bleibt.
     v = _v(erg, "T2", "I>> OS")
-    assert v.status == SS.BLEIBT and not v.geaendert and abs(v.I_neu_A - 1680.3) < 0.1
-    # T1 (OS): K2 10 kA * 10/110 / (1 - 0,16) = 1082,25 A bei 110 kV, * 1,2 = 1298,70 A.
-    # IN_OS = 104,97 A -> Faktor 12,372 -> aufgerundet 12,38 -> 1299,6 A
+    assert v.status == SS.BLEIBT and not v.geaendert and abs(v.I_neu_A - 1698.8) < 0.1
+    # T1 (OS): K2 11,1 kA * 10/110 / (1 - 0,16) = 1201,30 A bei 110 kV, * 1,2 = 1441,56 A.
+    # IN_OS = 104,97 A -> Faktor 13,733 -> aufgerundet 13,74 -> 1442,3 A
     v = _v(erg, "T1", "I>> OS")
-    assert v.status == SS.ANGEHOBEN and v.faktor_neu == 12.38 and v.parameter == "f_I_Ph_HH_OS"
-    assert abs(v.I_neu_A - 12.38 * 104.9728) < 0.01
-    assert v.I_neu_A >= 1.2 * 10000 * (10 / 110) / 0.84 - 1e-6
-    # T1 (US): L1 dahinter, K3 9,1 kA * 1,2 = 10,92 kA liegt ueber Ik max K2 (10 kA): nicht wirksam
+    assert v.status == SS.ANGEHOBEN and v.faktor_neu == 13.74 and v.parameter == "f_I_Ph_HH_OS"
+    assert abs(v.I_neu_A - 13.74 * 104.9728) < 0.01
+    assert v.I_neu_A >= 1.2 * 11100 * (10 / 110) / 0.84 - 1e-6
+    # T1 (US): L1 dahinter, K3 10,2 kA * 1,2 = 12,24 kA liegt ueber Ik max K2 (11,1 kA): nicht wirksam
     v = _v(erg, "T1", "I>> US")
     assert v.status == SS.NICHT_WIRKSAM and not v.geaendert and v.I_neu_A == v.I_alt_A
     assert "Stromstaffelung nicht wirksam" in _meldungen(erg, HINWEIS)
@@ -126,8 +127,8 @@ def test_referenznetz_handrechnung():
         assert v.status == SS.ENDPUNKT and not v.geaendert
     assert "Motor-Tab-Fenster" not in _meldungen(erg, WARNUNG)
     assert sorted(erg.parameter_je_element()) == ["L1", "L2", "T1"]
-    assert erg.parameter_je_element()["T1"] == {"f_I_Ph_HH_OS": 12.38}
-    print("Referenznetz OK: L1 4,82 · L2 5,60 · T1 OS 12,38 · T2 bleibt · T1 US nicht wirksam.")
+    assert erg.parameter_je_element()["T1"] == {"f_I_Ph_HH_OS": 13.74}
+    print("Referenznetz OK: L1 4,82 · L2 5,67 · T1 OS 13,74 · T2 bleibt · T1 US nicht wirksam.")
 
 
 # ── 4. Stufensteller wirkt ───────────────────────────────────────────────────
@@ -135,14 +136,14 @@ def test_stufensteller_im_vorschlag():
     n0 = _ref()
     _p_aendern(n0, "T1", Stufensteller_pm=0)
     v0 = _v(SS.stromvorschlag(n0), "T1", "I>> OS")
-    # ohne Stufensteller: 1,2 * 909,09 A = 1090,9 A, / 104,9728 A = 10,392. Der Tab liefert
-    # 10,39 (1090,7 A), das liegt innerhalb der Stromtoleranz von 0,1 %: der Wert bleibt
-    assert v0.status == SS.BLEIBT and abs(v0.faktor_neu - 10.39) < 1e-6, (v0.status, v0.faktor_neu)
-    assert abs(v0.I_neu_A - 1.2 * 10000 * 10 / 110) < 0.1 * 1.2 * 10000 * 10 / 110 / 100
+    # ohne Stufensteller: 1,2 * 1009,09 A = 1210,9 A, / 104,9728 A = 11,535. Der Tab liefert
+    # 11,54 (1211,4 A), das liegt innerhalb der Stromtoleranz von 0,1 %: der Wert bleibt
+    assert v0.status == SS.BLEIBT and abs(v0.faktor_neu - 11.54) < 1e-6, (v0.status, v0.faktor_neu)
+    assert abs(v0.I_neu_A - 1.2 * 11100 * 10 / 110) < 0.1 * 1.2 * 11100 * 10 / 110 / 100
     n1 = _ref()
     v1 = _v(SS.stromvorschlag(n1), "T1", "I>> OS")
-    assert abs(v1.I_neu_A / v0.I_neu_A - 1 / 0.84) < 0.01      # 12,38 / 10,39
-    print("Stufensteller OK: ±16 % hebt I>> OS von 10,39 auf 12,38 × IN (Faktor 1/0,84).")
+    assert abs(v1.I_neu_A / v0.I_neu_A - 1 / 0.84) < 0.01      # 13,74 / 11,54
+    print("Stufensteller OK: ±16 % hebt I>> OS von 11,54 auf 13,74 × IN (Faktor 1/0,84).")
 
 
 # ── 5. Nie absenken ──────────────────────────────────────────────────────────
@@ -161,23 +162,23 @@ def test_nie_absenken():
 
 # ── 6. Wirksamkeit als Parametersweep ────────────────────────────────────────
 def test_wirksamkeit_sweep():
-    """T1 US, Bezug L1: 1,2 * Ik max K3 gegen Ik max K2 = 10 kA und den Tab-Wert 8082,9 A."""
-    for ik3 in (1.0, 3.0, 5.0, 6.7, 7.0, 7.5, 8.0, 8.3, 8.34, 8.5, 9.1):
+    """T1 US, Bezug L1: 1,2 * Ik max K3 gegen Ik max K2 = 11,1 kA und den Tab-Wert 8082,9 A."""
+    for ik3 in (1.0, 3.0, 5.0, 6.7, 7.0, 7.5, 8.0, 8.3, 8.5, 9.0, 9.25, 9.3, 10.2):
         n = _ref()
         n.knoten_aendern("K3", Ik_max_kA=ik3, Ik_min_kA=None)
         erg = SS.stromvorschlag(n)
         v = _v(erg, "T1", "I>> US")
         soll = 1.2 * ik3 * 1000
-        # L2 (Ik K4 = 7,9 kA) liefert 9480 A als zweiten Kandidaten
-        soll = max(soll, 1.2 * 7900.0)
-        if soll > 10000.0 * (1 + KN.EPS_STROM):
+        # L2 (Ik K4 = 8,5 kA) liefert 10200 A als zweiten Kandidaten
+        soll = max(soll, 1.2 * 8500.0)
+        if soll > 11100.0 * (1 + KN.EPS_STROM):
             assert v.status == SS.NICHT_WIRKSAM, (ik3, v.status)
         elif soll <= 8082.9 * (1 + KN.EPS_STROM):
             assert v.status == SS.BLEIBT, (ik3, v.status)
         else:
             assert v.status == SS.ANGEHOBEN, (ik3, v.status)
             assert soll - 1e-6 <= v.I_neu_A < soll + 0.01 * 1154.7 + 1e-6    # aufgerundet, max. ein Raster
-    print("Wirksamkeit OK: 11 Werte von Ik max K3, Grenze bei 1,2 × Ik = Ik max K2.")
+    print("Wirksamkeit OK: 13 Werte von Ik max K3, Grenze bei 1,2 × Ik = Ik max K2.")
 
 
 # ── 7. Gegenpruefung ─────────────────────────────────────────────────────────
@@ -266,8 +267,8 @@ def test_gesamtvorschlag():
     assert S.ROT not in {p.status for p in gesamt.strom.pruefung.pruefungen if p.art != "Anlauf"}
     # Beide Vorschlagsarten in einem Parametersatz
     pe = gesamt.parameter_je_element()
-    assert pe["L2"] == {"iph_hh": 5.6, "t_iph_h": 1.1, "t_iph_hh": 0.4}
-    assert pe["T1"]["f_I_Ph_HH_OS"] == 12.38 and pe["T1"]["t_I_Ph"] == 1.0
+    assert pe["L2"] == {"iph_hh": 5.67, "t_iph_h": 1.1, "t_iph_hh": 0.4}
+    assert pe["T1"]["f_I_Ph_HH_OS"] == 13.74 and pe["T1"]["t_I_Ph"] == 1.0
     assert len(gesamt.strom.geaendert) == 3 and len(gesamt.zeit.geaendert) == 8
     assert len(gesamt.geaendert) == 11
     print("Gesamtvorschlag OK: T1 (OS) 1,0 s statt 1,7 s, Abstand zum Netzbetreiber 0,2 s.")
@@ -349,7 +350,7 @@ def test_ring():
     n.setze_netzform("ring")
     g = SS.gesamtvorschlag(n)
     assert g.ok and g.zeit is not None
-    assert _v(g.strom, "L2", "Iph>>").faktor_neu == 5.6 and _v(g.strom, "T1", "I>> OS").faktor_neu == 12.38
+    assert _v(g.strom, "L2", "Iph>>").faktor_neu == 5.67 and _v(g.strom, "T1", "I>> OS").faktor_neu == 13.74
     print("Ring OK: offen betriebener Ring liefert denselben Vorschlag wie das Strahlennetz.")
 
 
@@ -386,7 +387,7 @@ def test_stufenstellerlage_paar():
 
 def test_stufenstellerlage_referenznetz():
     # Gestaffeltes Netz laut Gesamtvorschlag uebernehmen, dann I>> OS von T1 knapp bemessen:
-    # 9,53 x IN_OS = 11 003 A bez. = 1,10 x Ik max K2. Nennlage: regt nie an.
+    # 10,58 x IN_OS = 12 217 A bez. = 1,10 x Ik max K2 (11,1 kA). Nennlage: regt nie an.
     ergebnisse = {}
     for pm in (0, 16):
         n = _ref()
@@ -395,7 +396,7 @@ def test_stufenstellerlage_referenznetz():
             p = dict(n.elemente[eid].p)
             p.update(p_neu)
             n.parameter_setzen(eid, p)
-        _p_aendern(n, "T1", f_I_Ph_HH_OS=9.53, t_I_Ph_HH=0.1)
+        _p_aendern(n, "T1", f_I_Ph_HH_OS=10.58, t_I_Ph_HH=0.1)
         pr = S.pruefe_selektivitaet(n)
         ergebnisse[pm] = pr.pruefung("T1 (US)", "T1 (OS)")
         vor = S.staffelvorschlag(n)

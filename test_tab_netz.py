@@ -244,7 +244,7 @@ def test_staffelvorschlag():
     liste = at.dataframe[4].value
     assert len(liste) == 11 and list(liste["Größe"]).count("Ansprechwert") == 3   # 3 Stroeme, 8 Zeiten
     z = liste[(liste["Element"] == "L2") & (liste["Größe"] == "Ansprechwert")].iloc[0]
-    assert (z["bisher"], z["neu"]) == ("600 A (2,00 × IN)", "1680 A (5,60 × IN)")
+    assert (z["bisher"], z["neu"]) == ("600 A (2,00 × IN)", "1701 A (5,67 × IN)")
     assert z["Warum"] == "1,2 × Ik max hinter T2 (OS)"
     z = liste[(liste["Element"] == "T1") & (liste["Stufe"] == "I> OS")].iloc[0]
     assert (z["bisher"], z["neu"]) == ("0,50 s", "1,00 s") and z["Warum"].startswith("0,30 s über T1 (US)")
@@ -262,8 +262,8 @@ def test_staffelvorschlag():
     _klick(at, "netz_vorschlag_uebernehmen")
     assert "3 Ansprechwerte und 8 Zeiten in 4 Elementen" in _texte(at.success)
     netz = at.session_state["netz_modell"]
-    assert netz.elemente["L2"].p["iph_hh"] == 5.6 and netz.elemente["L1"].p["iph_hh"] == 4.82
-    assert netz.elemente["T1"].p["f_I_Ph_HH_OS"] == 12.38
+    assert netz.elemente["L2"].p["iph_hh"] == 5.67 and netz.elemente["L1"].p["iph_hh"] == 4.82
+    assert netz.elemente["T1"].p["f_I_Ph_HH_OS"] == 13.74
     assert "f_I_Ph_HH_OS" not in netz.elemente["T2"].p      # unveraendert, nichts festgeschrieben
     assert netz.elemente["T1"].p["t_I_Ph"] == 1.0 and netz.elemente["T1"].p["t_I_Ph_US"] == 0.7
     assert netz.elemente["T2"].p["t_I_Ph_US"] == 0.5        # US-Endpunkt explizit festgehalten
@@ -297,7 +297,7 @@ def test_ring():
     liste = at.dataframe[5].value
     assert len(liste) == 12
     z = liste[(liste["Element"] == "L2") & (liste["Größe"] == "Ansprechwert")].iloc[0]
-    assert (z["bisher"], z["neu"]) == ("600 A (2,00 × IN)", "1680 A (5,60 × IN)")
+    assert (z["bisher"], z["neu"]) == ("600 A (2,00 × IN)", "1701 A (5,67 × IN)")
     assert z["Warum"] == "Lage K34: 1,2 × Ik max hinter T2 (OS)"
     z = liste[(liste["Element"] == "T1") & (liste["Stufe"] == "I> OS")].iloc[0]
     assert (z["bisher"], z["neu"]) == ("0,50 s", "1,00 s")
@@ -307,8 +307,8 @@ def test_ring():
     _klick(at, "netz_ring_uebernehmen")
     assert "Ringvorschlag übernommen: 12 Werte in 4 Elementen" in _texte(at.success)
     netz = at.session_state["netz_modell"]
-    assert netz.elemente["L1"].p["iph_hh"] == 5.6 and netz.elemente["L2"].p["iph_hh"] == 5.6
-    assert netz.elemente["T1"].p["f_I_Ph_HH_US"] == 8.21
+    assert netz.elemente["L1"].p["iph_hh"] == 5.67 and netz.elemente["L2"].p["iph_hh"] == 5.67
+    assert netz.elemente["T1"].p["f_I_Ph_HH_US"] == 8.84
     assert set(at.dataframe[4].value["Ampel"]) == {"🟡"}                 # Ist-Zustand jetzt in allen Lagen gelb
     assert "Keine Änderung nötig, die Werte im Netz gelten bereits in allen Lagen" in _texte(at.caption)
     assert len([b for b in at.button if b.key == "netz_ring_uebernehmen"]) == 0
@@ -366,9 +366,9 @@ def test_kurzschluss_anzeige():
     assert len(at.dataframe) == 7 and len(at.expander) == 1
     assert len(at.error) == 0 and len(at.warning) == 0
     df = at.dataframe[2].value.set_index("Knoten")
-    assert df.loc["K2", "Ik″ max eingegeben [kA]"] == "10,00"
+    assert df.loc["K2", "Ik″ max eingegeben [kA]"] == "11,10"
     # 25.11.2026: Ik max mit Motoren (Norm 7.1.2 e), Ik min mit Endtemperatur (Gl. 32)
-    assert df.loc["K2", "Ik″ max berechnet [kA]"] == "11,04" and df.loc["K2", "Abw. max"] == "+10,4 % ⚠️"
+    assert df.loc["K2", "Ik″ max berechnet [kA]"] == "11,04" and df.loc["K2", "Abw. max"] == "−0,6 %"
     assert df.loc["K4", "Ik min berechnet [kA]"] == "5,74"
     assert df.loc["K3", "Ik″ max nur Netz [kA]"] == "9,27"
     assert df.loc["K5", "Ik min eingegeben [kA]"] == "–"
@@ -386,7 +386,7 @@ def test_kurzschluss_anzeige():
     netz = at.session_state["netz_modell"]
     assert "Staffelvorschlag übernommen" in _texte(at.success)
     assert netz.to_dict() != vorher and netz.knoten["K5"].Ik_min_kA is None
-    assert [k.Ik_max_kA for k in netz.knoten.values()] == [15.7, 10.0, 9.1, 7.9, 35.0]
+    assert [k.Ik_max_kA for k in netz.knoten.values()] == [15.9, 11.1, 10.2, 8.5, 35.4]
     print("Kurzschluss-Anzeige OK: eingegeben, berechnet, Abweichung, Modell unverändert.")
 
 
@@ -402,7 +402,7 @@ def test_kurzschluss_ring():
     assert list(lagen.index)[1:] == ["K34 offen", "L1 offen", "L2 offen", "Ring geschlossen"]
     # 25.11.2026: mit Motoren aendern sich auch K1 und K2 je Lage (Motorbeitrag ueber den Ring)
     assert list(lagen.columns) == ["K1", "K2", "K3", "K4", "K5"]
-    assert lagen.iloc[0]["K4"] == "7,90 / 5,80"                      # eingegeben
+    assert lagen.iloc[0]["K4"] == "8,50 / 5,80"                      # eingegeben
     assert lagen.loc["L2 offen", "K4"] == "10,10 / 6,78"
     assert lagen.loc["L1 offen", "K3"] == lagen.loc["L1 offen", "K4"] == "8,81 / 5,74"
     warn = _texte(at.warning)
@@ -414,7 +414,7 @@ def test_kurzschluss_ring():
     _klick(at, "netz_ring_uebernehmen")
     netz = at.session_state["netz_modell"]
     assert "Ringvorschlag übernommen" in _texte(at.success)
-    assert netz.elemente["L1"].p["iph_hh"] == 5.6 and netz.knoten["K5"].Ik_min_kA is None
+    assert netz.elemente["L1"].p["iph_hh"] == 5.67 and netz.knoten["K5"].Ik_min_kA is None
     print("Kurzschluss-Ring OK: Werte je Lage, Warnung zu K3 und K4, Übernahme ins Modell.")
 
 
@@ -533,7 +533,7 @@ def test_knoten_bearbeiten():
     # Formular zeigt die Werte aus dem Modell
     assert at.text_input(key="netz_ed_k_name").value == "Unterverteilung 10 kV"
     assert at.number_input(key="netz_ed_k_un").value == 10.0
-    assert at.number_input(key="netz_ed_k_ikmax").value == 7.9 and at.selectbox(key="netz_ed_k_stp").value == "isoliert"
+    assert at.number_input(key="netz_ed_k_ikmax").value == 8.5 and at.selectbox(key="netz_ed_k_stp").value == "isoliert"
     # Entwurf ausfuellen. Ungueltig: Ik min ueber Ik max. Modell unveraendert, Eingaben bleiben
     at.text_input(key="netz_ed_k_name").set_value("Halle 2")
     at.selectbox(key="netz_ed_k_stp").set_value("kompensiert")
@@ -731,7 +731,7 @@ def test_einstellliste_ist_und_vorschlag():
     liste = at.dataframe[-1].value
     assert list(liste["geändert"]).count("ja") == 9      # 3 Ansprechwerte + 8 Zeiten auf 9 Stufen (L1/L2 Iph>>, T1 I>> OS haben beides)
     z = liste[(liste["Element"] == "L2") & (liste["Stufe"] == "Iph>>")].iloc[0]
-    assert z["I prim. neu [A]"] == "1680,0" and "Ansprechwert" in z["Begründung"]
+    assert z["I prim. neu [A]"] == "1701,0" and "Ansprechwert" in z["Begründung"]
     # Schalter aus: Liste weg, Modell nie veraendert
     vorher = at.session_state["netz_modell"].to_dict()
     at.toggle(key="netz_vorschlag_an").set_value(False).run()

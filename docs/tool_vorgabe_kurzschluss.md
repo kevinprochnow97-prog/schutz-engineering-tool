@@ -116,7 +116,7 @@ werden kann. Keiner davon ist ein Pflichtfeld, beide Beispielnetze rechnen ohne 
 
 ## 5. Ergebnis in den Beispielnetzen
 
-Referenznetz, Ik max / Ik min zweipolig in kA:
+Referenznetz, Ik max / Ik min zweipolig in kA. Spalte „eingegeben“: Handwerte bis 25.11.2026, ohne Motoren:
 
 | Knoten | eingegeben | berechnet ohne K_T | Voreinstellung (K_T nur bei Ik max) | mit Motoren |
 |---|---|---|---|---|
@@ -126,8 +126,12 @@ Referenznetz, Ik max / Ik min zweipolig in kA:
 | K4 | 7,9 / 5,8 | 7,86 / 5,81 | 8,00 / 5,81 | 8,45 |
 | K5 | 35,0 / – | 35,08 / 24,67 | 34,95 / 24,67 | 35,30 |
 
-Ohne K_T treffen die berechneten Werte die eingegebenen auf unter 1 % (Test
-`test_referenznetz_handrechnung`).
+Ohne K_T und ohne Motoren treffen die berechneten Werte die alten Handwerte auf unter 1 %.
+Seit 25.11.2026 stehen als Handwert Ik max die Werte mit Motoren, auf 0,1 kA aufgerundet:
+K1 15,9, K2 11,1, K3 10,2, K4 8,5, K5 35,4 kA (Ringnetz gleich, Erdfehler-Beispiel wegen M2
+15,9 / 11,4 / 10,4 / 8,9 / 35,6 kA). Test `test_referenznetz_handrechnung` prüft, dass sie die
+Rechnung um weniger als 1 % überdecken. Die Handwerte in der Masterarbeit waren ohne Motorbeitrag
+gerechnet.
 
 Beispielring, Voreinstellung, Ik max / Ik min in kA:
 
@@ -223,8 +227,11 @@ können. Der Wert nur aus dem Netz steht in `Ik_max_ohne_Motor_kA` (Anzeige „n
 Ein Motor mit `KS_Beitrag` = „Nein“ fällt heraus (Hinweis). Ohne Verbindung zum Netz liefert ein
 Motor keinen Strom. Ik1 max rechnet die Motoren im Mit- und Gegensystem ebenfalls mit (6.10: gleiche
 Impedanz in Mit- und Gegensystem). Folge im Referenznetz: K2 11,04 statt 10,22 kA, K3 10,10 statt
-9,28 kA. Die Handwerte der Beispielnetze sind ohne Motoren gerechnet und werden deshalb an K2 und K3
-als Abweichung über 10 % markiert. Im Strahlennetz gilt weiter der Handwert.
+9,28 kA. Die Handwerte der Beispielnetze waren ohne Motoren gerechnet und lagen an K2 und K3 über 10 %
+darunter. Weil im Strahlennetz der Handwert gilt, hätte die Staffelung mit einem zu kleinen Ik max
+gerechnet (unsichere Seite). Am 25.11.2026 deshalb auf die Werte mit Motoren angehoben (Abschnitt 5).
+Folge im Staffelvorschlag: L1/L2 Iph>> 5,67 statt 5,60 × IN, T1 I>> OS 13,74 statt 12,38 × IN,
+im Ring T1 I>> US 8,84 statt 8,21 × IN. Die Zeitstaffelung ändert sich nicht.
 
 **Änderung 2, Leitertemperatur bei Ik min.** Je Leitung gilt die Temperatur am Ende des
 Kurzschlusses aus der adiabatischen Erwärmung:

@@ -38,7 +38,7 @@ Tool neue Werte vor und gibt am Ende eine Einstellliste aus.
 Grob gesagt: **Die Technik ist fertig, jetzt kommen Absicherung und Doku.**
 
 - 14 von 17 Bausteinen sind fertig, das sind alle fachlichen Bausteine (seit 25.11.2026 mit Erdfehler).
-- Es gibt 231 automatische Tests, alle grün.
+- Es gibt 232 automatische Tests, alle grün.
 - Zeitlich sind wir nach knapp 3 von 6 Wochen weit vorne, auch mit dem Erdfehler. Die restlichen
   gut 3 Wochen reichen für Feinschliff, Programmpaket, Betreuer-Antworten und die Doku.
 
@@ -57,7 +57,7 @@ Grob gesagt: **Die Technik ist fertig, jetzt kommen Absicherung und Doku.**
 - ~~Normtext DIN EN 60909-0 am Original prüfen~~ **erledigt 25.11.2026**: alles bestätigt, zwei
   Änderungen eingebaut (Motoren bei Ik max, Leitertemperatur bei Ik min adiabatisch). Das
   Normbeispiel IEC/TR 60909-4, Abschnitt 5, kommt exakt heraus. Beiblatt 4 (IEC/TR 60909-2) gelesen 25.11.2026, Yzn-Nullreaktanz 0,1 eingebaut. K und β an DIN VDE 0100-540, Anhang A geprüft. Offen:
-  Konstanten IEC 60949, Quelle für 2/√3.
+  Quelle für 2/√3.
 - Literaturstelle für die Staffelung im offenen Ring.
 - Netzdaten am Übergabepunkt (Sk″) und Schalterzeiten: für ein echtes Netz vom Netzbetreiber
   bzw. aus dem Datenblatt.
@@ -91,5 +91,8 @@ Grob gesagt: **Die Technik ist fertig, jetzt kommen Absicherung und Doku.**
 | Erdungspunkt | Feld „Erdfehlerstrom-Begrenzung“ am Knoten (nur niederohmig), sonst Sternpunkt eines Trafos |
 | Kabel-Nullsystem | Felder R0′/X0′, ohne Eingabe aus RE/RL und XE/XL der Leitung |
 | Testfall | Neues Beispielnetz `industrie_10kV_noe.json`, Referenznetz unverändert |
+| Handwerte Ik max | Auf die Werte mit Motoren angehoben (alle drei Beispielnetze). Die Werte in der Masterarbeit waren ohne Motoren |
+| Kabel-Nullimpedanz | Beispielnetze bleiben bei Z0 = 4 · Z1 (Beiblatt-4-Werte ändern Ik1 um höchstens 0,3 %) |
+| NS-Toleranz | Bleibt fest bei 10 % (c 1,10 / 0,90), keine Auswahl in der Oberfläche |
 
 Die Herleitungen stehen in den `tool_vorgabe_*.md`-Dateien im selben Ordner.

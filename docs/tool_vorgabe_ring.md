@@ -54,15 +54,16 @@ Zeiten werden je Element vollständig geschrieben, weil beim Trafo die US-Zeit s
 
 ### Ergebnis im Beispielring
 
-Ring: L1, K34 (Trennstelle), L2. Lagen: K34, L1, L2. Fixpunkt nach 2 Runden.
+Ring: L1, K34 (Trennstelle), L2. Lagen: K34, L1, L2. Fixpunkt nach 2 Runden. Handwerte Ik max
+mit Motorbeitrag (Stand 25.11.2026).
 
 | Stufe | bisher | Vorschlag | bestimmt durch |
 |---|---|---|---|
-| L1 und L2 Iph>> | 600 A (2,00 × IN) | 1680 A (5,60 × IN) | 1,2 × Ik max hinter T2 (OS) |
+| L1 und L2 Iph>> | 600 A (2,00 × IN) | 1701 A (5,67 × IN) | 1,2 × Ik max hinter T2 (OS) |
 | L1 und L2 Iph> (Zeit) | 0,5 s | 1,1 s | 0,3 s über T2 (OS) I> 0,8 s |
 | L1 und L2 Iph>> (Zeit) | 0,1 s | 0,4 s | 0,3 s über T2 (OS) I>> 0,1 s |
-| T1 I>> OS | 1091 A (10,39 × IN) | 1300 A (12,38 × IN) | Stufensteller, wie im Strahlennetz |
-| T1 I>> US | 8083 A (7,00 × IN) | 9480 A (8,21 × IN) | Lage „L1 offen“: 1,2 × Ik max hinter L2 |
+| T1 I>> OS | 1211 A (11,54 × IN) | 1442 A (13,74 × IN) | Stufensteller, wie im Strahlennetz |
+| T1 I>> US | 8083 A (7,00 × IN) | 10 208 A (8,84 × IN) | Lage „L1 offen“: 1,2 × Ik max hinter L2 |
 | T1 I> OS (Zeit) | 0,5 s | 1,0 s | 0,3 s über T1 (US) I> US 0,7 s |
 
 Nach dem Schreiben ist in keiner Lage ein Paar rot. Das Paar T1 (OS) gegen den Netzbetreiber ist

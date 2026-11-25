@@ -24,6 +24,11 @@ E1 ── K1 (110 kV, starr) ── T1 YNd5 ── K2 (10 kV, niederohmig, Stern
 | CT | 75/1 A |
 | 50-2 | 9,6 × IN (1,6 × Anlaufstrom, aufgerundet, wie bei M1) |
 
+## Handwerte Ik″max
+
+Mit Motorbeitrag (M1 und M2) nach DIN EN 60909-0, 7.1.2, angehoben am 25.11.2026:
+K1 15,9, K2 11,4, K3 10,4, K4 8,9, K5 35,6 kA. Wegen M2 etwas höher als im Referenznetz.
+
 ## Erwartete Ergebnisse (Stand 25.11.2026)
 
 Ik1 aus der Kurzschlussrechnung, mit pandapower 3.5.6 gegengerechnet (Abweichung 0,00 %). Stand nach der Normprüfung vom 25.11.2026: Ik1 max mit den Motoren, Ik1 min mit der Endtemperatur der Leitungen.

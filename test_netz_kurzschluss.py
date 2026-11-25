@@ -110,8 +110,10 @@ def test_referenznetz_handrechnung():
     assert _nah(k["K5"].Ik_max_ohne_Motor_kA, _ik3(KN.c_max_NS, 0.4, z5))
     # Zahlenwerte der Handrechnung (auf 2 Stellen) und Naehe zu den eingegebenen Werten
     assert [round(k[x].Ik_max_ohne_Motor_kA, 2) for x in ("K1", "K2", "K3", "K4")] == [15.75, 9.98, 9.08, 7.86]
+    # Handwerte Ik max seit 25.11.2026 mit Motoren, auf 0,1 kA aufgerundet
+    k_m = KS.berechne(n).knoten
     for kid, kno in n.knoten.items():
-        assert abs(k[kid].Ik_max_ohne_Motor_kA - kno.Ik_max_kA) / kno.Ik_max_kA < 0.01, kid
+        assert 0 <= (kno.Ik_max_kA - k_m[kid].Ik_max_kA) / kno.Ik_max_kA < 0.01, kid
         if kno.Ik_min_kA is not None:
             assert abs(k[kid].Ik_min_kA - kno.Ik_min_kA) / kno.Ik_min_kA < 0.01, kid
     print("Referenznetz OK: Reihensumme von Hand, eingegebene Werte auf unter 1 % getroffen.")
@@ -279,11 +281,10 @@ def test_handwert_hat_vorrang():
     assert _nah(kopie.knoten["K5"].Ik_min_kA, erg.knoten["K5"].Ik_min_kA)
     # Vergleich: Abweichung mit Vorzeichen, wirksam ist der Handwert
     v = {(x.knoten, x.groesse): x for x in KS.vergleiche(n, erg)}
-    # Ab 25.11.2026 Ik max mit Motoren: die Handwerte des Referenznetzes (ohne Motoren gerechnet)
-    # liegen an K2 und K3 gut 10 % darunter und werden markiert
-    assert v[("K2", "max")].wirksam == "eingegeben" and 0.10 < v[("K2", "max")].abweichung < 0.11
+    # Ab 25.11.2026 Ik max mit Motoren, Handwerte darauf angehoben (aufgerundet): knapp darunter
+    assert v[("K2", "max")].wirksam == "eingegeben" and -0.01 < v[("K2", "max")].abweichung < 0
     assert v[("K5", "min")].wirksam == "berechnet" and v[("K5", "min")].abweichung is None
-    assert {k for k, x in v.items() if x.auffaellig} == {("K2", "max"), ("K3", "max")}
+    assert not any(x.auffaellig for x in v.values())
     # Netz ganz ohne Handwerte: alles wird ergaenzt
     for kid in n.knoten:
         n.knoten_aendern(kid, Ik_max_kA=None, Ik_min_kA=None)
@@ -336,14 +337,15 @@ def test_ring_je_lage():
     assert zu["K4"].Ik_max_ohne_Motor_kA > max(k34["K4"].Ik_max_ohne_Motor_kA, l1["K4"].Ik_max_ohne_Motor_kA, l2["K4"].Ik_max_ohne_Motor_kA)
     assert [round(x["K4"].Ik_max_ohne_Motor_kA, 2) for x in (k34, l1, l2, zu)] == [7.86, 7.86, 9.08, 9.34]
     assert all(_nah(x["K2"].Ik_max_ohne_Motor_kA, k34["K2"].Ik_max_ohne_Motor_kA) for x in (l1, l2, zu))
-    # Der Handwert an K4 (7,9 kA) passt nicht zur Lage "L2 offen": +25 % (mit Motoren), auffaellig
+    # Der Handwert an K4 (8,5 kA) passt nicht zur Lage "L2 offen": +17 % (mit Motoren), auffaellig
     # Vergleich mit den Handwerten: ab 25.11.2026 gegen Ik max mit Motoren
     v = {(x.knoten, x.groesse): x for x in KS.vergleiche(n, z[2])}
-    assert v[("K4", "max")].auffaellig and 0.24 < v[("K4", "max")].abweichung < 0.27   # mit Motoren
-    assert not v[("K3", "max")].auffaellig and 0.08 < v[("K3", "max")].abweichung < 0.09   # ohne K_T
+    assert v[("K4", "max")].auffaellig and 0.16 < v[("K4", "max")].abweichung < 0.17   # mit Motoren
+    assert not v[("K3", "max")].auffaellig and -0.03 < v[("K3", "max")].abweichung < -0.02   # ohne K_T
     v = {(x.knoten, x.groesse): x for x in KS.vergleiche(n, z[1])}
-    assert not v[("K3", "max")].auffaellig and -0.05 < v[("K3", "max")].abweichung < -0.04
-    print("Ring OK: je Lage und geschlossen gegen Handrechnung, K4 in Lage L2 offen +25 %.")
+    # Lage "L1 offen": K3 haengt am langen Weg, der Handwert 10,2 kA liegt 15 % darueber
+    assert v[("K3", "max")].auffaellig and -0.16 < v[("K3", "max")].abweichung < -0.15
+    print("Ring OK: je Lage und geschlossen gegen Handrechnung, K4 in Lage L2 offen +17 %.")
 
 
 # ── 7. Ring-Staffelung: Ergaenzung je Lage nur auf Wunsch ────────────────────
@@ -356,7 +358,7 @@ def test_ring_ergaenzung_je_lage():
     assert all(w is not None for w in werte.values())
     assert werte["L2"] > werte["K34"] and _nah(werte["L1"], werte["K34"])   # K4 ueber L1 ist kuerzer
     for l in lagen:                                                   # Handwerte in jeder Lage unveraendert
-        assert l.netz.knoten["K4"].Ik_max_kA == 7.9 and l.netz.knoten["K3"].Ik_min_kA == 6.8
+        assert l.netz.knoten["K4"].Ik_max_kA == 8.5 and l.netz.knoten["K3"].Ik_min_kA == 6.8
     assert n.knoten["K5"].Ik_min_kA is None
     rv = R.ringvorschlag(n, ik_ergaenzen=True)
     assert rv.ok and rv.konvergiert
@@ -479,14 +481,14 @@ def test_ersetze_ik():
         assert abs(k.Ik_max_kA - erg.knoten[kid].Ik_max_kA) < 1e-12
         assert abs(k.Ik_min_kA - erg.knoten[kid].Ik_min_kA) < 1e-12
     assert len(ersetzt) == 10 and rueck == [] and meld == []
-    assert abs(kopie.knoten["K5"].Ik_max_kA - 35.304) < 1e-3              # Handwert 35,0 ersetzt (mit Motoren)
+    assert abs(kopie.knoten["K5"].Ik_max_kA - 35.304) < 1e-3              # Handwert 35,4 ersetzt (mit Motoren)
     # Rueckfall: ohne Sk der Einspeisung ist nichts berechenbar, es gelten alle eingegebenen Werte
     p = dict(n.elemente["E1"].p)
     p.pop("Sk_max_MVA"), p.pop("Sk_min_MVA")
     n.parameter_setzen("E1", p)
     kopie, ersetzt, rueck, meld = KS.ersetze_ik(n)
     assert ersetzt == [] and ("K4", "max") in rueck and ("K5", "min") not in rueck   # K5 min war nie eingegeben
-    assert kopie.knoten["K4"].Ik_max_kA == 7.9
+    assert kopie.knoten["K4"].Ik_max_kA == 8.5
     # Unsinn wirft nie
     assert KS.ersetze_ik(Netz())[1] == []
     print("ersetze_ik OK: ersetzt, Rueckfall, Eingabe unveraendert.")

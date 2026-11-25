@@ -8,7 +8,7 @@
       "name": "Übergabe 110 kV",
       "UN_kV": 110.0,
       "sternpunkt": "direkt",
-      "Ik_max_kA": 15.7,
+      "Ik_max_kA": 15.9,
       "Ik_min_kA": 6.8
     },
     {
@@ -16,7 +16,7 @@
       "name": "MS-Hauptverteilung 10 kV",
       "UN_kV": 10.0,
       "sternpunkt": "niederohmig",
-      "Ik_max_kA": 10.0,
+      "Ik_max_kA": 11.4,
       "Ik_min_kA": 7.5,
       "I_E_begr_A": 2000.0
     },
@@ -25,7 +25,7 @@
       "name": "Motorabgang 10 kV",
       "UN_kV": 10.0,
       "sternpunkt": "niederohmig",
-      "Ik_max_kA": 9.1,
+      "Ik_max_kA": 10.4,
       "Ik_min_kA": 6.8
     },
     {
@@ -33,7 +33,7 @@
       "name": "Unterverteilung 10 kV",
       "UN_kV": 10.0,
       "sternpunkt": "niederohmig",
-      "Ik_max_kA": 7.9,
+      "Ik_max_kA": 8.9,
       "Ik_min_kA": 5.8
     },
     {
@@ -41,7 +41,7 @@
       "name": "NS-Verteilung 0,4 kV",
       "UN_kV": 0.4,
       "sternpunkt": "direkt",
-      "Ik_max_kA": 35.0,
+      "Ik_max_kA": 35.6,
       "Ik_min_kA": null
     }
   ],

@@ -136,15 +136,15 @@ def test_ringvorschlag_beispiel():
     w = {(x.element, x.parameter): x for x in rv.werte}
     # Handrechnung: L1 und L2 liegen nie in derselben Kette, jede Leitung ist in einer Lage
     # ueber T2 (OS). Je Parameter der groesste Wert ueber alle Lagen:
-    #   I>> = 1,2 * 1400 A (Ik K5 ueber T2) = 1680 A = 5,60 x IN, Iph> = 0,8 + 0,3 = 1,1 s,
+    #   I>> = 1,2 * 1416 A (Ik K5 ueber T2) = 1699,2 A -> 5,67 x IN, Iph> = 0,8 + 0,3 = 1,1 s,
     #   Iph>> 0,1 s (I>> OS T2) + 0,3 s = 0,4 s
     for eid in ("L1", "L2"):
-        assert abs(w[(eid, "iph_hh")].neu - 5.6) < 1e-9
+        assert abs(w[(eid, "iph_hh")].neu - 5.67) < 1e-9
         assert abs(w[(eid, "t_iph_h")].neu - 1.1) < 1e-9 and abs(w[(eid, "t_iph_hh")].neu - 0.4) < 1e-9
-    # T1 OS: 12,38 x IN (Stufensteller), T1 US: 9480 A = 8,21 x IN aus der Lage mit L1 offen
-    # (nur L2 mit Ik K4 = 7,9 kA darunter, 1,2 * 7900 A = 9480 A liegt unter Ik K2 = 10 kA)
-    assert abs(w[("T1", "f_I_Ph_HH_OS")].neu - 12.38) < 1e-9
-    assert abs(w[("T1", "f_I_Ph_HH_US")].neu - 8.21) < 1e-9
+    # T1 OS: 13,74 x IN (Stufensteller), T1 US: 10200 A -> 8,84 x IN aus der Lage mit L1 offen
+    # (nur L2 mit Ik K4 = 8,5 kA darunter, 1,2 * 8500 A = 10200 A liegt unter Ik K2 = 11,1 kA)
+    assert abs(w[("T1", "f_I_Ph_HH_OS")].neu - 13.74) < 1e-9
+    assert abs(w[("T1", "f_I_Ph_HH_US")].neu - 8.84) < 1e-9
     assert abs(w[("T1", "t_I_Ph")].neu - 1.0) < 1e-9 and abs(w[("T1", "t_I_Ph_US")].neu - 0.7) < 1e-9
     # Nichts wird abgesenkt
     assert all(x.neu >= x.alt - 1e-9 or x.art == "Zeit" for x in rv.werte)
@@ -155,7 +155,7 @@ def test_ringvorschlag_beispiel():
         assert gelb == [("T1 (OS)", "E1", 0.2)], (l.trennstelle, gelb)
         assert S.ROT not in {p.status for p in l.zeit.pruefungen}
     assert "Lage K34, L1, L2" in _text(rv, WARNUNG) and "1,00 s" in _text(rv, WARNUNG)
-    print("Ringvorschlag OK: L1 und L2 gleich (5,60 · 1,1 s · 0,4 s), T1 OS 12,38, alle Lagen ohne rot.")
+    print("Ringvorschlag OK: L1 und L2 gleich (5,67 · 1,1 s · 0,4 s), T1 OS 13,74, alle Lagen ohne rot.")
 
 
 # ── 5. Uebernahme und zweiter Lauf ───────────────────────────────────────────
@@ -227,8 +227,8 @@ def test_dreileitungsring():
     # L1 ueber L3 (Lage L2 offen): Ik max K4 7,9 kA * 1,2 = 9480 A = 31,6 x IN liegt ueber dem
     # Einstellbereich 10 x IN. Die Anlaufgrenze von M1 gilt trotzdem: 1,2 * 1204,2 A -> 4,82 x IN
     assert abs(w[("L1", "iph_hh")].neu - 4.82) < 1e-9 and "Anlaufstrom" in w[("L1", "iph_hh")].kurz
-    # L3 ueber T2 (OS) wie L1/L2 im Beispielring: 5,60 x IN, 1,1 s, 0,4 s
-    assert abs(w[("L3", "iph_hh")].neu - 5.6) < 1e-9 and abs(w[("L3", "t_iph_h")].neu - 1.1) < 1e-9
+    # L3 ueber T2 (OS) wie L1/L2 im Beispielring: 5,67 x IN, 1,1 s, 0,4 s
+    assert abs(w[("L3", "iph_hh")].neu - 5.67) < 1e-9 and abs(w[("L3", "t_iph_h")].neu - 1.1) < 1e-9
     # L1 und L2 liegen je einmal ueber L3 (1,1 s): 1,4 s
     assert abs(w[("L1", "t_iph_h")].neu - 1.4) < 1e-9 and abs(w[("L2", "t_iph_h")].neu - 1.4) < 1e-9
     for l in rv.pruefung.lagen:
@@ -305,7 +305,7 @@ def test_ik_ersetzen_je_lage():
     assert all(l.ik_ersetzt and not l.ik_rueckfall for l in lagen)
     # ohne den Schalter bleibt alles beim Eingegebenen
     lagen0, _ = R.erzeuge_lagen(n)
-    assert all(l.netz.knoten["K4"].Ik_max_kA == 7.9 for l in lagen0)
+    assert all(l.netz.knoten["K4"].Ik_max_kA == 8.5 for l in lagen0)
     # Vorschlag und Pruefung laufen mit berechneten Werten, der Hinweis nennt die Quelle
     rv = R.ringvorschlag(n, ik_ersetzen=True)
     assert rv.ok and rv.konvergiert and rv.pruefung is not None
@@ -319,7 +319,7 @@ def test_ik_ersetzen_je_lage():
     p.pop("Sk_max_MVA"), p.pop("Sk_min_MVA")
     n.parameter_setzen("E1", p)
     lagen2, meld2 = R.erzeuge_lagen(n, ik_ersetzen=True)
-    assert all(l.netz.knoten["K4"].Ik_max_kA == 7.9 for l in lagen2)
+    assert all(l.netz.knoten["K4"].Ik_max_kA == 8.5 for l in lagen2)
     assert any("Nicht berechenbar, deshalb gilt der eingegebene Wert" in m.text and "K4 Ik max" in m.text
                for m in meld2)
     print("Ring mit berechnetem Ik OK: je Lage, Rueckfall, Quelle genannt.")

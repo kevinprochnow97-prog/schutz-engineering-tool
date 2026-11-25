@@ -19,11 +19,13 @@ B) Elemente und Verbindungen
 
 C) Knoten
    Knoten | UN [kV] | Ik″max [kA] | Ik,min 2-pol. [kA] | Sternpunkt
-   K1     | 110     | 15,7        | 6,8                 | wirksam geerdet (Netzbetreiber)
-   K2     | 10      | 10,0        | 7,5                 | isoliert
-   K3     | 10      | 9,1         | 6,8                 | isoliert
-   K4     | 10      | 7,9         | 5,8                 | isoliert
-   K5     | 0,4     | ca. 35      | –                   | TN-S, starr geerdet
+   K1     | 110     | 15,9        | 6,8                 | wirksam geerdet (Netzbetreiber)
+   K2     | 10      | 11,1        | 7,5                 | isoliert
+   K3     | 10      | 10,2        | 6,8                 | isoliert
+   K4     | 10      | 8,5         | 5,8                 | isoliert
+   K5     | 0,4     | 35,4        | –                   | TN-S, starr geerdet
+   Ik″max mit Motorbeitrag nach DIN EN 60909-0, 7.1.2 (angehoben am 25.11.2026, vorher
+   15,7 / 10,0 / 9,1 / 7,9 / ca. 35 kA ohne Motoren).
 
 D) Einspeisung E1
    Sk″max 3000 MVA, Sk″min 1500 MVA

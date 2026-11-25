@@ -64,9 +64,9 @@ def test_referenznetz():
     IN_OS = 20e6 / (math.sqrt(3) * 110e3)
     s = _stufe(erg, "T1", "I> OS")
     assert abs(s.I_prim_A - 1.5 * IN_OS) < 0.1 and (s.messort, s.UN_kV, s.t_s) == ("K1", 110, 0.5)
-    # I>> OS = k_S_IGG * Ik_max_US / nT = 1,2 * 10 kA / 11
+    # I>> OS = k_S_IGG * Ik_max_US / nT = 1,2 * 11,1 kA / 11
     s = _stufe(erg, "T1", "I>> OS")
-    assert abs(s.I_prim_A - 1.2 * 10000 / 11) < 1.0
+    assert abs(s.I_prim_A - 1.2 * 11100 / 11) < 1.0
     assert _stufe(erg, "T1", "I> US").messort == "K2"
     # Motor: IN = 2000 kW / (sqrt3 * 10 kV * 0,88 * 0,96) = 136,7 A, Ip = 1,2 * IN
     IN_M = 2000e3 / (math.sqrt(3) * 10e3 * 0.88 * 0.96)
@@ -88,10 +88,10 @@ def test_knoten_ist_wahrheit():
     _p_aendern(n, "T1", UN_US_kV=20.0, Ik_max_US_kA=99.0)
     erg = A.erzeuge_schutzstufen(n)
     p = erg.p_voll["T1"]
-    assert (p["UN_OS_kV"], p["UN_US_kV"], p["Ik_max_US_kA"]) == (110, 10, 10.0)
+    assert (p["UN_OS_kV"], p["UN_US_kV"], p["Ik_max_US_kA"]) == (110, 10, 11.1)
     assert (p["stp_OS"], p["stp_US"]) == ("Direkt geerdet", "Isoliert")
     pl = erg.p_voll["L2"]
-    assert (pl["Ik_max_kA"], pl["Ik_min_kA"]) == (10.0, 5.8)      # Anfang K2, Ende K4
+    assert (pl["Ik_max_kA"], pl["Ik_min_kA"]) == (11.1, 5.8)      # Anfang K2, Ende K4
     assert erg.p_voll["M1"]["stp_Netz"] == "Isoliert"
 
     # Fehlt Ik am Knoten, bleibt der Tab-Wert. Fehlt beides, greift der Rechenkern-Fallback 1,2/uk.

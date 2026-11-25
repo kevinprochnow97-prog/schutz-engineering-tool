@@ -56,11 +56,11 @@ def test_ein_diagramm_je_pfad():
 # ── 2. UMZ-Kennlinie gegen Handwerte ─────────────────────────────────────────
 def test_umz_kennlinie():
     d = D.erzeuge_diagramme(_netz())[0]
-    # L1: Iph> 1,2 x 300 A = 360 A / 0,5 s, Iph>> 2,0 x 300 A = 600 A / 0,1 s, Ende Ik max K2 = 10 kA
+    # L1: Iph> 1,2 x 300 A = 360 A / 0,5 s, Iph>> 2,0 x 300 A = 600 A / 0,1 s, Ende Ik max K2 = 11,1 kA
     p = _kurve(d, "L1").punkte
     assert [(round(I), round(t, 3), s) for I, t, _, s in p] == [
         (360, d.t_oben_s, "Iph>"), (360, 0.5, "Iph>"), (600, 0.5, "Iph>"),
-        (600, 0.1, "Iph>>"), (10000, 0.1, "Iph>>")]
+        (600, 0.1, "Iph>>"), (11100, 0.1, "Iph>>")]
     # Netzbetreiber: 160 A bei 110 kV = 1760 A bei 10 kV, 1,2 s, bis zum rechten Rand
     p = _kurve(d, "E1").punkte
     assert _nah(p[0][0], 1760.0) and p[1][1] == 1.2 and _nah(p[-1][0], d.I_max_A)
@@ -68,7 +68,7 @@ def test_umz_kennlinie():
     assert _nah(d.I_max_A, 1.3 * max(S.anregestrom_bez(s, 10.0) for o in S.pruefe_selektivitaet(_netz()).orte
                                      for s in o.stufen), 1e-9)
     assert d.t_oben_s == 10.0
-    print("UMZ OK: L1 360 A / 0,5 s und 600 A / 0,1 s, Ende bei Ik max 10 kA.")
+    print("UMZ OK: L1 360 A / 0,5 s und 600 A / 0,1 s, Ende bei Ik max 11,1 kA.")
 
 
 # ── 3. Diagramm und Zeitpruefung stimmen ueberein ────────────────────────────
@@ -102,7 +102,7 @@ def test_amz_und_anzeigegrenze():
     # 50-2 des Motors ist unverzoegert: Anzeige auf 0,01 s, echter Wert 0 s
     letzte = p[-1]
     assert letzte[3] == "I>> (50-2)" and letzte[2] == 0.0 and letzte[1] == D.T_ANZEIGE_MIN
-    assert round(letzte[0]) == 9100                                 # Ende bei Ik max K3
+    assert round(letzte[0]) == 10200                                # Ende bei Ik max K3
     print("AMZ OK: Motorkennlinie fallend, 50-2 unverzögert auf der Linie 0,01 s.")
 
 
@@ -110,12 +110,12 @@ def test_amz_und_anzeigegrenze():
 def test_marken():
     ds = D.erzeuge_diagramme(_netz())
     m = {x.text: x.I_bez_A for x in ds[0].marken}
-    assert m == {"Ik max K3": 9100.0, "Ik min K3": 6800.0, "Ik max K2": 10000.0, "Ik min K2": 7500.0}
-    assert any("Ik max K1" in x.text and "172700" in x.text for x in ds[0].meldungen)
-    # 0,4-kV-Knoten auf 10 kV bezogen: 35 kA * 0,4 / 10 = 1400 A, kein Ik min eingegeben
+    assert m == {"Ik max K3": 10200.0, "Ik min K3": 6800.0, "Ik max K2": 11100.0, "Ik min K2": 7500.0}
+    assert any("Ik max K1" in x.text and "174900" in x.text for x in ds[0].meldungen)
+    # 0,4-kV-Knoten auf 10 kV bezogen: 35,4 kA * 0,4 / 10 = 1416 A, kein Ik min eingegeben
     m = {x.text: x.I_bez_A for x in ds[1].marken}
-    assert _nah(m["Ik max K5"], 1400.0) and "Ik min K5" not in m
-    assert round(_kurve(ds[1], "T2 (US)").punkte[-1][0]) == 1400    # Kurve endet dort
+    assert _nah(m["Ik max K5"], 1416.0) and "Ik min K5" not in m
+    assert round(_kurve(ds[1], "T2 (US)").punkte[-1][0]) == 1416    # Kurve endet dort
     print("Marken OK: Ik je Messknoten, K1 außerhalb gemeldet, K5 auf 10 kV bezogen.")
 
 

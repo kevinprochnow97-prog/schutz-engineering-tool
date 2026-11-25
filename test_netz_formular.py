@@ -120,9 +120,9 @@ def test_knoten_werte_und_aendern():
     n = _netz()
     w = F.knoten_werte(n, "K4")
     assert w == {"name": "Unterverteilung 10 kV", "UN_kV": 10.0, "sternpunkt": "isoliert",
-                 "Ik_max_kA": 7.9, "Ik_min_kA": 5.8, "I_E_begr_A": None}
+                 "Ik_max_kA": 8.5, "Ik_min_kA": 5.8, "I_E_begr_A": None}
     meldung = F.knoten_aendern(n, "K4", "Halle 2", 10, "kompensiert", 8.2, 6.0)
-    assert "Bezeichnung geändert" in meldung and "Ik″ max 7.9 → 8.2" in meldung
+    assert "Bezeichnung geändert" in meldung and "Ik″ max 8.5 → 8.2" in meldung
     assert "Sternpunkt isoliert → kompensiert" in meldung
     k = n.knoten["K4"]
     assert (k.name, k.sternpunkt, k.Ik_max_kA, k.Ik_min_kA) == ("Halle 2", "kompensiert", 8.2, 6.0)

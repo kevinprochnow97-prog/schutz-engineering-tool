@@ -163,15 +163,16 @@ gibt einen Hinweis.
 ## 5. Ergebnis im Referenznetz „Industrie 10 kV“
 
 Bezugsspannung 10 kV, Werksvoreinstellungen aus den Tabs. Einzige Abweichung davon: M1 I>> (50-2) steht im
-Referenznetz auf 8,81 × IN (1204 A), siehe Prüfpunkt 4.
+Referenznetz auf 8,81 × IN (1204 A), siehe Prüfpunkt 4. Stand 25.11.2026: Handwerte Ik max mit
+Motorbeitrag (K1 15,9, K2 11,1, K3 10,2, K4 8,5, K5 35,4 kA).
 
 | Stufe | Bisher | Bezug | k_S · Bezug | Vorschlag | Status |
 |---|---|---|---|---|---|
 | L1 Iph>> | 600 A | M1: max(I>> 1204 A, Anlauf 752 A) = 1204 A | 1445 A | 4,82 × IN = 1446 A | angehoben |
-| L2 Iph>> | 600 A | Ik max K5 35 kA über T2 = 1400 A | 1680 A | 5,60 × IN = 1680 A | angehoben |
-| T2 I>> OS | 1680 A | wie L2 | 1680 A | 1680 A | bleibt |
-| T1 I>> OS | 1091 A | Ik max K2 10 kA über T1 mit −16 % = 1082 A bei 110 kV | 1299 A bei 110 kV | 12,38 × IN = 1300 A | angehoben |
-| T1 I>> US | 8083 A | Ik max K3 9,1 kA | 10 920 A über Ik max K2 (10 000 A) | 8083 A | nicht wirksam |
+| L2 Iph>> | 600 A | Ik max K5 35,4 kA über T2 = 1416 A | 1699 A | 5,67 × IN = 1701 A | angehoben |
+| T2 I>> OS | 1699 A | wie L2 | 1699 A | 1699 A | bleibt |
+| T1 I>> OS | 1211 A | Ik max K2 11,1 kA über T1 mit −16 % = 1201 A bei 110 kV | 1442 A bei 110 kV | 13,74 × IN = 1442 A | angehoben |
+| T1 I>> US | 8083 A | Ik max K3 10,2 kA | 12 240 A über Ik max K2 (11 100 A) | 8083 A | nicht wirksam |
 
 Wirkung auf die Zeiten: T1 (OS) braucht 1,0 s statt 1,7 s. Der Abstand zum Netzbetreiber
 (1,2 s) beträgt 0,2 s (gelb, über dem Mindestwert) statt −0,5 s (rot). Der volle Soll-
