@@ -181,7 +181,7 @@ gedeckt. Am 25.11.2026 sind alle Punkte am Normtext nachgeschlagen worden (Spalt
 | 7 | Sk″ max, Sk″ min und R/X am Übergabepunkt | **Tool-Vorgabe 17.11.2026, plausibel, nicht belegt:** 3000 / 1500 MVA an 110 kV (15,7 / 7,9 kA), R/X = 0,1. Zum Vergleich: ein Lehrbeispiel rechnet an 110 kV mit 31,5 kA und R/X = 0,1 [8], ein Netzbetreiber nennt an 10 kV 350 MVA [3]. Für einen echten Einsatz gilt die Angabe des Netzbetreibers. | [3], [8] |
 | 8 | Entscheidung: Ringstaffelung je Lage mit berechneten statt eingegebenen Werten (löst Prüfpunkt 3 in `tool_vorgabe_ring.md`) | **Erledigt 17.11.2026:** Im Ring rechnet die Staffelung standardmäßig je Lage mit berechneten Ik, Rückfall auf den eingegebenen Wert, Schalter in der Oberfläche. Strahlennetz: eingegebener Wert hat Vorrang. Siehe `tool_vorgabe_ring.md`, Abschnitt 6. | Entschieden |
 | 9 | Kabeldaten des Referenznetzes: R′ = 0,206 Ω/km für 150 mm² Al | Bestätigt (Leiterwiderstand laut Datenblatt, 3x1x150/25, 6/10 kV). **X′ 17.11.2026:** Ein Herstellerdatenblatt NA2XS2Y 1x150/25 6/10 kV nennt eine Betriebsinduktivität von 0,329 mH/km im Dreieck, also X′ = 2π · 50 Hz · 0,329 mH/km = 0,103 Ω/km. Das Tool behält 0,11 Ω/km (Tool-Vorgabe, etwa 7 % höher, liegt zwischen Dreieck und Ebene). Wirkung auf Ik max an K4 unter 1 %, durch k_S = 1,2 abgedeckt. | [5], [9] |
-| 10 | Gegenrechnung mit einem Netzberechnungsprogramm | **Erledigt 17.11.2026** mit pandapower 3.5.6: Ik max, Ik min und Ik max mit Motoren an allen fünf Knoten des Referenznetzes gleich (Abweichung unter 0,01 %), siehe Abschnitt 9. Offen bleibt ein durchgerechnetes Normbeispiel aus IEC TR 60909-4 (lag nicht vor). | [7] |
+| 10 | Gegenrechnung mit einem Netzberechnungsprogramm | **Erledigt 17.11.2026** mit pandapower 3.5.6: Ik max, Ik min und Ik max mit Motoren an allen fünf Knoten des Referenznetzes gleich (Abweichung unter 0,01 %), siehe Abschnitt 9. **Normbeispiel erledigt 25.11.2026:** DIN IEC/TR 60909-4:2024-12, Abschnitt 5 (400-V-Netz, F1 bis F3) exakt nachgerechnet, siehe Abschnitt 11. | [7], [12] |
 | 11 | Alle bestätigten Punkte am Normtext nachschlagen und mit Abschnitt und Gleichungsnummer zitieren | **Erledigt 25.11.2026**, Fundstellen in dieser Tabelle und in Abschnitt 10 | [10] |
 | 12 | Erwärmungskonstanten K und β (Al 148 / 228, Cu 226 / 234,5) und das adiabatische Verfahren | Tool-Vorgabe nach IEC 60949, Normtext nicht gelesen | [11] |
 | 13 | Kurzschlussdauer für Ik min 1,0 s | Tool-Vorgabe (Abschaltung über eine verzögerte Stufe oder den Reserveschutz), je Leitung über `t_KS_s` änderbar | – |
@@ -243,9 +243,36 @@ Ergebnis im Referenznetz: L1 124,5 °C, L2 114,4 °C. Ik min an K3 6,78 statt 6,
 statt 5,81 kA. Die pandapower-Gegenrechnung mit diesen Temperaturen als `endtemp_degree` stimmt an
 allen Knoten auf 0,00 %.
 
-**Weiter offen:** Normbeispiel aus IEC/TR 60909-4, Nullimpedanzen aus IEC/TR 60909-2, Konstanten
+**Weiter offen:** Nullimpedanzen aus IEC/TR 60909-2, Konstanten
 aus IEC 60949, Quelle für 2/√3 hinter D/Y. Zweipoliger Kurzschluss mit Erdberührung (7.4) ist
 nicht gerechnet. Bei Z0 < Z1 (starr geerdet, Beispiel K5) wäre sein Erdstrom größer als Ik1.
+
+## 11. Normbeispiel IEC/TR 60909-4, Abschnitt 5 (25.11.2026)
+
+Das Niederspannungsnetz aus Bild 6 der DIN IEC/TR 60909-4 (VDE 0102-4):2024-12 ist in
+`test_norm_60909_4.py` nachgebaut: Netzeinspeisung 20 kV mit 10 kA, zwei Trafos Dyn5 (630 und
+400 kVA, 20 kV / 410 V), Kabel L1 bis L3 und Freileitung L4 mit den Mit- und Nullimpedanzen aus
+Tabelle 3. F1 liegt an den US-Klemmen von T1, F2 an der Sammelschiene, an der beide Trafozweige
+über L1 und L2 zusammenlaufen (das Netz ist vermascht), F3 hinter L3 und L4.
+
+| Stelle | Zk [mΩ] Tool / Norm | Z0 [mΩ] Tool / Norm | Ik [kA] Tool / Norm | Ik1 [kA] Tool / Norm |
+|---|---|---|---|---|
+| F1 | 7,003 / 7,003 | 6,378 / 6,378 | 34,62 / 34,62 | 35,71 / 35,71 |
+| F2 | 7,108 / 7,108 | 6,606 / 6,606 | 34,12 / 34,12 | 34,98 / 34,98 |
+| F3 | 34,929 / 34,928 | 80,80 / 80,79 | 6,94 / 6,94 | 4,83 / 4,83 |
+
+Dafür sind drei Eingaben dazugekommen, alle optional:
+
+- **Bemessungsspannungen des Trafos** `UrT_OS_kV`, `UrT_US_kV`. Die Trafoimpedanz gilt auf UrUS
+  bezogen, die Abweichung der Bemessungsübersetzung t_r von UN_OS/UN_US geht als Übersetzung τ in
+  die Knotenadmittanzmatrix ein (Norm 6.2, Gl. 6). Ohne Angabe ist τ = 1 wie bisher. Im Beispiel
+  macht das an F1 rund 2 bis 3 % aus.
+- **Nullimpedanz je Trafo** `R0_R_T`, `X0_X_T` (Beispiel 1,0 und 0,95), sonst `Z0_Z1_Trafo` = 1,0.
+- **Toleranz der Niederspannungsnetze** `NS_Toleranz_pct` in `konstanten_netz.py`: 10 % (Tool-
+  Vorgabe, c 1,10 / 0,90) oder 6 % (c 1,05 / 0,95, so rechnet das Beispiel). Bisher nur als
+  Konstante, nicht in der Oberfläche.
+
+Ik min rechnet das Beispiel nicht aus, dafür bleibt die Handrechnung in `test_netz_kurzschluss.py`.
 
 ## Quellen
 
@@ -290,3 +317,7 @@ der Ströme (IEC 60909-0:2016). Gelesen am 25.11.2026 in der VDE NormenBibliothe
 
 [11] IEC 60949, Berechnung der thermisch zulässigen Kurzschlussströme unter Berücksichtigung
 nicht-adiabatischer Erwärmungseffekte (von [10] in 7.1.2 als Quelle für θe genannt). Nicht gelesen.
+
+[12] DIN IEC/TR 60909-4 (VDE 0102-4):2024-12, Kurzschlussströme in Drehstromnetzen, Teil 4:
+Beispiele für die Berechnung der Kurzschlussströme (IEC TR 60909-4:2021). Gelesen am 25.11.2026,
+Abschnitt 5 mit Tabelle 3 und Tabelle 4.

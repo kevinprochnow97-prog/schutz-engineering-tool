@@ -92,9 +92,10 @@ OPTIONAL_ZAHL = {
                 "f_50N2", "t_50N2", "f_50N1", "t_50N1", "f_51N", "T_51N"),
 }
 # Erdstufen-Felder: dieselbe Pruefung, ergaenzt um die Zahlenfelder des Erdschutzes
-OPTIONAL_ZAHL["trafo"] += ("CT_E_Prim", "CT_E_Sek", "I_E", "t_I_E", "I_E_HH", "t_I_E_HH")
+OPTIONAL_ZAHL["trafo"] += ("CT_E_Prim", "CT_E_Sek", "I_E", "t_I_E", "I_E_HH", "t_I_E_HH",
+                           "UrT_OS_kV", "UrT_US_kV", "R0_R_T", "X0_X_T")
 OPTIONAL_ZAHL["leitung"] += ("i_3I0H", "t_3I0H", "i_3I0HH", "t_3I0HH", "i_3I0HHH", "t_3I0HHH",
-                             "R0_Belag", "X0_Belag", "RE_RL", "XE_XL")
+                             "R0_Belag", "X0_Belag", "RE_RL", "XE_XL", "A_mm2", "t_KS_s")
 
 # Anzeigename der Stufe -> Schluessel der Verzoegerung im Element-Parametersatz.
 # Damit kann ein Staffelvorschlag (netz_selektivitaet) ins Netzmodell zurueck-

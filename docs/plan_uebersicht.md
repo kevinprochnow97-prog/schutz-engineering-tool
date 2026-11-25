@@ -38,7 +38,7 @@ Tool neue Werte vor und gibt am Ende eine Einstellliste aus.
 Grob gesagt: **Die Technik ist fertig, jetzt kommen Absicherung und Doku.**
 
 - 14 von 17 Bausteinen sind fertig, das sind alle fachlichen Bausteine (seit 25.11.2026 mit Erdfehler).
-- Es gibt 227 automatische Tests, alle grün.
+- Es gibt 231 automatische Tests, alle grün.
 - Zeitlich sind wir nach knapp 3 von 6 Wochen weit vorne, auch mit dem Erdfehler. Die restlichen
   gut 3 Wochen reichen für Feinschliff, Programmpaket, Betreuer-Antworten und die Doku.
 
@@ -55,8 +55,9 @@ Grob gesagt: **Die Technik ist fertig, jetzt kommen Absicherung und Doku.**
 
 **Bei den Belegen** (überall steht heute eine begründete Annahme)
 - ~~Normtext DIN EN 60909-0 am Original prüfen~~ **erledigt 25.11.2026**: alles bestätigt, zwei
-  Änderungen eingebaut (Motoren bei Ik max, Leitertemperatur bei Ik min adiabatisch). Offen:
-  Normbeispiel IEC/TR 60909-4, Daten IEC/TR 60909-2, Konstanten IEC 60949, Quelle für 2/√3.
+  Änderungen eingebaut (Motoren bei Ik max, Leitertemperatur bei Ik min adiabatisch). Das
+  Normbeispiel IEC/TR 60909-4, Abschnitt 5, kommt exakt heraus. Offen: Daten IEC/TR 60909-2,
+  Konstanten IEC 60949, Quelle für 2/√3.
 - Literaturstelle für die Staffelung im offenen Ring.
 - Netzdaten am Übergabepunkt (Sk″) und Schalterzeiten: für ein echtes Netz vom Netzbetreiber
   bzw. aus dem Datenblatt.

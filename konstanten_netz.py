@@ -126,6 +126,11 @@ c_max_NS = 1.10       # UN <= 1 kV, Netze mit 10 % Spannungstoleranz (400/230 V)
                       # Fuer Netze mit +6 % Toleranz nennt die Norm 1,05.
 c_min_NS = 0.90       # UN <= 1 kV, passend zu 10 % Toleranz (Ausgabe 2016). Bei 6 %
                       # Toleranz und in der Ausgabe 2001 steht 0,95.
+# Spannungstoleranz der Niederspannungsnetze (DIN EN 60909-0:2016-12, Tabelle 1, Fussnoten c/d):
+# 10 % -> c 1,10 / 0,90 (Tool-Vorgabe, 400/230-V-Netze), 6 % -> c 1,05 / 0,95. Das Normbeispiel
+# IEC/TR 60909-4, Abschnitt 5, rechnet mit 6 %. Die Werte oben gelten fuer 10 %.
+NS_Toleranz_pct = 10
+C_NS = {6: (1.05, 0.95), 10: (1.10, 0.90)}
 U_Grenze_NS_kV = 1.0
 
 # Netzeinspeisung: ohne Angabe RX_Q im Element gilt R_Q = RX_Q_def * X_Q

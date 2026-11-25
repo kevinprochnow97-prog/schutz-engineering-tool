@@ -201,9 +201,10 @@ def _pos(p: dict, key: str):
 
 def c_faktor(UN_kV: float, fall: str) -> float:
     ns = UN_kV <= KN.U_Grenze_NS_kV
-    if fall == MAX:
-        return KN.c_max_NS if ns else KN.c_max_HS
-    return KN.c_min_NS if ns else KN.c_min_HS
+    if ns:
+        c_max, c_min = KN.C_NS.get(KN.NS_Toleranz_pct, (KN.c_max_NS, KN.c_min_NS))
+        return c_max if fall == MAX else c_min
+    return KN.c_max_HS if fall == MAX else KN.c_min_HS
 
 
 def _rx_zu_z(betrag: float, rx: float) -> complex:
@@ -260,8 +261,24 @@ def _z_trafo(e, kn) -> tuple:
     if KN.KT_anwenden and not KN.KT_bei_min:
         ann.append("K_T nur bei Ik max")
     ann.append("Stufensteller in Mittelstellung")
-    z = complex(ukr, math.sqrt(uk * uk - ukr * ukr)) * S_B_MVA / Sn
+    # Bemessungsspannungen (optional): Impedanz auf UrUS bezogen, Abweichung der Bemessungs-
+    # uebersetzung t_r von UN_OS/UN_US als Uebersetzung tau im Ersatzschaltbild (Norm 6.2, Gl. 6:
+    # Netzimpedanz mit 1/t_r^2 auf die US-Seite).
+    UrOS, UrUS = e.p.get("UrT_OS_kV"), e.p.get("UrT_US_kV")
+    f_US = 1.0
+    if _zahl(UrUS) and UrUS > 0:
+        f_US = (UrUS / kn[e.nach].UN_kV) ** 2
+        ann.append(f"bezogen auf UrUS = {de(UrUS * 1000, 0)} V")
+    z = complex(ukr, math.sqrt(uk * uk - ukr * ukr)) * S_B_MVA / Sn * f_US
     return z * kt, (z * kt if KN.KT_bei_min else z), ann, ""
+
+
+def uebersetzung(e, kn) -> float:
+    """tau = (UrOS/UrUS) / (UN_OS/UN_US); 1,0 ohne Bemessungsspannungen."""
+    UrOS, UrUS = e.p.get("UrT_OS_kV"), e.p.get("UrT_US_kV")
+    if not (_zahl(UrOS) and UrOS > 0 and _zahl(UrUS) and UrUS > 0):
+        return 1.0
+    return (UrOS / UrUS) / (kn[e.von].UN_kV / kn[e.nach].UN_kV)
 
 
 def _z_leitung(e, kn) -> tuple:
@@ -506,7 +523,7 @@ def _nullsystem(kn, verbund, aktiv, z1, erg, theta_e=None) -> dict:
             k = kn[e.nach]
             if k.sternpunkt != "direkt" or e.id not in z1:
                 continue
-            zq_max, zq_min = z1[e.id]
+            zq_max, zq_min, _ = z1[e.id]
             r = e.p.get("X0_X1_Q")
             ann = ""
             if not (_zahl(r) and r > 0):
@@ -532,7 +549,12 @@ def _nullsystem(kn, verbund, aktiv, z1, erg, theta_e=None) -> dict:
                         WARNUNG, f"{e.id}: Schaltgruppe {sg!r} ist nicht lesbar. Das Nullsystem "
                                  f"des Trafos ist nicht abgebildet.", (e.id,)))
                 continue
-            zt_max, zt_min = (z * KN.Z0_Z1_Trafo for z in z1[e.id])
+            z_a, z_b, tau = z1[e.id]
+            r0 = e.p.get("R0_R_T")
+            x0 = e.p.get("X0_X_T")
+            r0 = float(r0) if _zahl(r0) and r0 >= 0 else KN.Z0_Z1_Trafo
+            x0 = float(x0) if _zahl(x0) and x0 > 0 else KN.Z0_Z1_Trafo
+            zt_max, zt_min = (complex(z.real * r0, z.imag * x0) for z in (z_a, z_b))
             os_n, us_n = wk[0] in ("YN", "ZN"), wk[1] in ("yn", "zn")
             os_d, us_d = wk[0] == "D", wk[1] == "d"
 
@@ -554,8 +576,9 @@ def _nullsystem(kn, verbund, aktiv, z1, erg, theta_e=None) -> dict:
             elif (os_n and us_d) or (us_n and os_d):
                 kid = e.von if os_n else e.nach
                 st = sternseite(kid)
+                f_os = tau * tau if os_n else 1.0      # Impedanz ist auf die US-Seite bezogen
                 if st is not None:
-                    erde(kid, zt_max + st[0], zt_min + st[0], e.id,
+                    erde(kid, zt_max * f_os + st[0], zt_min * f_os + st[0], e.id,
                          f"Sternpunkt {e.id} ({sg}) {st[1]}")
             elif os_n or us_n:
                 kid = e.von if os_n else e.nach
@@ -613,14 +636,8 @@ def _loese_voll(zweige: list, shunts: list) -> tuple:
         return {}, None
     pos = {k: i for i, k in enumerate(ids)}
     Y = np.zeros((len(ids), len(ids)), dtype=complex)
-    for a, b, z, *_ in zweige:
-        if a in pos and b in pos:
-            y = 1.0 / z
-            i, j = pos[a], pos[b]
-            Y[i, i] += y
-            Y[j, j] += y
-            Y[i, j] -= y
-            Y[j, i] -= y
+    for t in zweige:
+        _zweig_in_Y(Y, pos, t)
     for a, z, *_ in shunts:
         Y[pos[a], pos[a]] += 1.0 / z
     return pos, np.linalg.inv(Y)
@@ -652,7 +669,7 @@ def _loese(wurzeln: list, zweige: list, shunts: list) -> dict:
     Knoten fehlen im Ergebnis.
     """
     nachbarn = {w: set() for w in wurzeln}
-    for a, b, _ in zweige:
+    for a, b, *_ in zweige:
         nachbarn[a].add(b)
         nachbarn[b].add(a)
     versorgt, offen = set(), [a for a, _ in shunts]
@@ -667,18 +684,30 @@ def _loese(wurzeln: list, zweige: list, shunts: list) -> dict:
         return {}
     pos = {k: i for i, k in enumerate(ids)}
     Y = np.zeros((len(ids), len(ids)), dtype=complex)
-    for a, b, z in zweige:
-        if a in pos and b in pos:
-            y = 1.0 / z
-            i, j = pos[a], pos[b]
-            Y[i, i] += y
-            Y[j, j] += y
-            Y[i, j] -= y
-            Y[j, i] -= y
+    for t in zweige:
+        _zweig_in_Y(Y, pos, t)
     for a, z in shunts:
         Y[pos[a], pos[a]] += 1.0 / z
     Z = np.linalg.inv(Y)
     return {k: complex(Z[i, i]) for k, i in pos.items()}
+
+
+def _zweig_in_Y(Y, pos, t) -> None:
+    """
+    Zweig (a, b, z) oder (a, b, z, tau) in die Admittanzmatrix. tau: Uebersetzung eines idealen
+    Trafos auf der Seite a (Abweichung der Bemessungsuebersetzung von UN_a/UN_b), z auf b bezogen:
+    Y_aa += y/tau^2, Y_bb += y, Y_ab = Y_ba -= y/tau. Ohne tau (oder Nullsystem-Tupel) gilt 1.
+    """
+    a, b, z = t[0], t[1], t[2]
+    tau = t[3] if len(t) == 4 and isinstance(t[3], float) else 1.0
+    if a not in pos or b not in pos:
+        return
+    y = 1.0 / z
+    i, j = pos[a], pos[b]
+    Y[i, i] += y / (tau * tau)
+    Y[j, j] += y
+    Y[i, j] -= y / tau
+    Y[j, i] -= y / tau
 
 
 def berechne(netz: Netz, bezeichnung: str = "Aktueller Schaltzustand", art: str = AKTUELL,
@@ -722,7 +751,7 @@ def _loese_min(kn, wurzeln, zweige_min, quellen_min, leitungen, erg) -> tuple:
     theta = {eid: (d[5] if d[5] is not None else KN.theta_Leiter_min_C) for eid, d in daten.items()}
     zk = {}
     for _ in range(KN.theta_Iter_max):
-        zw = list(zweige_min) + [(d[1], d[2], z_leitung(d[0], d[3], theta[eid]))
+        zw = list(zweige_min) + [(d[1], d[2], z_leitung(d[0], d[3], theta[eid]), 1.0)
                                  for eid, d in daten.items()]
         pos, Z = _loese_voll(zw, quellen_min)
         neu = dict(theta)
@@ -746,7 +775,7 @@ def _loese_min(kn, wurzeln, zweige_min, quellen_min, leitungen, erg) -> tuple:
         if fertig:
             break
     # endgueltig mit den letzten Temperaturen loesen und Annahmen eintragen
-    zw = list(zweige_min) + [(d[1], d[2], z_leitung(d[0], d[3], theta[eid])) for eid, d in daten.items()]
+    zw = list(zweige_min) + [(d[1], d[2], z_leitung(d[0], d[3], theta[eid]), 1.0) for eid, d in daten.items()]
     zk = _loese(wurzeln, zw, quellen_min)
     for eid, (e, a, b, z_max, idx, fest, mat, A, herkunft, t) in daten.items():
         imp = erg.impedanzen[idx]
@@ -797,7 +826,7 @@ def _berechne(netz: Netz, erg: KurzschlussErgebnis) -> KurzschlussErgebnis:
     for e in aktiv:
         if e.typ == "einspeisung":
             z_max, z_min, ann, meld = _z_einspeisung(e, kn)
-            z1[e.id] = (z_max, z_min)
+            z1[e.id] = (z_max, z_min, 1.0)
             erg.meldungen += meld
             a = verbund.wurzel(e.nach)
             if z_max is not None:
@@ -826,17 +855,18 @@ def _berechne(netz: Netz, erg: KurzschlussErgebnis) -> KurzschlussErgebnis:
                 unvollstaendig.append((e, fehlt))
                 continue
             if e.typ == "trafo":
-                z1[e.id] = (z_max, z_min)
+                z1[e.id] = (z_max, z_min, uebersetzung(e, kn))
             a, b = verbund.wurzel(e.von), verbund.wurzel(e.nach)
             if a != b:                               # sonst durch eine Kupplung ueberbrueckt
                 if abs(z_max) < 1e-12 or abs(z_min) < 1e-12:
                     unvollstaendig.append((e, "Impedanz ist null"))
                     continue
-                zweige[MAX].append((a, b, z_max))
+                tau = uebersetzung(e, kn) if e.typ == "trafo" else 1.0
+                zweige[MAX].append((a, b, z_max, tau))
                 if e.typ == "leitung":
                     leitungen.append((e, a, b, z_max, len(erg.impedanzen)))
                 else:
-                    zweige[MIN].append((a, b, z_min))
+                    zweige[MIN].append((a, b, z_min, tau))
             zb = UN * UN / S_B_MVA
             erg.impedanzen.append(ElementImpedanz(e.id, e.typ, UN, z_max * zb, z_min * zb, tuple(ann)))
         elif e.typ == "motor":
