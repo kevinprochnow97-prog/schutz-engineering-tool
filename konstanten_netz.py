@@ -159,14 +159,17 @@ alpha_Leiter_1K = 0.004
 theta_Leiter_min_C = 90.0
 
 # Endtemperatur am Ende des Kurzschlusses (DIN EN 60909-0:2016-12, 7.1.2 Punkt 7, Gl. (32),
-# geprueft am 25.11.2026): adiabatische Erwaermung nach IEC 60949 (Normtext nicht gelesen,
-# Pruefpunkt in docs/tool_vorgabe_kurzschluss.md):
+# geprueft am 25.11.2026): adiabatische Erwaermung nach IEC 60949, Verfahren und Werte K, beta
+# geprueft am 25.11.2026 an DIN VDE 0100-540:2012-06, Anhang A, Tabelle A.54.1 (Werte dort aus
+# IEC 60949 abgeleitet). Gleichwertige Form der Norm: I^2 t = K^2 S^2 ln((beta+theta_e)/(beta+theta_i)).
 #   theta_e = (theta_i + beta) * exp(I^2 * t / (K^2 * S^2)) - beta
 # I: Ik2 min bei einem Fehler am Ende der Leitung (groesster Strom, den die Leitung bei Ik min
 # fuehrt, also sichere Seite), t: Kurzschlussdauer, S: Leiterquerschnitt.
 # Werte je Leitermaterial: K in A*s^0,5/mm^2, beta in K, spez. Widerstand bei 20 Grad C in
 # Ohm*mm^2/m (DIN EN 60909-0, 6.4: Cu 1/54, Al 1/34). Ohne Querschnitt A_mm2 wird er aus
-# R' und dem spezifischen Widerstand abgeleitet.
+# R' und dem spezifischen Widerstand abgeleitet. Tabelle A.54.1 nennt fuer den reinen Werkstoff
+# 1/58 bzw. 1/35,4, damit kaeme ein um 4 bis 7 % kleinerer Querschnitt heraus. Bewusst die Werte
+# der Kurzschlussnorm behalten, fuer eine genaue Rechnung A_mm2 eintragen.
 LEITER = {
     "Al": {"K": 148.0, "beta": 228.0, "rho": 1.0 / 34.0},
     "Cu": {"K": 226.0, "beta": 234.5, "rho": 1.0 / 54.0},
@@ -210,6 +213,11 @@ Ik_Abweichung_Hinweis = 0.10
 # Wert wie Z1T, uebliche Naeherung bei Dreischenkel-Trafos mit Dreieckwicklung). Der Faktor
 # K_T gilt beim groessten Strom auch fuer Z0T.
 Z0_Z1_Trafo = 1.0
+# Beiblatt 4 zu DIN EN 60909-0 (IEC/TR 60909-2:2008), 2.3, gelesen 25.11.2026: YNd X0/X1 = 0,8 bis
+# 1,0 (Tabelle 2: Dyn5 630 kVA und YNd5 31,5 MVA etwa 1, YNd5 80 MVA 0,71), Yzn etwa 0,1,
+# YNyn0d 1,5 bis 3,2. Tool-Vorgabe 1,0 liegt am oberen Rand (kleinerer Ik1, sichere Seite fuer
+# die Empfindlichkeit). Je Trafo ueber R0_R_T / X0_X_T aenderbar.
+Z0_Z1_Trafo_zn = 0.1     # Zickzackwicklung mit N (Yzn, Dzn)
 
 # Netzeinspeisung an einem starr geerdeten Knoten: Z0Q = X0_X1_Q_def * Z1Q, wenn das Element
 # keinen eigenen Wert X0_X1_Q hat. Tool-Vorgabe 1,0 (dann ist Ik1 = Ik3 am Uebergabepunkt).

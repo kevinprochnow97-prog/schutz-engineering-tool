@@ -266,3 +266,19 @@ def test_ring_schaltzustaende_haben_ik1():
     for erg in KS.berechne_schaltzustaende(n):
         assert erg.ok
         assert all(erg.knoten[k].Ik1_max_kA for k in n.knoten if n.knoten[k].UN_kV == 10.0)
+
+
+def test_zickzack_trafo_beiblatt_4():
+    """Yzn: X0/X1 etwa 0,1 (Beiblatt 4 zu DIN EN 60909-0, 2.3), Nullsystem ohne Dreieck."""
+    n = _dyn_netz(sg="Yzn5", stp="direkt")
+    erg = KS.berechne(n)
+    z_t = next(i for i in erg.impedanzen if i.element == "T").Z_max
+    assert erg.knoten["B"].Z0_max_Ohm == pytest.approx(z_t * KN.Z0_Z1_Trafo_zn, rel=1e-9)
+    assert erg.knoten["B"].Ik1_max_kA > erg.knoten["B"].Ik_max_kA          # kleines Z0
+    assert not any("ohne Dreieckwicklung" in t for t in _texte(erg, WARNUNG))
+    # eigener Wert hat Vorrang
+    p = dict(n.elemente["T"].p)
+    p.update(R0_R_T=0.5, X0_X_T=0.3)
+    n.parameter_setzen("T", p)
+    z0 = KS.berechne(n).knoten["B"].Z0_max_Ohm
+    assert z0 == pytest.approx(complex(z_t.real * 0.5, z_t.imag * 0.3), rel=1e-9)

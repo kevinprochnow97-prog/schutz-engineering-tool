@@ -183,7 +183,7 @@ gedeckt. Am 25.11.2026 sind alle Punkte am Normtext nachgeschlagen worden (Spalt
 | 9 | Kabeldaten des Referenznetzes: R′ = 0,206 Ω/km für 150 mm² Al | Bestätigt (Leiterwiderstand laut Datenblatt, 3x1x150/25, 6/10 kV). **X′ 17.11.2026:** Ein Herstellerdatenblatt NA2XS2Y 1x150/25 6/10 kV nennt eine Betriebsinduktivität von 0,329 mH/km im Dreieck, also X′ = 2π · 50 Hz · 0,329 mH/km = 0,103 Ω/km. Das Tool behält 0,11 Ω/km (Tool-Vorgabe, etwa 7 % höher, liegt zwischen Dreieck und Ebene). Wirkung auf Ik max an K4 unter 1 %, durch k_S = 1,2 abgedeckt. | [5], [9] |
 | 10 | Gegenrechnung mit einem Netzberechnungsprogramm | **Erledigt 17.11.2026** mit pandapower 3.5.6: Ik max, Ik min und Ik max mit Motoren an allen fünf Knoten des Referenznetzes gleich (Abweichung unter 0,01 %), siehe Abschnitt 9. **Normbeispiel erledigt 25.11.2026:** DIN IEC/TR 60909-4:2024-12, Abschnitt 5 (400-V-Netz, F1 bis F3) exakt nachgerechnet, siehe Abschnitt 11. | [7], [12] |
 | 11 | Alle bestätigten Punkte am Normtext nachschlagen und mit Abschnitt und Gleichungsnummer zitieren | **Erledigt 25.11.2026**, Fundstellen in dieser Tabelle und in Abschnitt 10 | [10] |
-| 12 | Erwärmungskonstanten K und β (Al 148 / 228, Cu 226 / 234,5) und das adiabatische Verfahren | Tool-Vorgabe nach IEC 60949, Normtext nicht gelesen | [11] |
+| 12 | Erwärmungskonstanten K und β (Al 148 / 228, Cu 226 / 234,5) und das adiabatische Verfahren | geprüft 25.11.2026 an DIN VDE 0100-540, Anhang A (Werte aus IEC 60949) | [11], [14] |
 | 13 | Kurzschlussdauer für Ik min 1,0 s | Tool-Vorgabe (Abschaltung über eine verzögerte Stufe oder den Reserveschutz), je Leitung über `t_KS_s` änderbar | – |
 
 ## 9. Gegenrechnung mit pandapower (17.11.2026)
@@ -243,8 +243,20 @@ Ergebnis im Referenznetz: L1 124,5 °C, L2 114,4 °C. Ik min an K3 6,78 statt 6,
 statt 5,81 kA. Die pandapower-Gegenrechnung mit diesen Temperaturen als `endtemp_degree` stimmt an
 allen Knoten auf 0,00 %.
 
-**Weiter offen:** Nullimpedanzen aus IEC/TR 60909-2, Konstanten
-aus IEC 60949, Quelle für 2/√3 hinter D/Y. Zweipoliger Kurzschluss mit Erdberührung (7.4) ist
+**Beiblatt 4 (IEC/TR 60909-2) gelesen 25.11.2026:** Trafo-Nullreaktanzen (Yzn 0,1 jetzt eingebaut),
+Kabel-Nullimpedanzen (siehe `tool_vorgabe_erdfehler.md`, Abschnitt 3), Asynchronmotoren:
+I_LR/IrM im Mittel 5,5 bei Mittelspannung (30 kW bis 6 MW je Polpaar) und 6,7 bei
+Niederspannung. Die Werksvoreinstellung des Motor-Tabs (6,0) liegt dazwischen, M1 im Referenznetz
+hat 5,5.
+
+**Adiabatische Erwärmung geprüft 25.11.2026** an DIN VDE 0100-540:2012-06, Anhang A
+(Werte aus IEC 60949 abgeleitet): Verfahren, K (Cu 226, Al 148) und β (Cu 234,5, Al 228)
+stimmen. Die Endtemperatur 250 °C für VPE steht dort in Tabelle A.54.2. Der spezifische
+Widerstand für den aus R′ abgeleiteten Querschnitt bleibt beim Wert aus DIN EN 60909-0, 6.4
+(Cu 1/54, Al 1/34). Tabelle A.54.1 nennt für den reinen Werkstoff 1/58 bzw. 1/35,4. Wer es genau
+haben will, trägt den Querschnitt A_mm2 an der Leitung ein.
+
+**Weiter offen:** Quelle für 2/√3 hinter D/Y. Zweipoliger Kurzschluss mit Erdberührung (7.4) ist
 nicht gerechnet. Bei Z0 < Z1 (starr geerdet, Beispiel K5) wäre sein Erdstrom größer als Ik1.
 
 ## 11. Normbeispiel IEC/TR 60909-4, Abschnitt 5 (25.11.2026)
@@ -321,3 +333,9 @@ nicht-adiabatischer Erwärmungseffekte (von [10] in 7.1.2 als Quelle für θe ge
 [12] DIN IEC/TR 60909-4 (VDE 0102-4):2024-12, Kurzschlussströme in Drehstromnetzen, Teil 4:
 Beispiele für die Berechnung der Kurzschlussströme (IEC TR 60909-4:2021). Gelesen am 25.11.2026,
 Abschnitt 5 mit Tabelle 3 und Tabelle 4.
+
+[13] DIN EN 60909-0 Beiblatt 4 (VDE 0102 Beiblatt 4):2009-08 (IEC/TR 60909-2:2008), Daten
+elektrischer Betriebsmittel für die Berechnung von Kurzschlussströmen. Gelesen am 25.11.2026.
+
+[14] DIN VDE 0100-540 (VDE 0100-540):2012-06, Anhang A (normativ), Tabellen A.54.1 und A.54.2.
+Gelesen am 25.11.2026.

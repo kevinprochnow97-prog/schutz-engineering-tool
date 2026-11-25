@@ -552,11 +552,18 @@ def _nullsystem(kn, verbund, aktiv, z1, erg, theta_e=None) -> dict:
             z_a, z_b, tau = z1[e.id]
             r0 = e.p.get("R0_R_T")
             x0 = e.p.get("X0_X_T")
-            r0 = float(r0) if _zahl(r0) and r0 >= 0 else KN.Z0_Z1_Trafo
-            x0 = float(x0) if _zahl(x0) and x0 > 0 else KN.Z0_Z1_Trafo
+            wk0 = wicklungen(e.p.get("Schaltgruppe"))
+            # Zickzackwicklung mit N: Nullimpedanz sehr klein (Beiblatt 4 zu DIN EN 60909-0,
+            # 2.3: Yzn X0/X1 ~ 0,1), sonst Stern gegen Dreieck ~ 1 (YNd 0,8 bis 1,0)
+            z0_def = KN.Z0_Z1_Trafo_zn if wk0 and "zn" in (wk0[0].lower(), wk0[1]) else KN.Z0_Z1_Trafo
+            r0 = float(r0) if _zahl(r0) and r0 >= 0 else z0_def
+            x0 = float(x0) if _zahl(x0) and x0 > 0 else z0_def
             zt_max, zt_min = (complex(z.real * r0, z.imag * x0) for z in (z_a, z_b))
             os_n, us_n = wk[0] in ("YN", "ZN"), wk[1] in ("yn", "zn")
-            os_d, us_d = wk[0] == "D", wk[1] == "d"
+            # Eine Zickzackwicklung mit N bildet ihr Nullsystem selbst (wie gegen ein Dreieck),
+            # unabhaengig von der anderen Seite (z. B. Yzn5)
+            os_d = wk[0] == "D" or (us_n and wk[1] == "zn" and not os_n)
+            us_d = wk[1] == "d" or (os_n and wk[0] == "ZN" and not us_n)
 
             def sternseite(kid):
                 """(Zusatz 3 R_E bezogen, Text) oder None, wenn der Sternpunkt nicht geerdet ist."""

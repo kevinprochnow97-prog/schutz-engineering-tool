@@ -56,7 +56,7 @@ Grob gesagt: **Die Technik ist fertig, jetzt kommen Absicherung und Doku.**
 **Bei den Belegen** (überall steht heute eine begründete Annahme)
 - ~~Normtext DIN EN 60909-0 am Original prüfen~~ **erledigt 25.11.2026**: alles bestätigt, zwei
   Änderungen eingebaut (Motoren bei Ik max, Leitertemperatur bei Ik min adiabatisch). Das
-  Normbeispiel IEC/TR 60909-4, Abschnitt 5, kommt exakt heraus. Offen: Daten IEC/TR 60909-2,
+  Normbeispiel IEC/TR 60909-4, Abschnitt 5, kommt exakt heraus. Beiblatt 4 (IEC/TR 60909-2) gelesen 25.11.2026, Yzn-Nullreaktanz 0,1 eingebaut. K und β an DIN VDE 0100-540, Anhang A geprüft. Offen:
   Konstanten IEC 60949, Quelle für 2/√3.
 - Literaturstelle für die Staffelung im offenen Ring.
 - Netzdaten am Übergabepunkt (Sk″) und Schalterzeiten: für ein echtes Netz vom Netzbetreiber

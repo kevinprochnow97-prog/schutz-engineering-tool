@@ -47,7 +47,8 @@ sie bei Ik1 max im Mit- und Gegensystem mit (DIN EN 60909-0, 7.1.2 e und 6.10), 
 | Element | Nullsystem |
 |---|---|
 | Einspeisung an einem starr geerdeten Knoten | Querzweig Z0Q = X0/X1 · Z1Q. Tool-Vorgabe X0/X1 = 1,0 (Feld `X0_X1_Q`) |
-| Trafo, Sternwicklung mit N gegen Dreieck (Dyn, YNd, Dzn) | Querzweig am Sternknoten: Z0T = 1,0 · Z1T (Tool-Vorgabe `Z0_Z1_Trafo`), dazu 3 · R_E bei niederohmiger Erdung |
+| Trafo, Sternwicklung mit N gegen Dreieck (Dyn, YNd) | Querzweig am Sternknoten: Z0T = 1,0 · Z1T (Tool-Vorgabe `Z0_Z1_Trafo`, Beiblatt 4: 0,8 bis 1,0), dazu 3 · R_E bei niederohmiger Erdung |
+| Trafo mit Zickzackwicklung mit N (Yzn, Dzn) | Querzweig am Zickzackknoten: Z0T = 0,1 · Z1T (Beiblatt 4, 2.3), unabhängig von der anderen Seite |
 | Trafo YNyn | Längszweig Z0T zwischen beiden Knoten, wenn beide Sternpunkte geerdet sind |
 | Trafo Yyn und ähnliche ohne Dreieck | nicht abgebildet, Warnung (Nullimpedanz hängt von der Kernbauart ab) |
 | Trafo ohne N auf der Seite des Knotens | kein Nullsystem, das Dreieck sperrt |
@@ -58,11 +59,15 @@ sie bei Ik1 max im Mit- und Gegensystem mit (DIN EN 60909-0, 7.1.2 e und 6.10), 
 Ein Sternpunkt mit N an einem starr geerdeten Knoten gilt als starr geerdet. An einem
 niederohmigen Knoten gilt nur ein Erdungspunkt (Abschnitt 4).
 
-**Kabel:** Die Werksvoreinstellungen RE/RL = XE/XL = 1,0 ergeben Z0 = 4 · Z1. Das ist ein grober
-Wert. Bei Einleiterkabeln mit beidseitig geerdetem Schirm fließt der Erdstrom überwiegend über den
-Schirm zurück, R0′ liegt dann eher bei R1′ + 3 · R_Schirm. Für das Beispielnetz (NA2XS2Y 1x150/25,
-R_Schirm etwa 0,73 Ω/km als Annahme) sinkt Ik1 min damit an K3 um 9 % und an K4 um 18 %. Für ein
-echtes Netz R0′ und X0′ aus dem Datenblatt eintragen (Prüfpunkt 3).
+**Kabel (Beiblatt 4 zu DIN EN 60909-0, Tabelle 9, gelesen 25.11.2026):** Für 10-kV-Einleiterkabel
+N2XS2Y (Cu, Dreieck, Kupferschirm, Rückleitung über Schirm und Erde) nennt das Beiblatt bei
+150/25 mm² R0/R1 = 5,96 und X0/X1 = 2,93, also R0′ = 0,74 und X0′ = 0,31 Ω/km. Für das
+Aluminiumkabel NA2XS2Y 150/25 der Beispielnetze (R1′ = 0,206 Ω/km, gleicher Schirm) folgt
+R0′ ≈ 0,206 + (0,74 − 0,124) = 0,82 Ω/km, also R0/R1 ≈ 4,0, und X0′ ≈ 0,31 Ω/km, also
+X0/X1 ≈ 2,8. Die Werksvoreinstellung RE/RL = XE/XL = 1,0 (Z0 = 4 · Z1) trifft R0 gut und liegt
+bei X0 etwa 40 % zu hoch. Ik1 wird damit etwas zu klein, also auf der sicheren Seite. Die frühere
+Abschätzung R0′ ≈ R1′ + 3 · R_Schirm war deutlich zu pessimistisch und ist hiermit überholt. Für ein
+echtes Netz R0′ und X0′ aus dem Datenblatt oder aus Beiblatt 4 eintragen.
 
 ## 4. Erdungspunkt und Begrenzung
 
@@ -209,8 +214,8 @@ Strahlennetz eine einfache Reihenschaltung und durch Tests mit Handrechnung abge
 | Nr. | Punkt | Stand |
 |---|---|---|
 | 1 | Ik1-Formel und Spannungsfaktor am Normtext bestätigen | erledigt 25.11.2026: 7.5, Gl. (54), Tabelle 1 |
-| 2 | Z0T = 1,0 · Z1T für Trafos mit Dreieckwicklung | Tool-Vorgabe, für ein echtes Netz aus dem Prüfprotokoll |
-| 3 | R0′/X0′ der Kabel aus dem Datenblatt (Schirmquerschnitt, Erdung des Schirms) | offen, Default Z0 = 4 · Z1 ist grob (Abschnitt 3) |
+| 2 | Z0T = 1,0 · Z1T für Trafos mit Dreieckwicklung | Beiblatt 4 (25.11.2026): YNd 0,8 bis 1,0, Yzn 0,1 (eingebaut). Für ein echtes Netz aus dem Prüfprotokoll, Felder `R0_R_T`, `X0_X_T` |
+| 3 | R0′/X0′ der Kabel aus dem Datenblatt (Schirmquerschnitt, Erdung des Schirms) | Beiblatt 4, Tabelle 9 (25.11.2026): Default trifft R0, X0 etwa 40 % zu hoch (Abschnitt 3) |
 | 4 | X0/X1 der Einspeisung | Tool-Vorgabe 1,0, für ein echtes Netz Ik1″ vom Netzbetreiber |
 | 5 | Adressen der Erdstufen: Trafo IE 2411 bis 2414 (aus den Kommentaren in `konstanten_trafo.py`, nur 1-A-Sternpunktwandler) und Motor-Zeiten 1303, 1305, 1308 (aus der Sollwerttabelle in `tab_motor.py`) gegen das Handbuch prüfen | offen |
 | 6 | Fehlerwiderstand bei der Empfindlichkeit | nicht berücksichtigt |
@@ -229,3 +234,7 @@ https://www.pandapower.org
 
 [3] Lehrbuch „Elektrische Energieversorgung“ (vorliegende Datei), Abschnitte zu symmetrischen
 Komponenten und Sternpunktbehandlung. Abschnittsnummern vor dem Zitieren am Buch ergänzen.
+
+[4] DIN EN 60909-0 Beiblatt 4 (VDE 0102 Beiblatt 4):2009-08 (IEC/TR 60909-2:2008), Daten
+elektrischer Betriebsmittel. Gelesen am 25.11.2026: 2.3 mit Tabelle 2 (Nullreaktanzen der
+Trafos), 2.5 mit Tabelle 9 (10-kV-Kabel N2XS2Y), 2.6 mit Tabelle 16 (Asynchronmotoren).
