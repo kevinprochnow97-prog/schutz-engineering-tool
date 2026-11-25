@@ -149,7 +149,38 @@ KT_bei_min = False
 # Kabel, die Kurzschlusserwaermung selbst (zulaessig bis 250 Grad C) ist nicht enthalten.
 # Je Leitung ueber den Parameter theta_min_C aenderbar.
 alpha_Leiter_1K = 0.004
+# Anfangstemperatur des Leiters vor dem Kurzschluss (hoechste zulaessige Betriebstemperatur
+# VPE). Ab 25.11.2026 Startwert der adiabatischen Erwaermung, nicht mehr die Endtemperatur.
 theta_Leiter_min_C = 90.0
+
+# Endtemperatur am Ende des Kurzschlusses (DIN EN 60909-0:2016-12, 7.1.2 Punkt 7, Gl. (32),
+# geprueft am 25.11.2026): adiabatische Erwaermung nach IEC 60949 (Normtext nicht gelesen,
+# Pruefpunkt in docs/tool_vorgabe_kurzschluss.md):
+#   theta_e = (theta_i + beta) * exp(I^2 * t / (K^2 * S^2)) - beta
+# I: Ik2 min bei einem Fehler am Ende der Leitung (groesster Strom, den die Leitung bei Ik min
+# fuehrt, also sichere Seite), t: Kurzschlussdauer, S: Leiterquerschnitt.
+# Werte je Leitermaterial: K in A*s^0,5/mm^2, beta in K, spez. Widerstand bei 20 Grad C in
+# Ohm*mm^2/m (DIN EN 60909-0, 6.4: Cu 1/54, Al 1/34). Ohne Querschnitt A_mm2 wird er aus
+# R' und dem spezifischen Widerstand abgeleitet.
+LEITER = {
+    "Al": {"K": 148.0, "beta": 228.0, "rho": 1.0 / 34.0},
+    "Cu": {"K": 226.0, "beta": 234.5, "rho": 1.0 / 54.0},
+}
+Leitermaterial_def = "Al"          # Tool-Vorgabe: NA2XS(F)2Y, Aluminium
+# Kurzschlussdauer fuer Ik min: Tool-Vorgabe 1,0 s (Abschaltung ueber eine verzoegerte
+# Stufe bzw. den Reserveschutz). Je Leitung ueber t_KS_s aenderbar.
+t_KS_Ikmin_s = 1.0
+# Hoechste zulaessige Kurzschlusstemperatur VPE (Datenblatt): darueber Warnung, Rechnung
+# mit diesem Wert begrenzt.
+theta_KS_max_C = 250.0
+# Iteration Strom <-> Widerstand
+theta_Iter_max = 20
+theta_Iter_tol_K = 0.1
+
+# Motoren beim groessten Strom (DIN EN 60909-0:2016-12, 7.1.2 e) und 7.1.3, geprueft am
+# 25.11.2026): Ik max enthaelt die Motorbeitraege. Ausnahme: Motoren, die nach Art der
+# Schaltung (Verriegelung) oder Prozessfuehrung nicht gleichzeitig laufen. Schalter am Motor:
+KS_BEITRAG_OPTIONEN = ("Ja", "Nein: läuft nicht gleichzeitig (Verriegelung)")
 
 # Asynchronmotor: R_M/X_M ohne Angabe RX_M im Element. Die Norm staffelt nach
 # Leistung je Polpaar (ueber 1 kV: 0,10 ab 1 MW je Polpaar, sonst 0,15. Bis 1 kV: 0,42).
@@ -163,3 +194,30 @@ f_2pol = 3.0 ** 0.5 / 2.0
 # Anzeige: ab dieser Abweichung zwischen eingegebenem und berechnetem Ik weist die
 # Oberflaeche darauf hin (Tool-Vorgabe, halbe Sicherheit von k_S_Strom = 1,2)
 Ik_Abweichung_Hinweis = 0.10
+
+# ── Erdfehler: Nullsystem und einpoliger Kurzschluss (netz_kurzschluss.py) ───
+# Einpoliger Fehler (Erdkurzschluss) nach dem Verfahren der symmetrischen Komponenten:
+#   Ik1 = 3 * c * UN / sqrt(3) / |Z1 + Z2 + Z0|, mit Z2 = Z1 (generatorfern).
+# Herleitung, Annahmen und offene Pruefpunkte in docs/tool_vorgabe_erdfehler.md.
+#
+# Transformator, Nullimpedanz der Wicklung mit herausgefuehrtem Sternpunkt, wenn die andere
+# Seite ein Dreieck ist (Dyn, YNd, ...): Z0T = Z0_Z1_Trafo * Z1T. Tool-Vorgabe 1,0 (gleicher
+# Wert wie Z1T, uebliche Naeherung bei Dreischenkel-Trafos mit Dreieckwicklung). Der Faktor
+# K_T gilt beim groessten Strom auch fuer Z0T.
+Z0_Z1_Trafo = 1.0
+
+# Netzeinspeisung an einem starr geerdeten Knoten: Z0Q = X0_X1_Q_def * Z1Q, wenn das Element
+# keinen eigenen Wert X0_X1_Q hat. Tool-Vorgabe 1,0 (dann ist Ik1 = Ik3 am Uebergabepunkt).
+# Fuer ein echtes Netz kommt der Wert vom Netzbetreiber (Ik1'' am Uebergabepunkt).
+X0_X1_Q_def = 1.0
+
+# Leitung ohne eigene Nullsystembelaege R0_Belag / X0_Belag: Nullimpedanz aus den
+# Erdimpedanz-Faktoren der Leitung (RE/RL, XE/XL, dieselben Werte wie beim Distanzschutz):
+#   R0' = R1' * (1 + 3 * RE/RL),  X0' = X1' * (1 + 3 * XE/XL)
+# Ohne Angabe gelten die Werksvoreinstellungen aus konstanten_leitung (RE_RL_def, XE_XL_def).
+
+# Erdfehlerstrom-Begrenzung am Knoten (niederohmige Sternpunkterdung):
+#   R_E = UN / (sqrt(3) * I_E_begr). Die Impedanz eines Sternpunktbildners selbst ist nicht
+#   enthalten (Tool-Vorgabe, gegenueber 3 * R_E klein). Liegt am Knoten ein Trafo mit
+#   herausgefuehrtem Sternpunkt, gilt die Erdung an dessen Sternpunkt: Z0 = Z0T + 3 * R_E.
+I_E_begr_Bereich_A = (1.0, 100000.0)

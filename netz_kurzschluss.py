@@ -37,8 +37,30 @@ Pruefpunkte in docs/tool_vorgabe_kurzschluss.md):
           vorgelagerten Schutzgeraete fuehren). Der Wert mit Motoren steht daneben.
   Ik min: zweipolig = sqrt(3)/2 * Ik3, c_min, Sk_min, ohne Motoren, warmer Leiter.
 
-Nicht berechnet: Generatoren, Erdfehler (kein Nullsystem), Stoss-, Ausschalt- und
-thermischer Strom. Der Stufensteller wirkt nicht auf die Impedanz, er geht wie bisher in
+  Gegen DIN EN 60909-0:2016-12 geprueft am 25.11.2026 (Fundstellen in
+  docs/tool_vorgabe_kurzschluss.md). Danach zwei Aenderungen:
+    - Ik max enthaelt die Motoren (7.1.2 e, 7.1.3). Ein Motor mit KS_Beitrag "Nein" (laeuft
+      nicht gleichzeitig) faellt heraus. Ik max ohne Motoren bleibt zum Vergleich.
+    - Ik min: Leitertemperatur am Ende des Kurzschlusses (7.1.2 Punkt 7, Gl. (32)) aus der
+      adiabatischen Erwaermung mit dem Strom am Leitungsende (iterativ), siehe
+      _endtemperatur. Ein Handwert theta_min_C hat Vorrang.
+
+  Erdfehler (einpolig, Entscheidung 25.11.2026, docs/tool_vorgabe_erdfehler.md):
+    Ik1 = 3 * c * UN / sqrt(3) / |2 * Z1 + Z0|  (Z2 = Z1), Z0 aus einer eigenen Nullsystem-
+    Matrix. Nur in geerdeten Bereichen (Knoten "direkt" oder "niederohmig" mit
+    Erdfehlerstrom-Begrenzung I_E_begr_A), sonst kein Wert. Ik1 max mit c_max, Sk_max, K_T,
+    Ik1 min mit c_min, Sk_min, warmem Leiter, ohne K_T. Motoren ohne Beitrag.
+    Nullsystem je Element:
+      Einspeisung (Knoten direkt)   Z0 = X0_X1_Q * Z1Q
+      Trafo, Stern mit N gegen D    Querzweig Z0T = Z0_Z1_Trafo * Z1T (+ 3 R_E) am Sternknoten
+      Trafo YNyn                    Laengszweig Z0T (+ 3 R_E je Seite)
+      Trafo ohne N oder Yyn         kein Nullsystem (D sperrt, Yyn mit Hinweis)
+      Leitung                       Z0 = (R0' + jX0') * L, sonst aus RE/RL und XE/XL
+      Knoten niederohmig ohne Trafo Querzweig 3 R_E (Sternpunktbildner)
+  erdstrom_verteilung(netz, knoten) -> 3I0 durch jedes Element und jeden Erdungspunkt.
+
+Nicht berechnet: Generatoren, Erdschluss in isolierten oder kompensierten Netzen, Stoss-,
+Ausschalt- und thermischer Strom. Der Stufensteller wirkt nicht auf die Impedanz, er geht wie bisher in
 netz_umrechnung.py als Faktor auf den Strom ein.
 
 Robustheit: Das Modul wirft nie. Fehlen Daten, gibt es Meldungen und fuer die betroffenen
@@ -49,11 +71,13 @@ from __future__ import annotations
 
 import cmath
 import math
+import re
 from dataclasses import dataclass, field
 
 import numpy as np
 
 import calc_motor
+import konstanten_leitung
 import konstanten_netz as KN
 from netz_modell import ModellFehler, Netz
 from netz_topologie import FEHLER, HINWEIS, WARNUNG, Meldung
@@ -82,18 +106,25 @@ class ElementImpedanz:
 class KnotenIk:
     knoten: str
     UN_kV: float
-    Ik_max_kA: float | None = None            # dreipolig, ohne Motoren
-    Ik_max_mit_Motor_kA: float | None = None  # dreipolig, mit Motoren
+    # Ab 25.11.2026 (DIN EN 60909-0:2016-12, 7.1.2 e): Ik max MIT den Motoren, die gleichzeitig
+    # laufen. Ik_max_mit_Motor_kA bleibt als gleichwertiger Name fuer aeltere Aufrufer.
+    Ik_max_kA: float | None = None            # dreipolig, groesster (mit Motoren)
+    Ik_max_mit_Motor_kA: float | None = None  # = Ik_max_kA
     Ik_min_kA: float | None = None            # zweipolig, kleinster
-    Zk_max_Ohm: complex | None = None         # Kurzschlussimpedanz am Knoten (ohne Motoren)
+    Zk_max_Ohm: complex | None = None         # Kurzschlussimpedanz am Knoten (mit Motoren)
     Zk_min_Ohm: complex | None = None
+    Ik1_max_kA: float | None = None           # einpolig (Erdkurzschluss), groesster
+    Ik1_min_kA: float | None = None           # einpolig, kleinster
+    Z0_max_Ohm: complex | None = None         # Nullimpedanz am Knoten
+    erdung: str = ""                          # Kurztext: wie der Bereich geerdet ist
+    Ik_max_ohne_Motor_kA: float | None = None # dreipolig, nur Netz (Vergleich, Gegenrechnung)
 
     @property
     def Ik_Motor_kA(self) -> float | None:
         """Zuwachs durch die Motoren (Betragsdifferenz), None wenn nicht ermittelbar."""
-        if self.Ik_max_kA is None or self.Ik_max_mit_Motor_kA is None:
+        if self.Ik_max_kA is None or self.Ik_max_ohne_Motor_kA is None:
             return None
-        return max(self.Ik_max_mit_Motor_kA - self.Ik_max_kA, 0.0)
+        return max(self.Ik_max_kA - self.Ik_max_ohne_Motor_kA, 0.0)
 
 
 @dataclass
@@ -103,11 +134,31 @@ class KurzschlussErgebnis:
     trennstelle: str | None = None              # nur bei art == LAGE
     knoten: dict = field(default_factory=dict)  # Knoten-ID -> KnotenIk
     impedanzen: list = field(default_factory=list)
+    impedanzen0: list = field(default_factory=list)  # Nullimpedanzen (Leitungen, Erdungspunkte)
     meldungen: list = field(default_factory=list)
+    # Aufgebautes Nullsystem fuer erdstrom_verteilung (intern, nicht fuer die Anzeige)
+    null: dict | None = field(default=None, repr=False, compare=False)
+    theta_e: dict = field(default_factory=dict)    # Leitung -> Endtemperatur bei Ik min [Grad C]
 
     @property
     def ok(self) -> bool:
         return not any(m.stufe == FEHLER for m in self.meldungen)
+
+
+@dataclass(frozen=True)
+class ErdstromVerteilung:
+    """
+    Erdstrom 3I0 bei einem einpoligen Fehler am Knoten fehlerknoten.
+    zweige: Element-ID -> (3I0 in kA, Knoten, von dem der Strom in das Element hinein zum
+            Fehler fliesst). Nur Elemente mit Nullsystem-Laengszweig (Leitung, Trafo YNyn).
+    erdungen: Erdungspunkt -> 3I0 in kA. Schluessel ist die Trafo-ID (Strom im Sternpunkt),
+            "Netz:<Einspeisung>" oder "Erdung:<Knoten>" (Sternpunktbildner).
+    """
+    fehlerknoten: str
+    fall: str
+    Ik1_kA: float | None
+    zweige: dict = field(default_factory=dict)
+    erdungen: dict = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -232,13 +283,48 @@ def _z_leitung(e, kn) -> tuple:
         ann.append("R' = 0 (weder R_Belag noch phi_Ltg)")
         warn = (f"{e.id}: Kein Widerstandsbelag (R_Belag oder phi_Ltg). Mit R' = 0 ist "
                 f"Ik min hinter der Leitung zu groß gerechnet.")
-    theta = e.p.get("theta_min_C")
-    if not (_zahl(theta) and 20 <= theta <= 250):
-        theta = KN.theta_Leiter_min_C
+    theta = theta_fest(e)
+    if theta is None:
+        theta = KN.theta_Leiter_min_C            # Startwert, die Rechnung ersetzt ihn
     f_warm = 1.0 + KN.alpha_Leiter_1K * (theta - 20.0)
-    ann.append(f"Ik min mit {de(theta, 0)} °C (R × {de(f_warm, 2)})")
     zb = S_B_MVA / (UN * UN)
     return (complex(Rb * L, Xb * L) * zb, complex(Rb * L * f_warm, Xb * L) * zb, ann, "", warn)
+
+
+def theta_fest(e) -> float | None:
+    """Von Hand vorgegebene Leitertemperatur fuer Ik min (Vorrang vor der Rechnung)."""
+    theta = e.p.get("theta_min_C")
+    return float(theta) if _zahl(theta) and 20 <= theta <= KN.theta_KS_max_C else None
+
+
+def leiterdaten(e) -> tuple:
+    """(Material, Querschnitt mm^2, Herkunft) der Leitung. Querschnitt None, wenn unbekannt."""
+    mat = e.p.get("Leitermaterial")
+    mat = mat if mat in KN.LEITER else KN.Leitermaterial_def
+    A = e.p.get("A_mm2")
+    if _zahl(A) and A > 0:
+        return mat, float(A), "eingegeben"
+    Xb = e.p.get("X_Belag")
+    Rb = e.p.get("R_Belag")
+    phi = e.p.get("phi_Ltg")
+    if not (_zahl(Rb) and Rb > 0) and _zahl(Xb) and Xb > 0 and _zahl(phi) and 0 < phi < 90:
+        Rb = Xb / math.tan(math.radians(phi))
+    if _zahl(Rb) and Rb > 0:
+        return mat, KN.LEITER[mat]["rho"] * 1000.0 / Rb, "aus R′"
+    return mat, None, ""
+
+
+def _endtemperatur(theta_i, I_kA, t_s, A_mm2, mat) -> float:
+    """Adiabatische Erwaermung (IEC 60949): theta_e = (theta_i + beta)*exp(I^2 t/(K^2 S^2)) - beta."""
+    d = KN.LEITER[mat]
+    I = I_kA * 1000.0
+    x = I * I * t_s / (d["K"] ** 2 * A_mm2 ** 2)
+    return (theta_i + d["beta"]) * math.exp(min(x, 50.0)) - d["beta"]
+
+
+def motor_im_kurzschluss(e) -> bool:
+    """Beitrag zu Ik max (Nein: laeuft nach Art der Schaltung nicht gleichzeitig, 7.1.3)."""
+    return e.p.get("KS_Beitrag", KN.KS_BEITRAG_OPTIONEN[0]) != KN.KS_BEITRAG_OPTIONEN[1]
 
 
 def _z_motor(e, kn) -> tuple:
@@ -259,6 +345,285 @@ def _z_motor(e, kn) -> tuple:
         ann.append(f"R/X = {de(rx, 2)} (Tool-Vorgabe)")
     Z_ohm = UN * 1000.0 / (SQRT3 * I_A)
     return _rx_zu_z(Z_ohm, rx) * S_B_MVA / (UN * UN), ann
+
+
+# ── Nullsystem (Erdfehler) ───────────────────────────────────────────────────
+_SG_MUSTER = re.compile(r"(YN|Y|D|ZN|Z)(yn|y|d|zn|z)(\d{1,2})")
+
+
+def wicklungen(schaltgruppe) -> tuple | None:
+    """'Dyn5' -> ('D', 'yn'). None, wenn die Schaltgruppe nicht lesbar ist."""
+    if not isinstance(schaltgruppe, str):
+        return None
+    m = _SG_MUSTER.fullmatch(schaltgruppe.strip())
+    return (m.group(1), m.group(2)) if m else None
+
+
+def geerdet(knoten) -> bool:
+    """Sternpunktbehandlung mit Erdfehlerstrom (starr oder niederohmig geerdet)."""
+    return knoten.sternpunkt in ("direkt", "niederohmig")
+
+
+def R_E_Ohm(knoten) -> float | None:
+    """Erdungswiderstand aus der Begrenzung: R_E = UN / (sqrt(3) * I_E). Nur bei niederohmig."""
+    I_E = knoten.I_E_begr_A
+    if knoten.sternpunkt != "niederohmig" or not _zahl(I_E):
+        return None
+    lo, hi = KN.I_E_begr_Bereich_A
+    if not (lo <= I_E <= hi):
+        return None
+    return knoten.UN_kV * 1000.0 / (SQRT3 * I_E)
+
+
+def _sternseite(e) -> list:
+    """Knoten-IDs, an denen der Trafo e einen herausgefuehrten Sternpunkt (N) hat."""
+    wk = wicklungen(e.p.get("Schaltgruppe"))
+    if wk is None:
+        return []
+    return ([e.von] if wk[0] in ("YN", "ZN") else []) + ([e.nach] if wk[1] in ("yn", "zn") else [])
+
+
+def _erster_sterntrafo(kid, aktiv) -> str | None:
+    """Erster eingeschalteter Trafo (nach ID) mit herausgefuehrtem Sternpunkt am Knoten."""
+    for e in aktiv:
+        if e.typ == "trafo" and kid in _sternseite(e):
+            return e.id
+    return None
+
+
+def erdung_am_trafo(netz: Netz, trafo_id: str) -> str | None:
+    """
+    Knoten, an dem der Sternpunkt des Trafos geerdet ist (dort sitzt ein Sternpunktwandler),
+    None, wenn kein Sternpunkt geerdet ist. Gleiche Regel wie in der Kurzschlussrechnung:
+    am starr geerdeten Knoten jeder Sternpunkt, am niederohmigen Knoten mit Begrenzung nur der
+    erste Trafo mit Sternpunkt (ein Erdungspunkt je Knoten). Bei YNyn zaehlt die US-Seite zuerst.
+    """
+    e = netz.elemente.get(trafo_id)
+    if e is None or e.typ != "trafo" or e.zustand != "ein":
+        return None
+    aktiv = [x for _, x in sorted(netz.elemente.items()) if x.zustand == "ein"]
+    for kid in sorted(_sternseite(e), key=lambda k: k != e.nach):
+        k = netz.knoten[kid]
+        if k.sternpunkt == "direkt":
+            return kid
+        if (k.sternpunkt == "niederohmig" and R_E_Ohm(k) is not None
+                and _erster_sterntrafo(kid, aktiv) == trafo_id):
+            return kid
+    return None
+
+
+def _z0_leitung(e, kn, theta=None) -> tuple:
+    """
+    (z0_max, z0_min, Annahmen, Fehlertext) bezogen. Ik1 min mit warmem Leiter (auch R0), mit
+    derselben Endtemperatur wie im Mitsystem (theta aus _loese_min).
+    """
+    L, Xb = _pos(e.p, "L_km"), _pos(e.p, "X_Belag")
+    if L is None or Xb is None:
+        return None, None, [], "L_km oder X_Belag fehlt"
+    UN = kn[e.von].UN_kV
+    ann = []
+    Rb = e.p.get("R_Belag")
+    phi = e.p.get("phi_Ltg")
+    if _zahl(Rb) and Rb >= 0:
+        Rb = float(Rb)
+    elif _zahl(phi) and 0 < phi < 90:
+        Rb = Xb / math.tan(math.radians(phi))
+    else:
+        Rb = 0.0
+    R0, X0 = e.p.get("R0_Belag"), e.p.get("X0_Belag")
+    if not (_zahl(R0) and R0 >= 0):
+        kR = e.p.get("RE_RL")
+        if not (_zahl(kR) and kR >= 0):
+            kR = konstanten_leitung.RE_RL_def
+        R0 = Rb * (1.0 + 3.0 * kR)
+        ann.append(f"R0' = R1' · (1 + 3 · {de(kR, 2)}) aus RE/RL")
+    if not (_zahl(X0) and X0 > 0):
+        kX = e.p.get("XE_XL")
+        if not (_zahl(kX) and kX >= 0):
+            kX = konstanten_leitung.XE_XL_def
+        X0 = Xb * (1.0 + 3.0 * kX)
+        ann.append(f"X0' = X1' · (1 + 3 · {de(kX, 2)}) aus XE/XL")
+    if theta is None:
+        theta = theta_fest(e) or KN.theta_Leiter_min_C
+    f_warm = 1.0 + KN.alpha_Leiter_1K * (theta - 20.0)
+    zb = S_B_MVA / (UN * UN)
+    return (complex(R0 * L, X0 * L) * zb, complex(R0 * L * f_warm, X0 * L) * zb, ann, "")
+
+
+def _nullsystem(kn, verbund, aktiv, z1, erg, theta_e=None) -> dict:
+    """
+    Nullsystem aufbauen. z1: Element-ID -> (z_max, z_min) des Mitsystems (Einspeisung, Trafo).
+    Rueckgabe dict mit zweige {fall: [(a, b, z, eid, von, nach)]},
+    erden {fall: [(a, z, quelle, knoten)]},
+    texte {Wurzel: [Text je Erdungspunkt]}, ungueltig (bool: Ik1 nicht berechenbar).
+    Meldungen gehen nach erg.meldungen, nie als FEHLER: das Nullsystem darf die
+    Phasenrechnung nicht blockieren.
+    """
+    zweige = {MAX: [], MIN: []}
+    erden = {MAX: [], MIN: []}
+    texte: dict = {}
+    w = verbund.wurzel
+
+    def erde(knoten_id, z_max, z_min, quelle, text):
+        a = w(knoten_id)
+        zb = kn[knoten_id].UN_kV ** 2 / S_B_MVA
+        erg.impedanzen0.append(ElementImpedanz(
+            quelle, "erdung", kn[knoten_id].UN_kV, None if z_max is None else z_max * zb,
+            None if z_min is None else z_min * zb, (text,)))
+        for fall, z in ((MAX, z_max), (MIN, z_min)):
+            if z is not None and abs(z) > 1e-12:
+                erden[fall].append((a, z, quelle, knoten_id))
+        texte.setdefault(a, []).append(text)
+
+    # Erdungswiderstand je niederohmigem Knoten: an den ersten Trafo mit Sternpunkt dort,
+    # sonst Sternpunktbildner. Ein Erdungspunkt je Knoten (Tool-Vorgabe).
+    re_bei = {}                  # Knoten-ID -> Trafo-ID, der den Widerstand traegt
+    for kid, k in sorted(kn.items()):
+        if k.I_E_begr_A is not None and k.sternpunkt != "niederohmig":
+            erg.meldungen.append(Meldung(
+                HINWEIS, f"{kid}: Erdfehlerstrom-Begrenzung ist eingetragen, der Knoten ist aber "
+                         f"nicht niederohmig geerdet. Der Wert wird ignoriert.", (kid,)))
+            continue
+        if k.sternpunkt != "niederohmig" or k.I_E_begr_A is None:
+            continue
+        if R_E_Ohm(k) is None:
+            lo, hi = KN.I_E_begr_Bereich_A
+            erg.meldungen.append(Meldung(
+                WARNUNG, f"{kid}: Erdfehlerstrom-Begrenzung {de(k.I_E_begr_A, 0)} A liegt "
+                         f"außerhalb von {de(lo, 0)} bis {de(hi, 0)} A. Keine Erdung angesetzt.",
+                (kid,)))
+            continue
+        t = _erster_sterntrafo(kid, aktiv)
+        if t is not None:
+            re_bei[kid] = t
+
+    def z_RE(kid):
+        R = R_E_Ohm(kn[kid])
+        return 0.0 if R is None else 3.0 * R * S_B_MVA / kn[kid].UN_kV ** 2
+
+    for e in aktiv:
+        if e.typ == "einspeisung":
+            k = kn[e.nach]
+            if k.sternpunkt != "direkt" or e.id not in z1:
+                continue
+            zq_max, zq_min = z1[e.id]
+            r = e.p.get("X0_X1_Q")
+            ann = ""
+            if not (_zahl(r) and r > 0):
+                r = KN.X0_X1_Q_def
+                ann = " (Tool-Vorgabe)"
+            if zq_max is None and zq_min is None:
+                continue
+            erde(e.nach, None if zq_max is None else zq_max * r,
+                 None if zq_min is None else zq_min * r, f"Netz:{e.id}",
+                 f"Netz {e.id} starr geerdet, X0/X1 = {de(r, 2)}{ann}")
+        elif e.typ == "trafo":
+            if e.id not in z1 or z1[e.id][0] is None:
+                if geerdet(kn[e.von]) or geerdet(kn[e.nach]):
+                    erg.meldungen.append(Meldung(
+                        WARNUNG, f"{e.id}: ohne Sn/uk kein Nullsystem. Ik1 im angrenzenden "
+                                 f"geerdeten Bereich ist unsicher.", (e.id,)))
+                continue
+            sg = e.p.get("Schaltgruppe")
+            wk = wicklungen(sg)
+            if wk is None:
+                if geerdet(kn[e.von]) or geerdet(kn[e.nach]):
+                    erg.meldungen.append(Meldung(
+                        WARNUNG, f"{e.id}: Schaltgruppe {sg!r} ist nicht lesbar. Das Nullsystem "
+                                 f"des Trafos ist nicht abgebildet.", (e.id,)))
+                continue
+            zt_max, zt_min = (z * KN.Z0_Z1_Trafo for z in z1[e.id])
+            os_n, us_n = wk[0] in ("YN", "ZN"), wk[1] in ("yn", "zn")
+            os_d, us_d = wk[0] == "D", wk[1] == "d"
+
+            def sternseite(kid):
+                """(Zusatz 3 R_E bezogen, Text) oder None, wenn der Sternpunkt nicht geerdet ist."""
+                k = kn[kid]
+                if k.sternpunkt == "direkt":
+                    return 0.0, "starr"
+                if k.sternpunkt == "niederohmig" and re_bei.get(kid) == e.id:
+                    return z_RE(kid), f"über R_E, I_E = {de(k.I_E_begr_A, 0)} A"
+                return None
+
+            if os_n and us_n:
+                a, b = sternseite(e.von), sternseite(e.nach)
+                if a is not None and b is not None:
+                    zus = a[0] + b[0]
+                    zweige[MAX].append((w(e.von), w(e.nach), zt_max + zus, e.id, e.von, e.nach))
+                    zweige[MIN].append((w(e.von), w(e.nach), zt_min + zus, e.id, e.von, e.nach))
+            elif (os_n and us_d) or (us_n and os_d):
+                kid = e.von if os_n else e.nach
+                st = sternseite(kid)
+                if st is not None:
+                    erde(kid, zt_max + st[0], zt_min + st[0], e.id,
+                         f"Sternpunkt {e.id} ({sg}) {st[1]}")
+            elif os_n or us_n:
+                kid = e.von if os_n else e.nach
+                if geerdet(kn[kid]):
+                    erg.meldungen.append(Meldung(
+                        WARNUNG, f"{e.id}: Schaltgruppe {sg} ohne Dreieckwicklung. Die "
+                                 f"Nullimpedanz hängt von der Kernbauart ab und ist nicht "
+                                 f"abgebildet, der Sternpunkt zählt nicht als Erdung.", (e.id,)))
+        elif e.typ == "leitung":
+            z0_max, z0_min, ann, fehlt = _z0_leitung(e, kn, (theta_e or {}).get(e.id))
+            a, b = w(e.von), w(e.nach)
+            if fehlt or a == b:
+                continue
+            if abs(z0_max) < 1e-12 or abs(z0_min) < 1e-12:
+                continue
+            zweige[MAX].append((a, b, z0_max, e.id, e.von, e.nach))
+            zweige[MIN].append((a, b, z0_min, e.id, e.von, e.nach))
+            zb = kn[e.von].UN_kV ** 2 / S_B_MVA
+            erg.impedanzen0.append(ElementImpedanz(
+                e.id, e.typ, kn[e.von].UN_kV, z0_max * zb, z0_min * zb, tuple(ann)))
+
+    # Sternpunktbildner: niederohmige Knoten mit Begrenzung, aber ohne Trafo-Sternpunkt
+    for kid, k in sorted(kn.items()):
+        if k.sternpunkt == "niederohmig" and R_E_Ohm(k) is not None and kid not in re_bei:
+            z = complex(z_RE(kid), 0.0)
+            erde(kid, z, z, f"Erdung:{kid}",
+                 f"Sternpunktbildner an {kid}, I_E = {de(k.I_E_begr_A, 0)} A")
+    return {"zweige": zweige, "erden": erden, "texte": texte}
+
+
+def _bereiche(kn, verbund, aktiv) -> dict:
+    """Wurzel -> Bereichsnummer: Knoten, die galvanisch ueber Leitungen/Kupplungen verbunden sind."""
+    v = _Verbund({verbund.wurzel(k) for k in kn})
+    for e in aktiv:
+        if e.typ == "leitung":
+            v.verbinde(verbund.wurzel(e.von), verbund.wurzel(e.nach))
+    return {r: v.wurzel(r) for r in v.v}
+
+
+def _loese_voll(zweige: list, shunts: list) -> tuple:
+    """Wie _loese, aber mit der ganzen Impedanzmatrix: (pos, Z). zweige (a, b, z, ...)."""
+    nachbarn: dict = {}
+    for a, b, *_ in zweige:
+        nachbarn.setdefault(a, set()).add(b)
+        nachbarn.setdefault(b, set()).add(a)
+    versorgt, offen = set(), [s[0] for s in shunts]
+    while offen:
+        k = offen.pop()
+        if k in versorgt:
+            continue
+        versorgt.add(k)
+        offen.extend(nachbarn.get(k, set()) - versorgt)
+    ids = sorted(versorgt)
+    if not ids:
+        return {}, None
+    pos = {k: i for i, k in enumerate(ids)}
+    Y = np.zeros((len(ids), len(ids)), dtype=complex)
+    for a, b, z, *_ in zweige:
+        if a in pos and b in pos:
+            y = 1.0 / z
+            i, j = pos[a], pos[b]
+            Y[i, i] += y
+            Y[j, j] += y
+            Y[i, j] -= y
+            Y[j, i] -= y
+    for a, z, *_ in shunts:
+        Y[pos[a], pos[a]] += 1.0 / z
+    return pos, np.linalg.inv(Y)
 
 
 # ── Netz aufbauen und loesen ─────────────────────────────────────────────────
@@ -329,6 +694,90 @@ def berechne(netz: Netz, bezeichnung: str = "Aktueller Schaltzustand", art: str 
         return erg
 
 
+def _loese_min(kn, wurzeln, zweige_min, quellen_min, leitungen, erg) -> tuple:
+    """
+    Ik min mit der Leitertemperatur am Ende des Kurzschlusses (Gl. (32)). Je Leitung:
+    Handwert theta_min_C, sonst adiabatisch aus dem zweipoligen Strom im Zweig bei einem Fehler
+    an einem seiner Enden (der groessere von beiden, im Strahlennetz der Fehler am fernen Ende),
+    Kurzschlussdauer t_KS_s und Querschnitt. Strom und Widerstand haengen
+    voneinander ab, daher Fixpunkt-Iteration ab der Anfangstemperatur. Die Temperatur steigt
+    monoton, der Strom faellt, die Iteration konvergiert.
+    Rueckgabe ({Wurzel: z}, {Element-ID: theta_e}). Schreibt die Annahmen in erg.impedanzen.
+    """
+    if not quellen_min:
+        return {}, {}
+    daten = {}
+    for e, a, b, z_max, idx in leitungen:
+        fest = theta_fest(e)
+        mat, A, herkunft = leiterdaten(e)
+        t = e.p.get("t_KS_s")
+        t = float(t) if _zahl(t) and t > 0 else KN.t_KS_Ikmin_s
+        daten[e.id] = (e, a, b, z_max, idx, fest, mat, A, herkunft, t)
+
+    def z_leitung(e, z_max, theta):
+        """Mitimpedanz bei theta: nur der Wirkanteil waechst (z_max ist bei 20 Grad C)."""
+        f = 1.0 + KN.alpha_Leiter_1K * (theta - 20.0)
+        return complex(z_max.real * f, z_max.imag)
+
+    theta = {eid: (d[5] if d[5] is not None else KN.theta_Leiter_min_C) for eid, d in daten.items()}
+    zk = {}
+    for _ in range(KN.theta_Iter_max):
+        zw = list(zweige_min) + [(d[1], d[2], z_leitung(d[0], d[3], theta[eid]))
+                                 for eid, d in daten.items()]
+        pos, Z = _loese_voll(zw, quellen_min)
+        neu = dict(theta)
+        for eid, (e, a, b, z_max, idx, fest, mat, A, herkunft, t) in daten.items():
+            if fest is not None or A is None or Z is None or a not in pos or b not in pos:
+                continue
+            # Strom im Zweig bei einem Fehler an einem der beiden Enden (Ueberlagerung,
+            # Ersatzspannungsquelle c am Fehlerort): i_ab = (Z_bf - Z_af) * I_f / z_ab
+            UN = kn[e.von].UN_kV
+            c = c_faktor(UN, MIN)
+            z_l = z_leitung(e, z_max, theta[eid])
+            i = 0.0
+            for f in (a, b):
+                I_f = c / Z[pos[f], pos[f]]
+                i = max(i, abs((Z[pos[b], pos[f]] - Z[pos[a], pos[f]]) * I_f / z_l))
+            ik2 = KN.f_2pol * i * S_B_MVA / (SQRT3 * UN)        # zweipolig, kA
+            neu[eid] = min(_endtemperatur(KN.theta_Leiter_min_C, ik2, t, A, mat),
+                           KN.theta_KS_max_C + 1e-9)
+        fertig = all(abs(neu[k] - theta[k]) < KN.theta_Iter_tol_K for k in theta)
+        theta = neu
+        if fertig:
+            break
+    # endgueltig mit den letzten Temperaturen loesen und Annahmen eintragen
+    zw = list(zweige_min) + [(d[1], d[2], z_leitung(d[0], d[3], theta[eid])) for eid, d in daten.items()]
+    zk = _loese(wurzeln, zw, quellen_min)
+    for eid, (e, a, b, z_max, idx, fest, mat, A, herkunft, t) in daten.items():
+        imp = erg.impedanzen[idx]
+        th = theta[eid]
+        zb = imp.UN_kV ** 2 / S_B_MVA
+        f = 1.0 + KN.alpha_Leiter_1K * (th - 20.0)
+        if fest is not None:
+            text = f"Ik min mit {de(th, 0)} °C (Handwert, R × {de(f, 2)})"
+        elif A is None:
+            text = (f"Ik min mit {de(th, 0)} °C (Anfangstemperatur, Querschnitt unbekannt, "
+                    f"R × {de(f, 2)})")
+            erg.meldungen.append(Meldung(
+                HINWEIS, f"{eid}: Ohne Querschnitt und ohne R′ keine Erwärmung im Kurzschluss. "
+                         f"Ik min gilt mit {de(th, 0)} °C und ist eher zu groß.", (eid,)))
+        else:
+            text = (f"Ik min mit θe = {de(th, 0)} °C (adiabatisch ab "
+                    f"{de(KN.theta_Leiter_min_C, 0)} °C, t = {de(t, 2)} s, {de(A, 0)} mm² {mat} "
+                    f"{herkunft}, R × {de(f, 2)})")
+            if th >= KN.theta_KS_max_C:
+                erg.meldungen.append(Meldung(
+                    WARNUNG, f"{eid}: Die Leitertemperatur erreicht im Kurzschluss "
+                             f"{de(KN.theta_KS_max_C, 0)} °C (Grenze VPE). Die Leitung ist bei "
+                             f"Ik min und t = {de(t, 2)} s thermisch überlastet. Gerechnet ist mit "
+                             f"{de(KN.theta_KS_max_C, 0)} °C.", (eid,)))
+        erg.impedanzen[idx] = ElementImpedanz(
+            imp.element, imp.typ, imp.UN_kV, imp.Z_max, z_leitung(e, z_max, th) * zb,
+            imp.annahmen + (text,))
+    erg.theta_e = theta
+    return zk, theta
+
+
 def _berechne(netz: Netz, erg: KurzschlussErgebnis) -> KurzschlussErgebnis:
     kn, el = netz.knoten, netz.elemente
     if not kn:
@@ -343,9 +792,12 @@ def _berechne(netz: Netz, erg: KurzschlussErgebnis) -> KurzschlussErgebnis:
     quellen = {MAX: [], MIN: []}       # (a, z)
     motoren = []                       # (a, z)
     unvollstaendig = []                # (Element, Text)
+    z1 = {}                            # Element-ID -> (z_max, z_min) fuer das Nullsystem
+    leitungen = []                     # (Element, a, b, z_max, Index in erg.impedanzen)
     for e in aktiv:
         if e.typ == "einspeisung":
             z_max, z_min, ann, meld = _z_einspeisung(e, kn)
+            z1[e.id] = (z_max, z_min)
             erg.meldungen += meld
             a = verbund.wurzel(e.nach)
             if z_max is not None:
@@ -373,16 +825,26 @@ def _berechne(netz: Netz, erg: KurzschlussErgebnis) -> KurzschlussErgebnis:
             if fehlt:
                 unvollstaendig.append((e, fehlt))
                 continue
+            if e.typ == "trafo":
+                z1[e.id] = (z_max, z_min)
             a, b = verbund.wurzel(e.von), verbund.wurzel(e.nach)
             if a != b:                               # sonst durch eine Kupplung ueberbrueckt
                 if abs(z_max) < 1e-12 or abs(z_min) < 1e-12:
                     unvollstaendig.append((e, "Impedanz ist null"))
                     continue
                 zweige[MAX].append((a, b, z_max))
-                zweige[MIN].append((a, b, z_min))
+                if e.typ == "leitung":
+                    leitungen.append((e, a, b, z_max, len(erg.impedanzen)))
+                else:
+                    zweige[MIN].append((a, b, z_min))
             zb = UN * UN / S_B_MVA
             erg.impedanzen.append(ElementImpedanz(e.id, e.typ, UN, z_max * zb, z_min * zb, tuple(ann)))
         elif e.typ == "motor":
+            if not motor_im_kurzschluss(e):
+                erg.meldungen.append(Meldung(
+                    HINWEIS, f"{e.id}: läuft nicht gleichzeitig (Verriegelung), kein Beitrag zu "
+                             f"Ik max.", (e.id,)))
+                continue
             z, ann = _z_motor(e, kn)
             if z is None:
                 erg.meldungen.append(Meldung(
@@ -391,13 +853,14 @@ def _berechne(netz: Netz, erg: KurzschlussErgebnis) -> KurzschlussErgebnis:
             motoren.append((verbund.wurzel(e.von), z))
             zb = kn[e.von].UN_kV ** 2 / S_B_MVA
             erg.impedanzen.append(ElementImpedanz(e.id, e.typ, kn[e.von].UN_kV, z * zb, None,
-                                                  tuple(ann + ["nur bei Ik max mit Motoren"])))
+                                                  tuple(ann + ["nur bei Ik max"])))
 
     wurzeln = sorted({verbund.wurzel(k) for k in kn})
+    zk_min, theta_e = _loese_min(kn, wurzeln, zweige[MIN], quellen[MIN], leitungen, erg)
     zk = {
-        "max": _loese(wurzeln, zweige[MAX], quellen[MAX]) if quellen[MAX] else {},
-        "mot": _loese(wurzeln, zweige[MAX], quellen[MAX] + motoren) if quellen[MAX] else {},
-        "min": _loese(wurzeln, zweige[MIN], quellen[MIN]) if quellen[MIN] else {},
+        "netz": _loese(wurzeln, zweige[MAX], quellen[MAX]) if quellen[MAX] else {},
+        "max": _loese(wurzeln, zweige[MAX], quellen[MAX] + motoren) if quellen[MAX] else {},
+        "min": zk_min,
     }
     if not any(e.typ == "einspeisung" for e in aktiv):
         erg.meldungen.append(Meldung(
@@ -406,18 +869,37 @@ def _berechne(netz: Netz, erg: KurzschlussErgebnis) -> KurzschlussErgebnis:
 
     # Elemente ohne Impedanzdaten: Was dahinter liegt, ist nicht berechenbar. Liegt ein
     # solches Element parallel zu einem berechneten Weg, waere jedes Ergebnis falsch.
-    versorgt = set(zk["max"]) | set(zk["min"])
+    versorgt = set(zk["netz"]) | set(zk["min"])     # nur ueber das Netz, ein Motor allein speist nicht
     for e, text in unvollstaendig:
         a, b = verbund.wurzel(e.von), verbund.wurzel(e.nach)
         if a in versorgt and b in versorgt:
             erg.meldungen.append(Meldung(
                 FEHLER, f"{e.id}: {text}. Das Element liegt parallel zu einem anderen Weg, "
                         f"ohne seine Impedanz ist kein Kurzschlussstrom berechenbar.", (e.id,)))
-            zk = {"max": {}, "mot": {}, "min": {}}
+            zk = {"netz": {}, "max": {}, "min": {}}
             break
         erg.meldungen.append(Meldung(
             WARNUNG, f"{e.id}: {text}. Für die Knoten hinter {e.id} wird kein Ik berechnet.",
             (e.id,)))
+
+    # Nullsystem (Erdfehler). Fehler hier duerfen die Phasenrechnung nie beeintraechtigen.
+    z0k = {MAX: {}, MIN: {}}
+    null = None
+    try:
+        null = _nullsystem(kn, verbund, aktiv, z1, erg, theta_e)
+        for fall in (MAX, MIN):
+            pos, Z = _loese_voll(null["zweige"][fall], null["erden"][fall])
+            if Z is not None:
+                z0k[fall] = {k: complex(Z[i, i]) for k, i in pos.items()}
+            null[fall] = (pos, Z)
+        null["bereich"] = _bereiche(kn, verbund, aktiv)
+        null["verbund"] = verbund
+        erg.null = null
+    except Exception as exc:
+        z0k = {MAX: {}, MIN: {}}
+        erg.meldungen.append(Meldung(
+            WARNUNG, f"Erdfehlerrechnung (Nullsystem) abgebrochen ({type(exc).__name__}: {exc}). "
+                     f"Die Phasenwerte sind davon nicht betroffen."))
 
     for kid in sorted(kn):
         k, w = kn[kid], verbund.wurzel(kid)
@@ -428,13 +910,113 @@ def _berechne(netz: Netz, erg: KurzschlussErgebnis) -> KurzschlussErgebnis:
         def strom(z, fall):
             return None if z is None or abs(z) == 0 else c_faktor(UN, fall) * I_B_kA / abs(z)
 
-        z_max, z_mot, z_min = zk["max"].get(w), zk["mot"].get(w), zk["min"].get(w)
+        def strom1(z1k, z0, fall):
+            if z1k is None or z0 is None:
+                return None
+            n = abs(2.0 * z1k + z0)
+            return None if n == 0 else 3.0 * c_faktor(UN, fall) * I_B_kA / n
+
+        z_netz, z_max, z_min = zk["netz"].get(w), zk["max"].get(w), zk["min"].get(w)
+        if z_netz is None:                  # ohne Netzanbindung laeuft kein Motor
+            z_max = None
+        z0_max, z0_min = z0k[MAX].get(w), z0k[MIN].get(w)
         ik3_min = strom(z_min, MIN)
+        ik_max = strom(z_max, MAX)
         erg.knoten[kid] = KnotenIk(
-            kid, UN, strom(z_max, MAX), strom(z_mot, MAX),
+            kid, UN, ik_max, ik_max,
             None if ik3_min is None else KN.f_2pol * ik3_min,
-            None if z_max is None else z_max * zb, None if z_min is None else z_min * zb)
+            None if z_max is None else z_max * zb, None if z_min is None else z_min * zb,
+            strom1(z_max, z0_max, MAX), strom1(z_min, z0_min, MIN),
+            None if z0_max is None else z0_max * zb, _erdungstext(kid, k, w, null),
+            strom(z_netz, MAX))
+    _meldungen_erdung(kn, verbund, null, erg)
     return erg
+
+
+_STP_TEXT = {"isoliert": "isoliert", "kompensiert": "kompensiert", "niederohmig": "niederohmig",
+             "direkt": "starr geerdet"}
+
+
+def _erdungstext(kid, k, w, null) -> str:
+    """Kurztext fuer die Anzeige: wie der Bereich des Knotens geerdet ist."""
+    if not geerdet(k):
+        return f"nicht geerdet ({_STP_TEXT.get(k.sternpunkt, k.sternpunkt)}), kein Ik1"
+    if null is None:
+        return "Nullsystem nicht berechnet"
+    ber = null["bereich"].get(w)
+    texte = [t for r, tl in null["texte"].items() if null["bereich"].get(r) == ber for t in tl]
+    return "; ".join(texte) if texte else "geerdet, aber kein Erdungspunkt erkannt"
+
+
+def _meldungen_erdung(kn, verbund, null, erg) -> None:
+    """Je Bereich: geerdet ohne Erdungspunkt oder uneinheitliche Sternpunktbehandlung melden."""
+    if null is None:
+        return
+    je_bereich: dict = {}
+    for kid, k in kn.items():
+        je_bereich.setdefault(null["bereich"][verbund.wurzel(kid)], []).append(k)
+    for _, knoten in sorted(je_bereich.items()):
+        ids = tuple(sorted(k.id for k in knoten))
+        arten = {k.sternpunkt for k in knoten}
+        if len(arten) > 1:
+            erg.meldungen.append(Meldung(
+                HINWEIS, f"Bereich {', '.join(ids)}: uneinheitliche Sternpunktbehandlung "
+                         f"({', '.join(sorted(_STP_TEXT.get(a, a) for a in arten))}). Galvanisch "
+                         f"verbundene Knoten haben dieselbe Erdung. Ik1 gilt für den ganzen Bereich.",
+                ids))
+        if any(geerdet(k) for k in knoten):
+            ber = null["bereich"][verbund.wurzel(knoten[0].id)]
+            if not any(null["bereich"].get(r) == ber for r in null["texte"]):
+                ohne = [k.id for k in knoten if k.sternpunkt == "niederohmig" and k.I_E_begr_A is None]
+                tipp = (f" Bei {', '.join(ohne)} die Erdfehlerstrom-Begrenzung eintragen."
+                        if ohne else "")
+                erg.meldungen.append(Meldung(
+                    WARNUNG, f"Bereich {', '.join(ids)} ist geerdet, aber es ist kein Erdungspunkt "
+                             f"erkennbar. Ik1 wird nicht berechnet.{tipp}", ids))
+
+
+def erdstrom_verteilung(ergebnis: KurzschlussErgebnis, fehlerknoten: str,
+                        fall: str = MAX) -> ErdstromVerteilung:
+    """
+    3I0 durch jedes Element und jeden Erdungspunkt bei einem einpoligen Fehler am Knoten.
+    Grundlage: Nullsystem-Matrix des Ergebnisses. Wirft nie, leere Verteilung ohne Daten.
+    """
+    leer = ErdstromVerteilung(fehlerknoten, fall, None)
+    try:
+        null, r = ergebnis.null, ergebnis.knoten.get(fehlerknoten)
+        if null is None or r is None or fall not in null:
+            return leer
+        pos, Z = null[fall]
+        verbund = null["verbund"]
+        k = verbund.wurzel(fehlerknoten)
+        z1k = r.Zk_max_Ohm if fall == MAX else r.Zk_min_Ohm
+        if Z is None or k not in pos or z1k is None:
+            return leer
+        UN = r.UN_kV
+        z1 = z1k * S_B_MVA / (UN * UN)
+        z0 = complex(Z[pos[k], pos[k]])
+        I0f = c_faktor(UN, fall) / (2.0 * z1 + z0)           # bezogen, E = c
+        v = {kk: -complex(Z[i, pos[k]]) * I0f for kk, i in pos.items()}
+        I_B = lambda kid: S_B_MVA / (SQRT3 * ergebnis.knoten[kid].UN_kV)
+        zweige, erdungen = {}, {}
+        for a, b, z, eid, von, nach in null["zweige"][fall]:
+            if a not in v or b not in v:
+                continue
+            i = (v[a] - v[b]) / z
+            betrag = 3.0 * abs(i) * I_B(von)
+            vorwaerts = (i / I0f).real >= 0                   # von -> nach, Richtung Fehler
+            zweige[eid] = (betrag, von if vorwaerts else nach)
+        for a, z, quelle, kid in null["erden"][fall]:
+            if a not in v:
+                continue
+            erdungen[quelle] = erdungen.get(quelle, 0.0) + 3.0 * abs(v[a] / z) * I_B(kid)
+        Ik1 = r.Ik1_max_kA if fall == MAX else r.Ik1_min_kA
+        schwelle = 1e-9 * (Ik1 or 1.0)                       # Rundungsreste weglassen
+        zweige = {k: w for k, w in zweige.items() if w[0] > schwelle}
+        erdungen = {k: x for k, x in erdungen.items() if x > schwelle}
+        return ErdstromVerteilung(fehlerknoten, fall, Ik1, zweige, erdungen)
+    except Exception:
+        return leer
 
 
 # ── Schaltzustaende ──────────────────────────────────────────────────────────

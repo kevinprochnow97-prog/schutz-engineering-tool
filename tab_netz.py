@@ -48,6 +48,7 @@ import netz_adapter
 import netz_bild
 import netz_diagramm
 import netz_einstellliste
+import netz_erdfehler
 import netz_formular
 import netz_kurzschluss
 import netz_parameter
@@ -63,6 +64,7 @@ from utils import AMPEL_EMOJI, de
 SCHLUESSEL = "netz_modell"
 BEISPIELNETZ = Path(__file__).parent / "beispielnetze" / "industrie_10kV.json"
 BEISPIELNETZ_RING = Path(__file__).parent / "beispielnetze" / "industrie_10kV_ring.json"
+BEISPIELNETZ_NOE = Path(__file__).parent / "beispielnetze" / "industrie_10kV_noe.json"
 
 NETZFORM_TEXT = {"strahl": "Strahlennetz", "ring": "Ringnetz (offen betrieben)"}
 STERNPUNKT_TEXT = {
@@ -86,17 +88,18 @@ TAB_QUELLE = {"trafo": ("netz_p_trafo", "Transformator"),
 
 # Widget-Schluessel der Anlegen-Formulare, Feldname (wie in netz_formular.*_LEER) -> key
 K_KEYS = {"id": "netz_k_id", "name": "netz_k_name", "UN_kV": "netz_k_un",
-          "sternpunkt": "netz_k_stp", "Ik_max_kA": "netz_k_ikmax", "Ik_min_kA": "netz_k_ikmin"}
+          "sternpunkt": "netz_k_stp", "Ik_max_kA": "netz_k_ikmax", "Ik_min_kA": "netz_k_ikmin",
+          "I_E_begr_A": "netz_k_ie"}
 E_KEYS = {"id": "netz_e_id", "name": "netz_e_name", "typ": "netz_e_typ", "von": "netz_e_von",
           "nach": "netz_e_nach", "zustand": "netz_e_zustand", "uebernehmen": "netz_e_uebern",
           "I_nb_A": "netz_e_inb", "t_nb_s": "netz_e_tnb"}
 # Widget-Schluessel der Bearbeiten-Formulare (nur Entwurf, das Modell aendert erst "speichern")
 EK_KEYS = {"name": "netz_ed_k_name", "UN_kV": "netz_ed_k_un", "sternpunkt": "netz_ed_k_stp",
-           "Ik_max_kA": "netz_ed_k_ikmax", "Ik_min_kA": "netz_ed_k_ikmin"}
+           "Ik_max_kA": "netz_ed_k_ikmax", "Ik_min_kA": "netz_ed_k_ikmin", "I_E_begr_A": "netz_ed_k_ie"}
 EE_KEYS = {"name": "netz_ed_e_name", "von": "netz_ed_e_von", "nach": "netz_ed_e_nach",
            "I_nb_A": "netz_ed_e_inb", "t_nb_s": "netz_ed_e_tnb"}
 # Schrittweite der Zahlenfelder im Parameter-Editor nach Einheit
-_SCHRITT = {"A": 10.0, "kW": 100.0, "s": 0.05, "MVA": 1.0, "km": 0.1, "%": 0.5, "× IN": 0.1,
+_SCHRITT = {"A sek.": 0.05, "A": 10.0, "kW": 100.0, "s": 0.05, "MVA": 1.0, "km": 0.1, "%": 0.5, "× IN": 0.1,
             "Ω/km": 0.01, "°": 1.0, "°C": 5.0}
 RING_IK = "netz_ring_ik_quelle"                       # Ik-Quelle der Ringstaffelung (Entscheidung 17.11.2026)
 RING_IK_BERECHNET = "Berechnet je Lage"
@@ -186,6 +189,15 @@ def _steuerleiste(netz: Netz) -> None:
                 st.rerun()
             except (OSError, ModellFehler) as exc:
                 st.error(f"Beispielnetz konnte nicht geladen werden: {exc}")
+        if st.button("⏚ Erdfehler-Beispiel laden", key="netz_btn_beispiel_noe", width="stretch",
+                     help="Referenznetz mit niederohmig geerdetem 10-kV-Bereich "
+                          "(Sternpunktbildner an K2, 2000 A) und zweitem Motor M2."):
+            try:
+                _setze_netz(Netz.laden(BEISPIELNETZ_NOE),
+                            "Beispielnetz „Industrie 10 kV, niederohmig geerdet“ geladen.")
+                st.rerun()
+            except (OSError, ModellFehler) as exc:
+                st.error(f"Beispielnetz konnte nicht geladen werden: {exc}")
     with c3:
         if st.button("🗑️ Neues leeres Netz", key="netz_btn_neu", width="stretch"):
             _setze_netz(Netz(), "Neues leeres Netz angelegt.")
@@ -233,9 +245,15 @@ def _form_knoten(netz: Netz) -> None:
                                help="Kleinster zweipoliger Kurzschlussstrom (Tool-Vorgabe). "
                                     "Er geht in die Empfindlichkeitsprüfung ein.",
                                key="netz_k_ikmin", placeholder="optional")
+        ie = st.number_input("Erdfehlerstrom-Begrenzung [A] (nur niederohmig)", min_value=0.0,
+                             value=None, step=100.0, key="netz_k_ie",
+                             placeholder="leer = an diesem Knoten nicht geerdet",
+                             help="Nur bei niederohmiger Erdung: Hier ist das Netz geerdet (Sternpunktbildner "
+                                  "oder Sternpunkt eines Trafos an diesem Knoten), der Erdfehlerstrom ist "
+                                  "auf diesen Wert begrenzt. Ein Eintrag je geerdetem Bereich genügt.")
         if st.form_submit_button("➕ Knoten anlegen"):
             try:
-                meldung = netz_formular.knoten_anlegen(netz, kid, name, un, stp, ikmax, ikmin)
+                meldung = netz_formular.knoten_anlegen(netz, kid, name, un, stp, ikmax, ikmin, ie)
             except ModellFehler as exc:
                 st.error(f"{exc} Die Eingaben bleiben stehen.")
             else:
@@ -382,12 +400,18 @@ def _form_bearbeiten(netz: Netz) -> None:
                                    key=EK_KEYS["Ik_max_kA"], placeholder="optional")
             ikmin = f.number_input("Ik min 2-pol. [kA]", min_value=0.0, value=None, step=0.5,
                                    key=EK_KEYS["Ik_min_kA"], placeholder="optional")
+            ie = st.number_input("Erdfehlerstrom-Begrenzung [A] (nur niederohmig)", min_value=0.0,
+                                 value=None, step=100.0, key=EK_KEYS["I_E_begr_A"],
+                                 placeholder="leer = an diesem Knoten nicht geerdet",
+                                 help="Nur bei niederohmiger Erdung: Hier ist das Netz geerdet (Sternpunktbildner "
+                                      "oder Sternpunkt eines Trafos an diesem Knoten), der Erdfehlerstrom ist "
+                                      "auf diesen Wert begrenzt. Ein Eintrag je geerdetem Bereich genügt.")
             s1, s2 = st.columns(2)
             speichern = s1.form_submit_button("💾 Änderungen speichern")
             abbrechen = s2.form_submit_button("Abbrechen")
             if speichern:
                 try:
-                    meldung = netz_formular.knoten_aendern(netz, oid, name, un, stp, ikmax, ikmin)
+                    meldung = netz_formular.knoten_aendern(netz, oid, name, un, stp, ikmax, ikmin, ie)
                 except ModellFehler as exc:
                     st.error(f"{exc} Die Eingaben bleiben stehen.")
                 else:
@@ -486,6 +510,8 @@ def _bearbeiten(netz: Netz) -> None:
         "Sternpunkt": STERNPUNKT_TEXT[k.sternpunkt],
         "Ik″ max [kA]": "–" if k.Ik_max_kA is None else de(k.Ik_max_kA, 1),
         "Ik min 2-pol. [kA]": "–" if k.Ik_min_kA is None else de(k.Ik_min_kA, 1),
+        "Erdung": (f"hier, begrenzt auf {de(k.I_E_begr_A, 0)} A"
+                   if k.I_E_begr_A is not None and k.sternpunkt == "niederohmig" else "–"),
     } for k in sorted(knoten.values(), key=lambda k: k.id)]), width="stretch", hide_index=True)
     if elemente:
         st.dataframe(pd.DataFrame([{
@@ -544,7 +570,7 @@ def _kurzschluss(netz: Netz):
             "Ik″ max berechnet [kA]": _ka(vmax.berechnet_kA), "Abw. max": _abw(vmax),
             "Ik min eingegeben [kA]": _ka(vmin.eingegeben_kA),
             "Ik min berechnet [kA]": _ka(vmin.berechnet_kA), "Abw. min": _abw(vmin),
-            "Ik″ max mit Motoren [kA]": _ka(r.Ik_max_mit_Motor_kA),
+            "Ik″ max nur Netz [kA]": _ka(r.Ik_max_ohne_Motor_kA),
             "Staffelung rechnet mit": ("berechnet: " + ", ".join(gilt[kid])) if kid in gilt
                                       else "eingegeben",
         }
@@ -552,8 +578,11 @@ def _kurzschluss(netz: Netz):
     st.dataframe(pd.DataFrame([zeile(k) for k in sorted(akt.knoten)]),
                  width="stretch", hide_index=True)
     titel = "" if akt.art == netz_kurzschluss.AKTUELL else f" Lage: {akt.bezeichnung}."
-    st.caption("Ik″ max dreipolig ohne Motoren (der Strom, den die vorgelagerten Schutzgeräte "
-               "führen), Ik min zweipolig. Abweichung = berechnet gegen eingegeben, ⚠️ ab "
+    st.caption("Ik″ max dreipolig mit den Motoren, die gleichzeitig laufen (DIN EN 60909-0, "
+               "7.1.2 e), „nur Netz“ zum Vergleich. Ik min zweipolig, ohne Motoren, mit der "
+               "Leitertemperatur am Ende des Kurzschlusses (Gl. 32, Details unten). Ein Motor, "
+               "der nicht gleichzeitig läuft, wird im Parameter-Editor ausgenommen. "
+               "Abweichung = berechnet gegen eingegeben, ⚠️ ab "
                f"{de(KN.Ik_Abweichung_Hinweis * 100, 0)} %. Eingegebene Werte bleiben gültig."
                + titel)
     if ergaenzt:
@@ -575,7 +604,8 @@ def _kurzschluss(netz: Netz):
         st.caption(
             f"Spannungsfaktor c: über 1 kV {de(KN.c_max_HS, 2)} (max) und {de(KN.c_min_HS, 2)} "
             f"(min), bis 1 kV {de(KN.c_max_NS, 2)} und {de(KN.c_min_NS, 2)}. Ik min = √3/2 × "
-            "dreipoliger Strom. Nicht berücksichtigt: Generatoren, Erdfehler, Lastströme, "
+            "dreipoliger Strom. Erdfehler (Ik1) stehen im Abschnitt Erdfehler. Nicht "
+            "berücksichtigt: Generatoren, Lastströme, "
             "Lichtbogenwiderstand. Alle Annahmen sind Tool-Vorgaben "
             "(docs/tool_vorgabe_kurzschluss.md).")
     return netz_r, True
@@ -685,6 +715,7 @@ def _staffelung(netz: Netz, adapter, ziel: Netz | None = None, ik_an: bool = Fal
     if not erg.pruefungen:
         if erg.ok:
             st.caption("Keine Paare zu prüfen: es gibt nur einen Schutzort je Pfad.")
+        _erdfehler(netz, adapter, ziel, float(dt_soll))
         return
 
     anz = {k: sum(1 for p in erg.pruefungen if p.status == k)
@@ -716,8 +747,8 @@ def _staffelung(netz: Netz, adapter, ziel: Netz | None = None, ik_an: bool = Fal
     } for p in pruefungen]), width="stretch", hide_index=True)
     st.caption("Je Paar der kleinste Zeitabstand über alle Ströme, bei denen beide Schutzorte "
                "anregen. Ströme auf die Bezugsspannung umgerechnet. Grün ab Soll, gelb zwischen "
-               "Mindestwert und Soll, rot darunter. Nur Phasenstufen 50/51, Erdfehlerstufen "
-               "werden nicht gestaffelt. Die Zeitprüfung rechnet in Nennübersetzung, Stufensteller "
+               "Mindestwert und Soll, rot darunter. Nur Phasenstufen 50/51, die Erdstufen "
+               "stehen im Abschnitt Erdfehler. Die Zeitprüfung rechnet in Nennübersetzung, Stufensteller "
                "und Schaltgruppe berücksichtigt die Stromstaffelung im Staffelvorschlag. "
                "Bei AMZ-Stufen wächst der nötige Abstand mit der Auslösezeit (Zeittoleranz 5 % "
                "plus 2 % Stromtoleranz, mindestens 30 ms, 7SJ66). Der Zuschlag steht in der "
@@ -732,7 +763,8 @@ def _staffelung(netz: Netz, adapter, ziel: Netz | None = None, ik_an: bool = Fal
         rv = _ring(ziel, float(dt_soll), adapter.topologie.trennstelle, ik_an)
     vor = _vorschlag(netz, adapter, float(dt_soll), ziel)
     _anlauf(netz, adapter)
-    _einstellliste(netz, adapter, float(dt_soll), vor, rv)
+    ev = _erdfehler(netz, adapter, ziel, float(dt_soll))
+    _einstellliste(netz, adapter, float(dt_soll), vor, rv, ev)
 
 
 # ── 6a. Staffeldiagramm ──────────────────────────────────────────────────────
@@ -788,7 +820,7 @@ def _warum_zeit(grund: str, dt_soll: float) -> str:
     if grund.startswith("Lage ") and ": " in grund:
         lage, rest = grund.split(": ", 1)
         return f"{lage}: {_warum_zeit(rest, dt_soll)}"
-    if grund.startswith(("Mindestzeit", "Untergrenze", "Endpunkt", "Netzbetreiber", "AMZ")):
+    if grund.startswith(("Mindestzeit", "Untergrenze", "Endpunkt", "Netzbetreiber", "AMZ", "Reihenfolge")):
         return grund
     return f"{de(dt_soll, 2)} s über {grund}"
 
@@ -969,6 +1001,138 @@ def _vorschlag(netz: Netz, adapter, dt_soll: float, ziel: Netz | None = None):
     return vor
 
 
+# ── 7b. Erdfehler (einpoliger Erdkurzschluss) ────────────────────────────────
+_STP_KURZ = {"isoliert": "isoliert", "kompensiert": "kompensiert", "niederohmig": "niederohmig",
+             "direkt": "starr geerdet"}
+
+
+def _erdfehler(netz: Netz, adapter, ziel: Netz, dt_soll: float):
+    """
+    Erdfehler: Ik1 je Knoten, Erdungsbereiche, Staffelung der Erdstufen und Vorschlag
+    (Entscheidung 25.11.2026, zunaechst nur Strahlennetz). Rueckgabe: Erdvorschlag oder None.
+    Geschrieben wird nur ueber den Knopf, und nur in das Modell (ziel).
+    """
+    grphead("Erdfehler (einpoliger Erdkurzschluss)")
+    if not st.toggle("Erdfehler berechnen und die Erdstufen staffeln", key="netz_erde_an",
+                     help="Ik1 aus Mit- und Nullsystem (Z2 = Z1), nur in starr oder niederohmig "
+                          "geerdeten Bereichen. Gestaffelt werden die Erdstufen der Tabs: Leitung "
+                          "67N (3I0), Motor 50N/51N, Trafo IE> am Sternpunktwandler. Isolierte und "
+                          "kompensierte Bereiche bekommen nur einen Hinweis. Herleitung: "
+                          "docs/tool_vorgabe_erdfehler.md."):
+        return None
+    ks = netz_kurzschluss.berechne(netz)
+    ef = netz_erdfehler.pruefe_erdfehler(netz, adapter, ks, dt_soll=dt_soll)
+
+    st.dataframe(pd.DataFrame([{
+        "Bereich (Knoten)": b.name, "UN [kV]": de(b.UN_kV, 1),
+        "Sternpunkt": _STP_KURZ.get(b.sternpunkt, b.sternpunkt), "Erdung": b.erdung or "–",
+        "Ik1 max [kA]": _ka(b.Ik1_max_kA), "Ik1 min [kA]": _ka(b.Ik1_min_kA),
+        "Bewertung": b.text,
+    } for b in ef.bereiche]), width="stretch", hide_index=True)
+    st.caption("Ein Bereich ist eine galvanisch verbundene Spannungsebene. Ein Trafo mit "
+               "Dreieckwicklung trennt die Bereiche: ein Erdfehler dahinter ist als Erdstrom "
+               "nicht zu sehen. Ik1 max / min sind der größte und kleinste Wert im Bereich.")
+    _meldungen([m for m in ks.meldungen
+                if any(w in m.text for w in ("Erd", "Nullsystem", "Schaltgruppe", "Sternpunkt"))])
+    _meldungen(ef.meldungen)
+
+    with st.expander("Details: Ik1 je Knoten und Nullimpedanzen"):
+        st.dataframe(pd.DataFrame([{
+            "Knoten": kid, "UN [kV]": de(r.UN_kV, 1),
+            "Ik1 max [kA]": _ka(r.Ik1_max_kA), "Ik1 min [kA]": _ka(r.Ik1_min_kA),
+            "Ik″ max 3-pol. [kA]": _ka(r.Ik_max_kA),
+            "Z0 am Knoten": netz_kurzschluss.polar_text(r.Z0_max_Ohm), "Erdung": r.erdung,
+        } for kid, r in sorted(ks.knoten.items())]), width="stretch", hide_index=True)
+        if ks.impedanzen0:
+            st.dataframe(pd.DataFrame([{
+                "Element / Erdung": i.element, "bezogen auf [kV]": de(i.UN_kV, 1),
+                "Z0 für Ik1 max": netz_kurzschluss.polar_text(i.Z_max),
+                "Z0 für Ik1 min": netz_kurzschluss.polar_text(i.Z_min),
+                "Annahmen": "; ".join(i.annahmen) or "–",
+            } for i in ks.impedanzen0]), width="stretch", hide_index=True)
+        st.caption("Ik1 = 3 · c · UN/√3 / |2·Z1 + Z0|. Ik1 max mit c max, Sk max und K_T, Ik1 min "
+                   "mit c min, Sk min und warmem Leiter. Trafo mit Sternpunkt gegen Dreieck: "
+                   f"Z0T = {de(KN.Z0_Z1_Trafo, 2)} · Z1T. Erdung über R_E = UN / (√3 · I_E), im "
+                   "Nullsystem 3 · R_E. Leitung ohne R0′/X0′: aus RE/RL und XE/XL. Kein "
+                   "Fehlerwiderstand. Gegen pandapower 3.5.6 geprüft (Beispielnetze).")
+
+    if not ef.pruefungen and not ef.empfindlichkeit:
+        return None
+
+    if ef.pruefungen:
+        anz = {k: sum(1 for p in ef.pruefungen if p.status == k)
+               for k in (netz_selektivitaet.OK, netz_selektivitaet.GELB, netz_selektivitaet.ROT)}
+        st.markdown(f"{AMPEL_EMOJI[ef.status]} <b>Erdstaffelung: {ef.status}</b> &nbsp; "
+                    + " ".join(pill(k, n) for k, n in anz.items() if n)
+                    + f' &nbsp; <span style="font-size:0.8rem;color:#5d6b82">Soll '
+                    f'{de(ef.dt_soll_s, 2)} s · Mindestwert {de(ef.dt_min_s, 2)} s · '
+                    f'{len(ef.pruefungen)} Paare</span>', unsafe_allow_html=True)
+    for pfad in ef.pfade:
+        st.caption("🔗 " + " → ".join(pfad))
+    if ef.pruefungen:
+        st.dataframe(pd.DataFrame([{
+            "Ampel": AMPEL_EMOJI[p.status], "unten (Fehler)": p.unten,
+            "Stufe unten": p.stufe_unten or "–", "t unten [s]": _zeit(p.t_unten_s),
+            "oben (Erdung)": p.oben, "Stufe oben": p.stufe_oben or "–",
+            "t oben [s]": _zeit(p.t_oben_s), "Δt [s]": _zeit(p.dt_s),
+            "3I0 [A]": "–" if p.I_bez_A is None else de(p.I_bez_A, 0),
+            "Bewertung": p.text,
+        } for p in ef.pruefungen]), width="stretch", hide_index=True)
+        st.caption("Reihenfolge aus dem Erdstrom: ein Schutzort liegt unter einem anderen, wenn dieser "
+                   "bei allen seinen Erdfehlern ebenfalls Strom führt. Geprüft wie bei den Phasen "
+                   "(gleicher Soll- und Mindestabstand), Grenzstrom ist der größte 3I0 durch den "
+                   "unteren Schutzort. Stufen mit Richtung „Rückwärts“ zählen nicht.")
+    if ef.empfindlichkeit:
+        st.dataframe(pd.DataFrame([{
+            "Ampel": AMPEL_EMOJI[e.status], "Schutzort": e.ort, "Stufe": e.stufe,
+            "Ansprechwert [A]": de(e.I_an_A, 0),
+            "kleinster 3I0 [A]": "–" if e.I_min_A is None else de(e.I_min_A, 0),
+            "bei Fehler an": e.fehlerort or "–",
+            "Reserve": "–" if e.reserve is None else de(e.reserve, 2), "Bewertung": e.text,
+        } for e in ef.empfindlichkeit]), width="stretch", hide_index=True)
+        st.caption(f"Empfindlichkeit: kleinster Erdstrom bei Ik1 min mindestens "
+                   f"{de(KN.gamma_Reserve, 2)} × kleinster Ansprechwert (wie bei den Phasen). "
+                   "Ein Fehlerwiderstand ist nicht berücksichtigt.")
+    if not ef.pruefungen:
+        return None
+
+    if not st.toggle("Erdstaffelvorschlag berechnen", key="netz_erde_vorschlag_an",
+                     help="Jede UMZ-Erdstufe so schnell wie möglich, aber einen Staffelabstand über "
+                          "allem, was darunter beim selben Erdstrom auslöst. Motoren (Endpunkte) "
+                          "bleiben unverändert, AMZ-Stufen werden nur berücksichtigt. Im Gerät "
+                          "löst eine Stufe mit kleinerem Ansprechwert mindestens "
+                          f"{de(KN.dt_Raster, 2)} s später aus."):
+        return None
+    ev = netz_erdfehler.erdvorschlag(netz, adapter, ks, dt_soll=dt_soll)
+    _meldungen(ev.meldungen)
+    if ev.geaendert:
+        _aenderungsliste([{
+            "Element": v.element, "Stufe": v.stufe, "Größe": "Zeit",
+            "bisher": f"{de(v.t_alt_s, 2)} s", "neu": f"{de(v.t_neu_s, 2)} s",
+            "Warum": _warum_zeit(v.grund, dt_soll),
+        } for v in ev.geaendert], "Was ist zu ändern (Erdstufen)")
+    else:
+        st.caption("Keine Änderung nötig, die Erdstufen im Netz entsprechen bereits dem Vorschlag.")
+    if ev.pruefung is not None and ev.pruefung.status is not None:
+        st.markdown(f"Ergebnis mit diesen Werten: {AMPEL_EMOJI[ev.pruefung.status]} "
+                    f"**Erdstaffelung: {ev.pruefung.status}**")
+    if ev.geaendert:
+        st.caption(f"{len(ev.geaendert)} Zeiten würden geändert. Die Übernahme schreibt sie in die "
+                   "Element-Parameter des Netzes (nicht in die Betriebsmittel-Tabs).")
+        if st.button("✅ Erdvorschlag ins Netz übernehmen", key="netz_erde_uebernehmen"):
+            geaendert = netz_erdfehler.vorschlag_uebernehmen(ziel, ev)
+            _erfolg(f"Erdvorschlag übernommen: {len(ev.geaendert)} Zeiten in "
+                    f"{len(geaendert)} Elementen gesetzt.")
+    with st.expander("Details: alle Erdstufen und Herleitung"):
+        st.dataframe(pd.DataFrame([{
+            "Element": v.element, "Stufe": v.stufe, "Parameter": v.parameter or "–",
+            "t bisher [s]": "–" if v.t_alt_s != v.t_alt_s else de(v.t_alt_s, 2),
+            "t Vorschlag [s]": "–" if v.t_neu_s != v.t_neu_s else de(v.t_neu_s, 2),
+            "Änderung": "✏️" if v.geaendert else "", "Bestimmt durch": v.grund,
+        } for v in ev.vorschlaege]), width="stretch", hide_index=True)
+    return ev
+
+
 # ── 7a. Anlauf der Motoren ───────────────────────────────────────────────────
 def _anlauf(netz: Netz, adapter) -> None:
     """
@@ -1005,7 +1169,7 @@ def _anlauf(netz: Netz, adapter) -> None:
 
 
 # ── 8. Einstellliste ─────────────────────────────────────────────────────────
-def _einstellliste(netz: Netz, adapter, dt_soll: float, vor, rv) -> None:
+def _einstellliste(netz: Netz, adapter, dt_soll: float, vor, rv, ev=None) -> None:
     """
     Alle Schutzstufen als Liste mit CSV-Export. Die Liste rechnet nichts selbst: Stufen kommen
     aus dem Adapter, neue Werte aus dem gewaehlten Vorschlag (vor: Staffelvorschlag, rv: Ringvorschlag,
@@ -1022,6 +1186,12 @@ def _einstellliste(netz: Netz, adapter, dt_soll: float, vor, rv) -> None:
         quellen["Staffelvorschlag"] = ("Staffelvorschlag", netz_einstellliste.aus_gesamtvorschlag(vor))
     if rv is not None and rv.werte:
         quellen["Ringvorschlag"] = ("Ringvorschlag", netz_einstellliste.aus_ringvorschlag(rv))
+    if ev is not None and ev.geaendert:
+        erd = netz_einstellliste.aus_erdvorschlag(ev)
+        quellen["Erdvorschlag"] = ("Erdvorschlag", erd)
+        if "Staffelvorschlag" in quellen:
+            quellen["Staffel- und Erdvorschlag"] = ("Staffel- und Erdvorschlag",
+                                                    {**quellen["Staffelvorschlag"][1], **erd})
     if st.session_state.get("netz_liste_quelle") not in quellen:    # Vorschlag-Schalter wurde ausgeschaltet
         st.session_state["netz_liste_quelle"] = next(iter(quellen))
     wahl = st.radio("Inhalt der Liste", list(quellen), horizontal=True, key="netz_liste_quelle")

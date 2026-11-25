@@ -1,13 +1,13 @@
 # Tool-Vorgabe: Kurzschlussströme aus den Netzdaten
 
-Stand: 17.11.2026 | Gilt für `netz_kurzschluss.py`, die Konstanten im Abschnitt „Kurzschlussstromberechnung“ von `konstanten_netz.py`, den Schalter `ik_ergaenzen` in `netz_ring.py` und den Abschnitt „Kurzschlussströme aus den Netzdaten“ in `tab_netz.py`
+Stand: 25.11.2026 | Gilt für `netz_kurzschluss.py`, die Konstanten im Abschnitt „Kurzschlussstromberechnung“ von `konstanten_netz.py`, den Schalter `ik_ergaenzen` in `netz_ring.py` und den Abschnitt „Kurzschlussströme aus den Netzdaten“ in `tab_netz.py`
 
-> **Einordnung:** Das Verfahren ist eine **vereinfachte Rechnung in Anlehnung an IEC 60909-0**
-> (DIN EN 60909-0, VDE 0102). Die Faktoren und Formeln sind am 16.11.2026 gegen Sekundärquellen
-> geprüft worden (Lehrbuch, Fachaufsatz zur Ausgabe 2016, Kabeldatenblätter, siehe Abschnitt 8
-> und Quellen). **Der Normtext selbst lag nicht vor.** Vor dem Zitieren in der Ausarbeitung sind
-> die Angaben an der Norm zu bestätigen. Das Tool ersetzt keine normgerechte
-> Kurzschlussstromberechnung.
+> **Einordnung:** Das Verfahren folgt der **DIN EN 60909-0 (VDE 0102):2016-12**. Am 25.11.2026
+> ist die Rechnung am Normtext (VDE NormenBibliothek) Abschnitt für Abschnitt geprüft worden,
+> Fundstellen in Abschnitt 8 und 10. Zwei Abweichungen sind seitdem behoben (Motoren bei Ik max,
+> Leitertemperatur bei Ik min). Offen sind ein Normbeispiel aus IEC/TR 60909-4 und die
+> Erwärmungskonstanten aus IEC 60949. Das Tool ersetzt keine normgerechte Kurzschlussstromberechnung
+> eines realen Netzes, die Eingangsdaten bleiben Tool-Vorgaben.
 
 ## 1. Zweck und Grundsatz
 
@@ -165,24 +165,26 @@ geschätzten:
 ## 8. Prüfpunkte („Code ist die Wahrheit“)
 
 Stand der Quellenprüfung vom 16.11.2026. „Bestätigt“ heißt: durch die genannten Sekundärquellen
-gedeckt. Die Bestätigung am Normtext steht bei allen Punkten noch aus (Punkt 11).
+gedeckt. Am 25.11.2026 sind alle Punkte am Normtext nachgeschlagen worden (Spalte Stand, Punkt 11).
 
 | Nr. | Was | Stand | Quelle |
 |---|---|---|---|
-| 1 | Spannungsfaktoren über 1 kV: c max 1,10, c min 1,00 | Bestätigt | [1, Abschnitt 6.1.1.1 und Gl. 6.13], [2], [3], [4] |
-| 1b | Spannungsfaktoren bis 1 kV: c max 1,05 (Toleranz 6 %) oder 1,10 (10 %, 400/230 V), c min 0,95 oder 0,90 | Teilweise bestätigt, die Quellen weichen bei c min voneinander ab: [1] und [4] nennen 0,95, [2] und [3] für 10 % Toleranz 0,90. Tool rechnet mit 1,10 und 0,90. Am Normtext klären. | [1], [2], [3], [4] |
-| 2 | Netzimpedanz Z_Q = c · UN² / Sk″, für Ik min mit c min, R_Q = 0,1 · X_Q und X_Q = 0,995 · Z_Q, wenn nichts bekannt ist | Bestätigt | [2, Gl. 1 bis 3], [4, Gl. 1] |
-| 3 | K_T = 0,95 · c max / (1 + 0,6 · x_T), c max der Unterspannungsseite | Formel bestätigt. **Erledigt 17.11.2026:** nur bei Ik max, bei Ik min ohne K_T (pandapower beruft sich auf IEC 60909-0:2016, 6.3.3; Normtext nicht gelesen). [2] merkt an, dass K_T bei Verteiltransformatoren vernachlässigt werden kann. | [4, Gl. 4 und 5], [2], [7] |
+| 1 | Spannungsfaktoren über 1 kV: c max 1,10, c min 1,00 | Bestätigt, **Norm Tabelle 1** | [1, Abschnitt 6.1.1.1 und Gl. 6.13], [2], [3], [4] |
+| 1b | Spannungsfaktoren bis 1 kV: c max 1,05 (Toleranz 6 %) oder 1,10 (10 %, 400/230 V), c min 0,95 oder 0,90 | Teilweise bestätigt, die Quellen weichen bei c min voneinander ab: [1] und [4] nennen 0,95, [2] und [3] für 10 % Toleranz 0,90. Tool rechnet mit 1,10 und 0,90. **Norm Tabelle 1 (25.11.2026):** 1,05 / 0,95 bei 6 % Toleranz, 1,10 / 0,90 bei 10 % Toleranz. Tool richtig für 400/230-V-Netze mit 10 %. | [1], [2], [3], [4] |
+| 2 | Netzimpedanz Z_Q = c · UN² / Sk″, für Ik min mit c min, R_Q = 0,1 · X_Q und X_Q = 0,995 · Z_Q, wenn nichts bekannt ist | Bestätigt, **Norm 6.2, Gl. (4) bis (6)**. R/X = 0,1 nennt die Norm nur für Netze über 35 kV, bei einer MS-Übergabe bleibt der Wert eine Annahme. | [2, Gl. 1 bis 3], [4, Gl. 1] |
+| 3 | K_T = 0,95 · c max / (1 + 0,6 · x_T), c max der Unterspannungsseite | Formel bestätigt. **Erledigt 17.11.2026:** nur bei Ik max, bei Ik min ohne K_T (**Norm 6.3.3, Gl. (12a), und 7.1.2 c), 3) bestätigt 25.11.2026:** K_T nur bei den größten Strömen, bei unsymmetrischen Fehlern auch auf Gegen- und Nullimpedanz, Sternpunkt-Erde-Impedanzen ohne Korrektur). [2] merkt an, dass K_T bei Verteiltransformatoren vernachlässigt werden kann. | [4, Gl. 4 und 5], [2], [7] |
 | 3b | Stufensteller: Rechnung mit der Bemessungsübersetzung | Bestätigt | [1, Abschnitt 6.1.1.2] |
-| 4 | Leiterwiderstand für Ik min: R = R20 · [1 + α · (θe − 20 °C)], α = 0,004/K, θe = Leitertemperatur am Ende des Kurzschlusses | Formel bestätigt. θe = 90 °C ist eine Tool-Vorgabe (Betriebstemperatur laut [5, 6]). [2] rechnet in Beispielen mit 80 °C und 160 °C, [4] mit 90 °C für Kabel. Offen: begründeter Wert für die Endtemperatur. | [2, Gl. 21], [4, Gl. 3], [5], [6] |
-| 5 | Asynchronmotor: Z_M = UrM² / (I_LR/I_rM · S_rM), R_M/X_M = 0,10 über 1 kV ab 1 MW je Polpaar, 0,15 darunter, 0,42 bis 1 kV | Bestätigt. Das Tool kennt die Polpaarzahl nicht und nimmt über 1 kV immer 0,10 (für M1 mit 2 MW richtig bis zwei Polpaare, sonst `RX_M` setzen). | [2, Gl. 23 und 24], [1, Gl. 6.33] |
-| 5b | Wann Motoren zählen: nach [1] gesondert zu erfassen, wenn ihr Anteil 5 % übersteigt. M1 liefert an K3 rund 9 %. Das Tool weist den Wert mit Motoren deshalb aus. | Bestätigt | [1, Abschnitt 6.3], [3] |
-| 6 | Zweipoliger Kurzschluss = √3/2 · dreipolig und Faktor 2/√3 hinter D/Y | Offen, in dieser Runde nicht nachgelesen | [1, Abschnitt 10.3.2] |
+| 4 | Leiterwiderstand für Ik min: R = R20 · [1 + α · (θe − 20 °C)], α = 0,004/K, θe = Leitertemperatur am Ende des Kurzschlusses | Formel bestätigt, **Norm 7.1.2 Punkt 7, Gl. (32)**. Die Norm verlangt die Temperatur am Ende des Kurzschlusses, die bisherigen 90 °C waren die Betriebstemperatur. **Geändert 25.11.2026:** adiabatische Erwärmung ab 90 °C, siehe Abschnitt 10. | [2, Gl. 21], [4, Gl. 3], [5], [6] |
+| 5 | Asynchronmotor: Z_M = UrM² / (I_LR/I_rM · S_rM), R_M/X_M = 0,10 über 1 kV ab 1 MW je Polpaar, 0,15 darunter, 0,42 bis 1 kV | Bestätigt, **Norm 6.10, Gl. (30) und (31)**. Das Tool kennt die Polpaarzahl nicht und nimmt über 1 kV immer 0,10 (für M1 mit 2 MW richtig bis zwei Polpaare, sonst `RX_M` setzen). | [2, Gl. 23 und 24], [1, Gl. 6.33] |
+| 5b | Wann Motoren zählen | **Geändert 25.11.2026:** Nach Norm 7.1.2 e) und 7.1.3 sind Motoren bei den größten Strömen zu berücksichtigen, ausdrücklich in Industrieanlagen. Ausnahme: Motoren, die nach Art der Schaltung nicht gleichzeitig laufen. Ik max enthält jetzt die Motoren, Schalter `KS_Beitrag` am Motor. Bei Ik min ohne Motoren (7.1.2 Punkt 6). | [1, Abschnitt 6.3], [3], [10] |
+| 6 | Zweipoliger Kurzschluss = √3/2 · dreipolig und Faktor 2/√3 hinter D/Y | √3/2 bestätigt, **Norm 7.3, Gl. (45) und (46)** (Z2 = Z1). Der Faktor 2/√3 steht nicht in der 60909-0 (Abschnitt 12 behandelt die Unterbrechung eines Leiters auf der OS-Seite). Quelle für 2/√3 offen. | [1, Abschnitt 10.3.2], [10] |
 | 7 | Sk″ max, Sk″ min und R/X am Übergabepunkt | **Tool-Vorgabe 17.11.2026, plausibel, nicht belegt:** 3000 / 1500 MVA an 110 kV (15,7 / 7,9 kA), R/X = 0,1. Zum Vergleich: ein Lehrbeispiel rechnet an 110 kV mit 31,5 kA und R/X = 0,1 [8], ein Netzbetreiber nennt an 10 kV 350 MVA [3]. Für einen echten Einsatz gilt die Angabe des Netzbetreibers. | [3], [8] |
 | 8 | Entscheidung: Ringstaffelung je Lage mit berechneten statt eingegebenen Werten (löst Prüfpunkt 3 in `tool_vorgabe_ring.md`) | **Erledigt 17.11.2026:** Im Ring rechnet die Staffelung standardmäßig je Lage mit berechneten Ik, Rückfall auf den eingegebenen Wert, Schalter in der Oberfläche. Strahlennetz: eingegebener Wert hat Vorrang. Siehe `tool_vorgabe_ring.md`, Abschnitt 6. | Entschieden |
 | 9 | Kabeldaten des Referenznetzes: R′ = 0,206 Ω/km für 150 mm² Al | Bestätigt (Leiterwiderstand laut Datenblatt, 3x1x150/25, 6/10 kV). **X′ 17.11.2026:** Ein Herstellerdatenblatt NA2XS2Y 1x150/25 6/10 kV nennt eine Betriebsinduktivität von 0,329 mH/km im Dreieck, also X′ = 2π · 50 Hz · 0,329 mH/km = 0,103 Ω/km. Das Tool behält 0,11 Ω/km (Tool-Vorgabe, etwa 7 % höher, liegt zwischen Dreieck und Ebene). Wirkung auf Ik max an K4 unter 1 %, durch k_S = 1,2 abgedeckt. | [5], [9] |
 | 10 | Gegenrechnung mit einem Netzberechnungsprogramm | **Erledigt 17.11.2026** mit pandapower 3.5.6: Ik max, Ik min und Ik max mit Motoren an allen fünf Knoten des Referenznetzes gleich (Abweichung unter 0,01 %), siehe Abschnitt 9. Offen bleibt ein durchgerechnetes Normbeispiel aus IEC TR 60909-4 (lag nicht vor). | [7] |
-| 11 | Alle bestätigten Punkte am Normtext nachschlagen und mit Abschnitt und Gleichungsnummer zitieren | Offen, die Norm lag nicht vor | DIN EN 60909-0 (VDE 0102):2016-12 |
+| 11 | Alle bestätigten Punkte am Normtext nachschlagen und mit Abschnitt und Gleichungsnummer zitieren | **Erledigt 25.11.2026**, Fundstellen in dieser Tabelle und in Abschnitt 10 | [10] |
+| 12 | Erwärmungskonstanten K und β (Al 148 / 228, Cu 226 / 234,5) und das adiabatische Verfahren | Tool-Vorgabe nach IEC 60949, Normtext nicht gelesen | [11] |
+| 13 | Kurzschlussdauer für Ik min 1,0 s | Tool-Vorgabe (Abschaltung über eine verzögerte Stufe oder den Reserveschutz), je Leitung über `t_KS_s` änderbar | – |
 
 ## 9. Gegenrechnung mit pandapower (17.11.2026)
 
@@ -207,6 +209,43 @@ gleich. Einstellungen im Nachbau: Leitungsendtemperatur 90 °C für Ik min, Nied
 **Aussagekraft:** Die Gegenrechnung zeigt, dass das Tool dieselben Formeln und Faktoren verwendet
 wie eine unabhängige Implementierung. Ob beide die Norm richtig umsetzen, belegt sie nicht. Dazu
 bleibt der Normtext (Prüfpunkt 11) oder ein Normbeispiel aus IEC TR 60909-4.
+
+## 10. Prüfung am Normtext und Änderungen (25.11.2026)
+
+Geprüft an DIN EN 60909-0 (VDE 0102):2016-12 in der VDE NormenBibliothek. Bestätigt ohne
+Änderung: Tabelle 1 (c), 6.2 (Netzeinspeisung), 6.3.1 (Trafoimpedanz), 6.3.3 (K_T), 6.4
+(Leitungen bei 20 °C, Nullimpedanz aus IEC/TR 60909-2 oder vom Hersteller), 6.10 (Motoren),
+7.2.1 (Ik über die Knotenimpedanzmatrix, Gl. 33), 7.3 (zweipolig), 7.5 (einpolig, Gl. 54) und
+Tabelle 2 (für das Ansprechen der Relais gelten die kleinsten zwei- und einpoligen Ströme).
+
+**Änderung 1, Motoren bei Ik max.** `Ik_max_kA` enthält jetzt die Motoren, die gleichzeitig laufen
+können. Der Wert nur aus dem Netz steht in `Ik_max_ohne_Motor_kA` (Anzeige „nur Netz“, Gegenrechnung).
+Ein Motor mit `KS_Beitrag` = „Nein“ fällt heraus (Hinweis). Ohne Verbindung zum Netz liefert ein
+Motor keinen Strom. Ik1 max rechnet die Motoren im Mit- und Gegensystem ebenfalls mit (6.10: gleiche
+Impedanz in Mit- und Gegensystem). Folge im Referenznetz: K2 11,04 statt 10,22 kA, K3 10,10 statt
+9,28 kA. Die Handwerte der Beispielnetze sind ohne Motoren gerechnet und werden deshalb an K2 und K3
+als Abweichung über 10 % markiert. Im Strahlennetz gilt weiter der Handwert.
+
+**Änderung 2, Leitertemperatur bei Ik min.** Je Leitung gilt die Temperatur am Ende des
+Kurzschlusses aus der adiabatischen Erwärmung:
+
+    θe = (θi + β) · exp(I² · t / (K² · S²)) − β
+
+mit θi = 90 °C (höchste Betriebstemperatur VPE), I = zweipoliger Strom im Zweig bei einem Fehler an
+einem der beiden Leitungsenden (der größere, im Strahlennetz der Fehler am fernen Ende), t =
+Kurzschlussdauer (Tool-Vorgabe 1,0 s, Feld `t_KS_s`), S = Querschnitt (Feld `A_mm2`, sonst aus R′ und
+ρ nach Norm 6.4: Al 1/34, Cu 1/54 Ω·mm²/m), K und β je Material (Feld `Leitermaterial`, Tool-Vorgabe
+Al). Strom und Widerstand hängen voneinander ab, die Rechnung iteriert bis zur Konvergenz (0,1 K).
+Über 250 °C gibt es eine Warnung (Leitung thermisch überlastet), gerechnet wird mit 250 °C. Ein
+Handwert `theta_min_C` hat Vorrang. Das Nullsystem rechnet mit derselben Temperatur.
+
+Ergebnis im Referenznetz: L1 124,5 °C, L2 114,4 °C. Ik min an K3 6,78 statt 6,81 kA, an K4 5,74
+statt 5,81 kA. Die pandapower-Gegenrechnung mit diesen Temperaturen als `endtemp_degree` stimmt an
+allen Knoten auf 0,00 %.
+
+**Weiter offen:** Normbeispiel aus IEC/TR 60909-4, Nullimpedanzen aus IEC/TR 60909-2, Konstanten
+aus IEC 60949, Quelle für 2/√3 hinter D/Y. Zweipoliger Kurzschluss mit Erdberührung (7.4) ist
+nicht gerechnet. Bei Z0 < Z1 (starr geerdet, Beispiel K5) wäre sein Erdstrom größer als Ik1.
 
 ## Quellen
 
@@ -244,3 +283,10 @@ I″kQ = 31,5 kA, R/X = 0,1. https://bildungsportal.sachsen.de/opal/oer/4744BMOk
 [9] HES Kablo, Datenblatt NA2XS2Y 6/10 kV, Einleiterkabel mit Al-Leiter, Zeile 1x150/25:
 R20 0,206 Ω/km, Betriebsinduktivität 0,329 mH/km (Dreieck), 0,551 mH/km (Ebene).
 https://www.hes.com.tr/assets/doc/urunler-pdf/en/631.pdf
+
+[10] DIN EN 60909-0 (VDE 0102):2016-12, Kurzschlussströme in Drehstromnetzen, Teil 0: Berechnung
+der Ströme (IEC 60909-0:2016). Gelesen am 25.11.2026 in der VDE NormenBibliothek: Tabelle 1, 5.3.1,
+6.2, 6.3.1, 6.3.3, 6.4, 6.10, 7.1.1 bis 7.1.3, 7.2.1, 7.3 bis 7.5, Abschnitt 12.
+
+[11] IEC 60949, Berechnung der thermisch zulässigen Kurzschlussströme unter Berücksichtigung
+nicht-adiabatischer Erwärmungseffekte (von [10] in 7.1.2 als Quelle für θe genannt). Nicht gelesen.

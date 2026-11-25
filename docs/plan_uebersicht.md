@@ -1,6 +1,6 @@
 # Plan und Stand: Netzweite Selektivitätsplanung
 
-Stand: 17.11.2026 | Zeitraum 05.11. bis 18.12.2026 | Branch `netz-selektivitaet`
+Stand: 25.11.2026 | Zeitraum 05.11. bis 18.12.2026 | Branch `netz-selektivitaet`
 
 ## Worum geht es?
 
@@ -30,33 +30,38 @@ Tool neue Werte vor und gibt am Ende eine Einstellliste aus.
 | 14 | Robustheit und Feinschliff | Unsinnige Eingaben abfangen, Texte vereinfachen, Browser-Durchlauf | 🔄 laufend |
 | 15 | Programmpaket (.exe) | Neue Module in der `.spec` eintragen, Build testen | ⏳ offen (Kevin) |
 | 16 | Doku für die Ausarbeitung | Aus den Tool-Vorgaben in `docs/` einen Text für die Arbeit machen | ⏳ offen |
-| – | Drag & Drop, Richtungsstufen, mehrere Einspeisungen | Bewusst nicht in diesem Zeitraum | ➖ später |
+| 17 | Erdfehler (Strahlennetz) | Ik1 aus dem Nullsystem, Erdstufen der Tabs staffeln, Empfindlichkeit, Vorschlag, Einstellliste | ✅ fertig (25.11.2026), mit pandapower gegengerechnet |
+| – | Drag & Drop, Richtungsstufen, mehrere Einspeisungen, Erdfehler im Ring | Bewusst nicht in diesem Zeitraum. Betreuer 25.11.2026: Netzausgestaltung nicht komplexer | ➖ später |
 
 ## Wie weit sind wir?
 
 Grob gesagt: **Die Technik ist fertig, jetzt kommen Absicherung und Doku.**
 
-- 13 von 16 Bausteinen sind fertig, das sind alle fachlichen Bausteine.
-- Es gibt 174 automatische Tests, alle grün.
-- Zeitlich sind wir nach knapp 2 von 6 Wochen weit vorne. Die restlichen gut 4 Wochen reichen für
-  Feinschliff, Programmpaket, Betreuer-Antworten und die Doku.
+- 14 von 17 Bausteinen sind fertig, das sind alle fachlichen Bausteine (seit 25.11.2026 mit Erdfehler).
+- Es gibt 227 automatische Tests, alle grün.
+- Zeitlich sind wir nach knapp 3 von 6 Wochen weit vorne, auch mit dem Erdfehler. Die restlichen
+  gut 3 Wochen reichen für Feinschliff, Programmpaket, Betreuer-Antworten und die Doku.
 
 ## Was noch offen ist, einfach gesagt
 
 **Beim Tool**
 - Die `.spec` für das Programmpaket ergänzen (Module `netz_formular`, `netz_parameter`,
-  `netz_einstellliste`, `netz_kurzschluss`, `netz_diagramm`) und den Build einmal testen.
+  `netz_einstellliste`, `netz_kurzschluss`, `netz_diagramm`, neu `netz_erdfehler`) und den Build
+  einmal testen. Das neue Beispielnetz `beispielnetze/industrie_10kV_noe.json` mitnehmen.
 - Einen ruhigen Durchlauf im Browser mit einem selbst gebauten Netz machen und notieren, was
   unklar oder umständlich ist.
 - Optional später: Beim Motoranlauf nicht nur warnen, sondern im Vorschlag gleich eine
   Untergrenze setzen.
 
 **Bei den Belegen** (überall steht heute eine begründete Annahme)
-- Normtext DIN EN 60909-0: einzelne Faktoren (zum Beispiel c min in der Niederspannung, Faktor
-  hinter D/Y-Trafos) am Original bestätigen.
+- ~~Normtext DIN EN 60909-0 am Original prüfen~~ **erledigt 25.11.2026**: alles bestätigt, zwei
+  Änderungen eingebaut (Motoren bei Ik max, Leitertemperatur bei Ik min adiabatisch). Offen:
+  Normbeispiel IEC/TR 60909-4, Daten IEC/TR 60909-2, Konstanten IEC 60949, Quelle für 2/√3.
 - Literaturstelle für die Staffelung im offenen Ring.
 - Netzdaten am Übergabepunkt (Sk″) und Schalterzeiten: für ein echtes Netz vom Netzbetreiber
   bzw. aus dem Datenblatt.
+- Erdfehler: R0′/X0′ der Kabel aus dem Datenblatt, Z0 der Trafos, Ik1″ am Übergabepunkt und
+  die Adressen der Erdstufen am Handbuch (Prüfpunkte in `tool_vorgabe_erdfehler.md`).
 
 **Für den Betreuer** (nur kurz informieren oder fragen)
 - Zur Info: Motoranlauf wird geprüft und gemeldet, nicht automatisch korrigiert.
@@ -75,5 +80,15 @@ Grob gesagt: **Die Technik ist fertig, jetzt kommen Absicherung und Doku.**
 | Leitung | Neue Leitungen mit Not-UMZ „Ein: immer aktiv“, sonst Warnung |
 | Kurzschluss | K_T nur bei Ik max (Gegenrechnung mit pandapower) |
 | AMZ-Abstand | Zuschlag aus der Zeittoleranz des 7SJ66 (5 % + 2 % Strom, mindestens 30 ms) |
+
+## Entscheidungen vom 25.11.2026 (Gespräch mit dem Betreuer)
+
+| Thema | Entscheidung |
+|---|---|
+| Umfang | Netzausgestaltung nicht komplexer, der aktuelle Umfang ist in Ordnung |
+| Erdfehler | Einpoliger Erdkurzschluss wird ergänzt, zuerst nur im Strahlennetz |
+| Erdungspunkt | Feld „Erdfehlerstrom-Begrenzung“ am Knoten (nur niederohmig), sonst Sternpunkt eines Trafos |
+| Kabel-Nullsystem | Felder R0′/X0′, ohne Eingabe aus RE/RL und XE/XL der Leitung |
+| Testfall | Neues Beispielnetz `industrie_10kV_noe.json`, Referenznetz unverändert |
 
 Die Herleitungen stehen in den `tool_vorgabe_*.md`-Dateien im selben Ordner.

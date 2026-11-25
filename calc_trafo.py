@@ -277,14 +277,18 @@ def schutz_5051_erde(g: dict, p: dict) -> dict:
     """
     geerdet = (p["stp_OS"] not in K.STERNPUNKT_NICHT_GEERDET
                or p["stp_US"] not in K.STERNPUNKT_NICHT_GEERDET)
+    # Werte aus p (Netz-Tab, Staffelvorschlag), sonst Werksvoreinstellung. Der Trafo-Tab
+    # setzt diese Schluessel nicht, dort gilt weiter die Werksvoreinstellung.
+    IE, t_IE = p.get("I_E", K.I_E_def), p.get("t_I_E", K.t_I_E_def)
+    IEHH, t_IEHH = p.get("I_E_HH", K.I_E_HH_def), p.get("t_I_E_HH", K.t_I_E_HH_def)
     return {
         "anwendbar": geerdet and g["kCT_E"] > 0,
-        "IE_sek":   K.I_E_def,
-        "IE_prim":  round(K.I_E_def * g["kCT_E"], 4),
-        "t_IE":     K.t_I_E_def,
-        "IEHH_sek": K.I_E_HH_def,
-        "IEHH_prim":round(K.I_E_HH_def * g["kCT_E"], 4),
-        "t_IEHH":   K.t_I_E_HH_def,
+        "IE_sek":   IE,
+        "IE_prim":  round(IE * g["kCT_E"], 4),
+        "t_IE":     t_IE,
+        "IEHH_sek": IEHH,
+        "IEHH_prim":round(IEHH * g["kCT_E"], 4),
+        "t_IEHH":   t_IEHH,
     }
 
 

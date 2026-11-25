@@ -8,6 +8,7 @@ Einstieg:
   erstelle(netz, adapter=None, aenderungen=None) -> Einstellliste
   aus_gesamtvorschlag(vorschlag) -> aenderungen   (netz_stromstaffel.gesamtvorschlag)
   aus_ringvorschlag(vorschlag)   -> aenderungen   (netz_ring.ringvorschlag)
+  aus_erdvorschlag(vorschlag)    -> aenderungen   (netz_erdfehler.erdvorschlag)
   als_tabelle(liste) -> Liste von Dicts (Anzeige)
   als_csv(liste)     -> Text (Export fuer Excel)
 
@@ -26,6 +27,10 @@ Das Modul rechnet nichts Fachliches:
 
 CSV (Tool-Vorgabe): Semikolon als Trennzeichen, Dezimalkomma, UTF-8 mit BOM. So oeffnet
 ein deutsches Excel die Datei ohne Import-Dialog mit richtigen Umlauten und Zahlen.
+
+Erdstufen (Entscheidung 25.11.2026): stehen nach den Phasenstufen, Spalte "Art" = "Erde".
+Wandler: Trafo der Sternpunktwandler CT_E, Leitung und Motor der Phasenwandler (Holmgreen).
+Adressen aus HERST, sonst aus _ERD_ADRESSE_FEST (dort steht, woher sie kommen).
 
 Robustheit: Das Modul wirft nie. Fehlende Daten ergeben leere Felder und Meldungen.
 """
@@ -67,12 +72,23 @@ _ZEIT_ADRESSE_ZUSATZ = {
 }
 
 
+# Adressen der Erdstufen, die nicht im HERST-Verzeichnis stehen. Uebernommen aus dem Code, nicht
+# neu gegen das Handbuch geprueft (Pruefpunkt in docs/tool_vorgabe_erdfehler.md):
+#   Trafo 7UT613: konstanten_trafo.I_E_def / t_I_E_def / I_E_HH_def / t_I_E_HH_def (Kommentare,
+#   "1A-Wandler"). Bei einem 5-A-Sternpunktwandler steht deshalb ein Hinweis statt einer Adresse.
+#   Motor 7SJ66: Zeiten aus der Sollwerttabelle in tab_motor.py (Adr.1303, 1305, 1308).
+_ERD_ADRESSE_FEST = {
+    "trafo": {"IE>": ("Adr.2413", "Adr.2414"), "IE>>": ("Adr.2411", "Adr.2412")},
+    "motor": {"50N-2": ("", "Adr.1303"), "50N-1": ("", "Adr.1305"), "51N": ("", "Adr.1308")},
+}
+
+
 def warum_zeit(grund: str, dt_soll: float) -> str:
     """Kurzbegruendung einer Zeit: 'Staffelabstand ueber <Stufe darunter>'."""
     if grund.startswith("Lage ") and ": " in grund:
         lage, rest = grund.split(": ", 1)
         return f"{lage}: {warum_zeit(rest, dt_soll)}"
-    if not grund or grund.startswith(("Mindestzeit", "Untergrenze", "Endpunkt", "Netzbetreiber", "AMZ")):
+    if not grund or grund.startswith(("Mindestzeit", "Untergrenze", "Endpunkt", "Netzbetreiber", "AMZ", "Reihenfolge")):
         return grund
     return f"{de(dt_soll, 2)} s über {grund}"
 
@@ -115,6 +131,7 @@ class Zeile:
     t_neu_s: float | None = None
     begruendung: str = ""
     hinweis: str = ""                  # Bedingung fuer die Adresse, z. B. Projektierung am Geraet
+    art: str = "Phase"                 # "Phase" oder "Erde"
 
     @property
     def geaendert(self) -> bool:
@@ -170,10 +187,23 @@ def aus_ringvorschlag(vorschlag) -> dict:
     return out
 
 
+def aus_erdvorschlag(vorschlag) -> dict:
+    """{(Element, Stufe): Aenderung} aus netz_erdfehler.erdvorschlag (nur Zeiten). Wirft nie."""
+    out = {}
+    try:
+        for v in vorschlag.geaendert:
+            out[(v.element, v.stufe)] = Aenderung(t_neu_s=v.t_neu_s, grund_zeit=v.grund)
+    except Exception:
+        return {}
+    return out
+
+
 # ── Hilfen je Stufe ──────────────────────────────────────────────────────────
-def _wandler(typ: str, stufe: str, p: dict) -> tuple:
+def _wandler(typ: str, stufe: str, p: dict, erde: bool = False) -> tuple:
     """(Uebersetzung, Text) des Stromwandlers am Messort der Stufe. (None, "") ohne Angabe."""
-    if typ == "trafo":
+    if typ == "trafo" and erde:
+        prim, sek = p.get("CT_E_Prim"), p.get("CT_E_Sek")
+    elif typ == "trafo":
         seite = "OS" if stufe.endswith("OS") else "US"
         prim, sek = p.get(f"CT_{seite}_Prim"), p.get(f"CT_{seite}_Sek")
     elif typ in ("leitung", "motor"):
@@ -229,6 +259,22 @@ def _hinweis(typ: str, stufe: str, adapter_hinweis: str = "") -> str:
     return ""
 
 
+def _erd_adressen(typ: str, s, p: dict) -> tuple:
+    """(Adresse Ansprechwert, Adresse Zeit, Hinweis) einer Erdstufe. Nichts geraten."""
+    fest = _ERD_ADRESSE_FEST.get(typ, {}).get(s.stufe, ("", ""))
+    strom = _adresse(typ, netz_adapter.ERD_STROM_PARAMETER.get(typ, {}).get(s.stufe)) or fest[0]
+    zeit = _adresse(typ, netz_adapter.ERD_ZEIT_PARAMETER.get(typ, {}).get(s.stufe)) or fest[1]
+    hinweis = ""
+    if typ == "trafo":
+        sek = p.get("CT_E_Sek")
+        if not (_zahl(sek) and abs(sek - 1.0) < 1e-9):
+            strom = ""
+            hinweis = "Adresse des Ansprechwerts nur für 1-A-Sternpunktwandler bekannt (Adr.2413/2411)"
+    if typ == "leitung" and s.richtung:
+        hinweis = f"Richtung {s.richtung}"
+    return strom, zeit, hinweis
+
+
 def _tiefe(topo, element_id: str) -> int:
     """Abstand zur Quelle in Elementen. Die Liste laeuft von der Quelle zur Last."""
     try:
@@ -260,12 +306,15 @@ def _erstelle(netz, adapter, aenderungen, liste, dt_soll) -> Einstellliste:
     liste.meldungen += [m for m in ad.meldungen if m.stufe == FEHLER]
     elemente = netz.elemente
     benutzt = set()
-    for s in ad.stufen:
+    alle = [(s, False) for s in ad.stufen] + [(s, True) for s in getattr(ad, "erdstufen", [])]
+    for s, erde in alle:
         e = elemente[s.element]
         p = ad.p_voll.get(s.element, e.p)
-        ue, wandler = _wandler(e.typ, s.stufe, p)
+        ue, wandler = _wandler(e.typ, s.stufe, p, erde)
         IN = netz_adapter.nennstrom_A(e.typ, s.stufe, p) if e.typ in _HERST else None
         IN = IN if _zahl(IN) and IN > 0 else None
+        if erde and e.typ == "trafo":
+            IN = None                         # IE> bezieht sich nicht auf den Trafonennstrom
         a = aenderungen.get((s.element, s.stufe))
         I_neu = t_neu = None
         gruende = []
@@ -279,6 +328,17 @@ def _erstelle(netz, adapter, aenderungen, liste, dt_soll) -> Einstellliste:
                 t_neu = float(a.t_neu_s)
                 if a.grund_zeit:
                     gruende.append(f"Zeit: {warum_zeit(a.grund_zeit, dt_soll)}")
+        if erde:
+            a_strom, a_zeit, hinweis = _erd_adressen(e.typ, s, p)
+            liste.zeilen.append(Zeile(
+                element=s.element, bezeichnung=e.name, typ=e.typ, stufe=s.stufe, ansi=s.ansi,
+                messort=s.messort, UN_kV=s.UN_kV, wandler=wandler, kennlinie=s.kennlinie,
+                aktiv=s.aktiv, I_prim_A=s.I_prim_A,
+                I_sek_A=None if ue is None else s.I_prim_A / ue,
+                faktor_IN=None if IN is None else s.I_prim_A / IN,
+                t_s=s.t_s, T_mult=s.T_mult, adresse_strom=a_strom, adresse_zeit=a_zeit,
+                t_neu_s=t_neu, begruendung=". ".join(gruende), hinweis=hinweis, art="Erde"))
+            continue
         liste.zeilen.append(Zeile(
             element=s.element, bezeichnung=e.name, typ=e.typ, stufe=s.stufe, ansi=s.ansi,
             messort=s.messort, UN_kV=s.UN_kV, wandler=wandler, kennlinie=s.kennlinie,
@@ -300,8 +360,8 @@ def _erstelle(netz, adapter, aenderungen, liste, dt_soll) -> Einstellliste:
             hinweis=_hinweis(e.typ, s.stufe, s.hinweis)))
     topo = ad.topologie
     reihenfolge = {z.element: i for i, z in enumerate(liste.zeilen)}
-    liste.zeilen.sort(key=lambda z: (_tiefe(topo, z.element), z.element, z.messort != elemente[z.element].von,
-                                     reihenfolge[z.element]))
+    liste.zeilen.sort(key=lambda z: (z.art != "Phase", _tiefe(topo, z.element), z.element,
+                                     z.messort != elemente[z.element].von, reihenfolge[z.element]))
     fehlend = sorted(set(aenderungen) - benutzt)
     if fehlend:
         liste.meldungen.append(Meldung(
@@ -322,9 +382,11 @@ def als_tabelle(liste: Einstellliste, mit_vorschlag: bool | None = None) -> list
     """
     if mit_vorschlag is None:
         mit_vorschlag = bool(liste.geaendert)
+    mit_art = any(z.art != "Phase" for z in liste.zeilen)    # Spalte nur, wenn es Erdstufen gibt
     out = []
     for z in liste.zeilen:
-        zeile = {
+        zeile = {"Art": z.art} if mit_art else {}
+        zeile |= {
             "Element": z.element, "Bezeichnung": z.bezeichnung, "Messort": z.messort,
             "UN [kV]": de(z.UN_kV, 1), "Wandler": z.wandler, "Stufe": z.stufe, "ANSI": z.ansi,
             "Kennlinie": z.kennlinie, "aktiv": "ja" if z.aktiv else "nein",

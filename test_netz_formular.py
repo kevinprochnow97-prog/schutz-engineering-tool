@@ -120,7 +120,7 @@ def test_knoten_werte_und_aendern():
     n = _netz()
     w = F.knoten_werte(n, "K4")
     assert w == {"name": "Unterverteilung 10 kV", "UN_kV": 10.0, "sternpunkt": "isoliert",
-                 "Ik_max_kA": 7.9, "Ik_min_kA": 5.8}
+                 "Ik_max_kA": 7.9, "Ik_min_kA": 5.8, "I_E_begr_A": None}
     meldung = F.knoten_aendern(n, "K4", "Halle 2", 10, "kompensiert", 8.2, 6.0)
     assert "Bezeichnung geändert" in meldung and "Ik″ max 7.9 → 8.2" in meldung
     assert "Sternpunkt isoliert → kompensiert" in meldung
@@ -194,3 +194,17 @@ def test_element_aendern_fehler_laesst_element_unveraendert():
         F.element_aendern(n, "X9", "x", "K2", "K3")
     assert n.to_dict() == vorher
     assert F.element_aendern(n, "L1", n.elemente["L1"].name, "K2", "K3") == "Element L1: keine Änderung."
+
+
+def test_erdfehlerstrom_begrenzung():
+    """Nur bei niederohmiger Erdung uebernommen (Entscheidung 25.11.2026), sonst Hinweis."""
+    n = Netz()
+    m = F.knoten_anlegen(n, "K1", "A", 10, "niederohmig", None, None, 2000)
+    assert n.knoten["K1"].I_E_begr_A == 2000.0 and "nicht übernommen" not in m
+    m = F.knoten_anlegen(n, "K2", "B", 10, "isoliert", None, None, 2000)
+    assert n.knoten["K2"].I_E_begr_A is None and "nicht übernommen" in m
+    m = F.knoten_aendern(n, "K1", "A", 10, "niederohmig", None, None, 1500)
+    assert "Erdfehlerstrom-Begrenzung 2000 → 1500" in m
+    m = F.knoten_aendern(n, "K1", "A", 10, "isoliert", None, None, 1500)
+    assert n.knoten["K1"].I_E_begr_A is None and "nicht übernommen" in m
+    assert F.knoten_werte(n, "K1")["I_E_begr_A"] is None

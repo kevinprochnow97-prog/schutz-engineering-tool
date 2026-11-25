@@ -367,13 +367,14 @@ def test_kurzschluss_anzeige():
     assert len(at.error) == 0 and len(at.warning) == 0
     df = at.dataframe[2].value.set_index("Knoten")
     assert df.loc["K2", "Ik″ max eingegeben [kA]"] == "10,00"
-    assert df.loc["K2", "Ik″ max berechnet [kA]"] == "10,22" and df.loc["K2", "Abw. max"] == "+2,2 %"
-    assert df.loc["K4", "Ik min berechnet [kA]"] == "5,81"
-    assert df.loc["K3", "Ik″ max mit Motoren [kA]"] == "10,10"
+    # 25.11.2026: Ik max mit Motoren (Norm 7.1.2 e), Ik min mit Endtemperatur (Gl. 32)
+    assert df.loc["K2", "Ik″ max berechnet [kA]"] == "11,04" and df.loc["K2", "Abw. max"] == "+10,4 % ⚠️"
+    assert df.loc["K4", "Ik min berechnet [kA]"] == "5,74"
+    assert df.loc["K3", "Ik″ max nur Netz [kA]"] == "9,27"
     assert df.loc["K5", "Ik min eingegeben [kA]"] == "–"
     assert df.loc["K5", "Staffelung rechnet mit"] == "berechnet: Ik min"
     assert set(df.drop("K5")["Staffelung rechnet mit"]) == {"eingegeben"}
-    assert "K5 Ik min 24,67 kA" in _texte(at.caption)
+    assert "K5 Ik min 24,66 kA" in _texte(at.caption)
     assert len(at.dataframe[3].value) == 6                           # Impedanzen: E1, L1, L2, M1, T1, T2
     # Das Modell bleibt auf den eingegebenen Werten, die Zeitstaffelung aendert sich nicht
     assert at.session_state["netz_modell"].to_dict() == vorher
@@ -399,12 +400,13 @@ def test_kurzschluss_ring():
     assert len(at.dataframe) == 9 and len(at.expander) == 1
     lagen = at.dataframe[3].value.set_index("Schaltzustand")
     assert list(lagen.index)[1:] == ["K34 offen", "L1 offen", "L2 offen", "Ring geschlossen"]
-    assert list(lagen.columns) == ["K3", "K4", "K5"]                 # K1 und K2 aendern sich nicht
+    # 25.11.2026: mit Motoren aendern sich auch K1 und K2 je Lage (Motorbeitrag ueber den Ring)
+    assert list(lagen.columns) == ["K1", "K2", "K3", "K4", "K5"]
     assert lagen.iloc[0]["K4"] == "7,90 / 5,80"                      # eingegeben
-    assert lagen.loc["L2 offen", "K4"] == "9,27 / 6,81"
-    assert lagen.loc["L1 offen", "K3"] == lagen.loc["L1 offen", "K4"] == "8,00 / 5,81"
+    assert lagen.loc["L2 offen", "K4"] == "10,10 / 6,78"
+    assert lagen.loc["L1 offen", "K3"] == lagen.loc["L1 offen", "K4"] == "8,81 / 5,74"
     warn = _texte(at.warning)
-    assert "K4 Ik max in Lage „L2 offen“" in warn and "K3 Ik max in Lage „L1 offen“" in warn
+    assert "K4 Ik max in Lage „L2 offen“" in warn and "K3 Ik min in Lage „L1 offen“" in warn
     assert "rechnet weiter mit den eingegebenen Werten" in warn
     # Ringvorschlag mit eingeschalteter Rechnung laeuft und schreibt ins Modell
     at.toggle(key="netz_ring_vorschlag_an").set_value(True).run()
@@ -751,6 +753,87 @@ def test_einstellliste_ring():
     liste = at.dataframe[-1].value
     assert "geändert" in liste.columns and "ja" in set(liste["geändert"])
     print("Einstellliste Ring OK.")
+
+
+# ── 15. Erdfehler (Entscheidung 25.11.2026) ──────────────────────────────────
+def _erdbeispiel() -> AppTest:
+    at = _start()
+    _klick(at, "netz_btn_beispiel_noe")
+    return at
+
+
+def test_erdfehler_abschnitt():
+    at = _erdbeispiel()
+    n_tab = len(at.dataframe)
+    at.toggle(key="netz_erde_an").set_value(True).run()
+    _keine_ausnahme(at)
+    tabellen = [d.value for d in at.dataframe[n_tab:]]
+    bereiche = tabellen[0]
+    z = bereiche[bereiche["Bereich (Knoten)"] == "K2, K3, K4"].iloc[0]
+    assert z["Sternpunkt"] == "niederohmig" and "Sternpunktbildner an K2" in z["Erdung"]
+    assert z["Ik1 max [kA]"] == "2,18" and z["Ik1 min [kA]"] == "1,59"
+    paare = [t for t in tabellen if "oben (Erdung)" in t.columns][0]
+    assert set(zip(paare["unten (Fehler)"], paare["oben (Erdung)"])) == {("M1", "L1"), ("M2", "L2")}
+    assert "Erdstaffelung: Prüfen!" in _texte(at.markdown)
+    assert any("Schutzort" in t.columns for t in tabellen)          # Empfindlichkeit
+    print("Erdfehler-Abschnitt OK.")
+
+
+def test_erdvorschlag_uebernehmen():
+    at = _erdbeispiel()
+    at.toggle(key="netz_erde_an").set_value(True).run()
+    vorher = at.session_state["netz_modell"].to_dict()
+    at.toggle(key="netz_erde_vorschlag_an").set_value(True).run()
+    _keine_ausnahme(at)
+    assert at.session_state["netz_modell"].to_dict() == vorher        # nur rechnen, nicht schreiben
+    aend = [d.value for d in at.dataframe if "Warum" in d.value.columns][-1]
+    assert len(aend) == 6 and set(aend["Element"]) == {"L1", "L2"}
+    _klick(at, "netz_erde_uebernehmen")
+    n = at.session_state["netz_modell"]
+    assert n.elemente["L1"].p["t_3I0HHH"] == 0.4 and n.elemente["L2"].p["t_3I0H"] == 0.5
+    assert "Erdvorschlag übernommen" in _texte(at.success)
+    assert "Erdstaffelung: OK" in _texte(at.markdown)
+    print("Erdvorschlag übernehmen OK.")
+
+
+def test_erdfehler_einstellliste():
+    at = _erdbeispiel()
+    at.toggle(key="netz_erde_an").set_value(True).run()
+    at.toggle(key="netz_erde_vorschlag_an").set_value(True).run()
+    at.toggle(key="netz_liste_an").set_value(True).run()
+    _keine_ausnahme(at)
+    wahl = at.radio(key="netz_liste_quelle")
+    assert "Erdvorschlag" in wahl.options
+    wahl.set_value("Erdvorschlag").run()
+    _keine_ausnahme(at)
+    liste = at.dataframe[-1].value
+    erde = liste[liste["Art"] == "Erde"]
+    assert len(erde) == 14                                            # L1, L2 je 3, M1, M2 je 3, T2 2
+    z = erde[(erde["Element"] == "L1") & (erde["Stufe"] == "3I0>")].iloc[0]
+    assert z["t neu [s]"] == "0,80" and "Adr.3132" in z["Adresse Zeit"]
+    print("Einstellliste mit Erdstufen OK.")
+
+
+def test_isoliertes_netz_erdfehler_hinweis():
+    at = _beispiel()
+    at.toggle(key="netz_erde_an").set_value(True).run()
+    _keine_ausnahme(at)
+    bereiche = [d.value for d in at.dataframe if "Bereich (Knoten)" in d.value.columns][0]
+    z = bereiche[bereiche["Bereich (Knoten)"] == "K2, K3, K4"].iloc[0]
+    assert z["Sternpunkt"] == "isoliert" and "U0" in z["Bewertung"]
+    assert not any(t.key == "netz_erde_vorschlag_an" for t in at.toggle)   # nichts zu staffeln
+
+
+def test_knoten_mit_begrenzung_anlegen():
+    at = _start()
+    at.text_input(key="netz_k_id").input("K9")
+    at.text_input(key="netz_k_name").input("Test")
+    at.number_input(key="netz_k_un").set_value(10.0)
+    at.selectbox(key="netz_k_stp").set_value("niederohmig")
+    at.number_input(key="netz_k_ie").set_value(1500.0)
+    _absenden(at, "➕ Knoten anlegen")
+    assert at.session_state["netz_modell"].knoten["K9"].I_E_begr_A == 1500.0
+    assert at.number_input(key="netz_k_ie").value is None             # Formular wieder leer
 
 
 if __name__ == "__main__":

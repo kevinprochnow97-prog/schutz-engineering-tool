@@ -30,7 +30,7 @@ NB_ZEIT = "t_gt_NB_s"
 
 KNOTEN_LEER = {
     "id": "", "name": "", "UN_kV": None, "sternpunkt": STERNPUNKTE[0],
-    "Ik_max_kA": None, "Ik_min_kA": None,
+    "Ik_max_kA": None, "Ik_min_kA": None, "I_E_begr_A": None,
 }
 
 ELEMENT_LEER = {
@@ -66,12 +66,25 @@ def _knoten_dict(netz: Netz, kid: str) -> dict:
 
 # ── Anlegen ──────────────────────────────────────────────────────────────────
 def knoten_anlegen(netz: Netz, kid, name, UN_kV, sternpunkt,
-                   Ik_max_kA=None, Ik_min_kA=None) -> str:
-    """Knoten anlegen. Ik 0 gilt wie leer (die Felder sind optional)."""
+                   Ik_max_kA=None, Ik_min_kA=None, I_E_begr_A=None) -> str:
+    """
+    Knoten anlegen. Ik 0 gilt wie leer (die Felder sind optional). Die Erdfehlerstrom-
+    Begrenzung gilt nur bei niederohmiger Erdung, sonst wird sie verworfen und gemeldet.
+    """
     kid = _text(kid)
+    I_E, hinweis = _begrenzung(sternpunkt, I_E_begr_A)
     netz.knoten_hinzufuegen(kid, _text(name), _zahl(UN_kV), sternpunkt,
-                            _zahl(Ik_max_kA) or None, _zahl(Ik_min_kA) or None)
-    return f"Knoten {kid} angelegt."
+                            _zahl(Ik_max_kA) or None, _zahl(Ik_min_kA) or None, I_E)
+    return f"Knoten {kid} angelegt.{hinweis}"
+
+
+def _begrenzung(sternpunkt, I_E) -> tuple:
+    """(Wert fuers Modell, Hinweistext). Nur bei niederohmig, 0 gilt wie leer."""
+    I_E = _zahl(I_E) or None
+    if I_E is not None and sternpunkt != "niederohmig":
+        return None, (" Die Erdfehlerstrom-Begrenzung gilt nur bei niederohmiger Erdung "
+                      "und wurde nicht übernommen.")
+    return I_E, ""
 
 
 def element_anlegen(netz: Netz, eid, name, typ, von, nach, zustand="ein",
@@ -114,7 +127,7 @@ def element_anlegen(netz: Netz, eid, name, typ, von, nach, zustand="ein",
 def knoten_werte(netz: Netz, kid: str) -> dict:
     """Aktuelle Werte eines Knotens in den Feldnamen von KNOTEN_LEER (ohne id)."""
     d = _knoten_dict(netz, kid)
-    return {f: d[f] for f in ("name", "UN_kV", "sternpunkt", "Ik_max_kA", "Ik_min_kA")}
+    return {f: d[f] for f in ("name", "UN_kV", "sternpunkt", "Ik_max_kA", "Ik_min_kA", "I_E_begr_A")}
 
 
 def element_werte(netz: Netz, eid: str) -> dict:
@@ -128,22 +141,27 @@ def element_werte(netz: Netz, eid: str) -> dict:
 
 # ── Bearbeiten: ins Modell schreiben ─────────────────────────────────────────
 def knoten_aendern(netz: Netz, kid: str, name, UN_kV, sternpunkt,
-                   Ik_max_kA=None, Ik_min_kA=None) -> str:
+                   Ik_max_kA=None, Ik_min_kA=None, I_E_begr_A=None) -> str:
     """
     Alle aenderbaren Felder eines Knotens setzen. Die ID bleibt, damit die Verbindungen
-    der Elemente erhalten bleiben. Ik 0 gilt wie leer.
+    der Elemente erhalten bleiben. Ik 0 gilt wie leer. Die Erdfehlerstrom-Begrenzung gilt
+    nur bei niederohmiger Erdung (sonst verworfen, mit Hinweis).
     """
     alt = _knoten_dict(netz, kid)
+    I_E, hinweis = _begrenzung(sternpunkt, I_E_begr_A)
     netz.knoten_aendern(kid, name=_text(name), UN_kV=_zahl(UN_kV), sternpunkt=sternpunkt,
-                        Ik_max_kA=_zahl(Ik_max_kA) or None, Ik_min_kA=_zahl(Ik_min_kA) or None)
+                        Ik_max_kA=_zahl(Ik_max_kA) or None, Ik_min_kA=_zahl(Ik_min_kA) or None,
+                        I_E_begr_A=I_E)
     neu = _knoten_dict(netz, kid)
     namen = {"name": "Bezeichnung", "UN_kV": "UN", "sternpunkt": "Sternpunkt",
-             "Ik_max_kA": "Ik″ max", "Ik_min_kA": "Ik min"}
+             "Ik_max_kA": "Ik″ max", "Ik_min_kA": "Ik min", "I_E_begr_A": "Erdfehlerstrom-Begrenzung"}
     diff = [f"{namen[f]} {_g(alt[f])} → {_g(neu[f])}" for f in namen
             if alt[f] != neu[f] and f != "name"]
     if alt["name"] != neu["name"]:
         diff.insert(0, "Bezeichnung geändert")
-    return f"Knoten {kid} geändert: {'; '.join(diff)}." if diff else f"Knoten {kid}: keine Änderung."
+    if diff:
+        return f"Knoten {kid} geändert: {'; '.join(diff)}.{hinweis}"
+    return f"Knoten {kid}: keine Änderung.{hinweis}"
 
 
 def element_aendern(netz: Netz, eid: str, name, von=None, nach=None,

@@ -300,7 +300,7 @@ def test_ik_ersetzen_je_lage():
     lagen, meld = R.erzeuge_lagen(n, ik_ersetzen=True)
     assert n.to_dict() == vorher and not any(m.stufe == FEHLER for m in meld)
     ik = {l.trennstelle: {k: v.Ik_max_kA for k, v in l.netz.knoten.items()} for l in lagen}
-    assert abs(ik["L1"]["K3"] - 8.00) < 5e-3 and abs(ik["L2"]["K4"] - 9.27) < 5e-3     # je Lage verschieden
+    assert abs(ik["L1"]["K3"] - 8.807) < 5e-3 and abs(ik["L2"]["K4"] - 10.101) < 5e-3   # je Lage, mit Motoren
     assert ik["L1"]["K3"] != ik["L2"]["K3"]
     assert all(l.ik_ersetzt and not l.ik_rueckfall for l in lagen)
     # ohne den Schalter bleibt alles beim Eingegebenen

@@ -685,15 +685,18 @@ def _merke(erg, elemente, ort, s, t_neu, grund) -> None:
     erg.vorschlaege.append(Zeitvorschlag(ort.element, s.stufe, key, t_alt, t_neu, grund))
 
 
-def _zeit_fuer_stufe(ort, s, darunter, U, knoten, dt_soll, t_min, tap=None) -> tuple:
+def _zeit_fuer_stufe(ort, s, darunter, U, knoten, dt_soll, t_min, tap=None,
+                     grenzstrom=None) -> tuple:
     """
     Kleinste Zeit der Stufe s, die ueber allen Schutzorten darunter liegt.
     Mit Stufensteller zwischen den Messorten (tap) gilt die Zeit, die in allen
-    Stufenstellerlagen passt.
+    Stufenstellerlagen passt. grenzstrom(u): groesster Strom durch u (Bezugsspannung),
+    ohne Angabe Ik max am Messort von u. Die Erdfehlerstaffelung (netz_erdfehler)
+    uebergibt hier den groessten Erdstrom 3I0.
     """
     bedarf, wegen = t_min, "Mindestzeit (Tool-Vorgabe)"
     for u in darunter:
-        I_grenz = _grenzstrom_bez(knoten, u, U)
+        I_grenz = grenzstrom(u) if grenzstrom is not None else _grenzstrom_bez(knoten, u, U)
         for f in stufensteller_faktoren((tap or {}).get((u.schluessel, ort.schluessel))):
             ort_f = oben_in_stromlage_unten(ort, f)
             s_f = ort_f.stufen[ort.stufen.index(s)]

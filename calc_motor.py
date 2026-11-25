@@ -257,9 +257,13 @@ def schutz_50N51N(g: dict, p: dict) -> dict:
         "modus":         "Stromkriterium 50N/51N (Adr.13xx)" if niederohmig
                          else "Empfindlich 50Ns/51Ns/67Ns + U0 (Adr.31xx)",
         # Standard 50N/51N
-        "f_50N2_sek":  round(f50N2, 4), "f_50N2_prim": round(f50N2 * kCT, 2), "t_50N2": K.t_50N2_def,
-        "f_50N1_sek":  round(f50N1, 4), "f_50N1_prim": round(f50N1 * kCT, 2), "t_50N1": K.t_50N1_def,
-        "f_51N_sek":   round(f51N, 4),  "f_51N_prim":  round(f51N * kCT, 2),  "T_51N":  K.T_51N_def,
+        # Zeiten aus p (Netz-Tab, Staffelvorschlag), sonst Werksvoreinstellung wie bisher
+        "f_50N2_sek":  round(f50N2, 4), "f_50N2_prim": round(f50N2 * kCT, 2),
+        "t_50N2": p.get("t_50N2", K.t_50N2_def),
+        "f_50N1_sek":  round(f50N1, 4), "f_50N1_prim": round(f50N1 * kCT, 2),
+        "t_50N1": p.get("t_50N1", K.t_50N1_def),
+        "f_51N_sek":   round(f51N, 4),  "f_51N_prim":  round(f51N * kCT, 2),
+        "T_51N":  p.get("T_51N", K.T_51N_def),
         "kennlinie_51N": K.Kennlinie_51N_def,
         # Empfindliche Stufe
         "VN_sek":      round(VN, 1),

@@ -40,6 +40,7 @@ G_WANDLER = "Stromwandler"
 G_SCHUTZ = "Schutzeinstellungen (50/51)"
 G_NB = "Schutz des Netzbetreibers"
 G_KS = "Kurzschlussrechnung (optional)"
+G_ERDE = "Erdschutz (nur geerdete Netze)"
 
 
 @dataclass(frozen=True)
@@ -78,6 +79,9 @@ FELDER: dict = {
         Feld("t_gt_NB_s", "t Netzbetreiber", "s", G_NB, vorgabe="kein Schutz des Netzbetreibers"),
         Feld("RX_Q", "R/X der Einspeisung", "", G_KS, min_inklusive=True,
              vorgabe=f"Tool-Vorgabe {str(konstanten_netz.RX_Q_def).replace('.', ',')}"),
+        Feld("X0_X1_Q", "Z0/Z1 der Einspeisung (starr geerdet)", "", G_KS,
+             vorgabe=f"Tool-Vorgabe {str(konstanten_netz.X0_X1_Q_def).replace('.', ',')} "
+                     f"(Ik1 = Ik3 am Übergabepunkt)"),
     ),
     "trafo": (
         Feld("Sn_MVA", "Sn", "MVA", G_GRUND, pflicht=True),
@@ -101,6 +105,15 @@ FELDER: dict = {
         Feld("t_I_Ph_HH_US", "t I>> US", "s", G_SCHUTZ, min_inklusive=True, vorgabe="wie OS-Seite"),
         Feld("ukr_pct", "ukr (Wirkanteil von uk)", "%", G_KS, min_inklusive=True,
              vorgabe="R = 0 (Tool-Vorgabe)"),
+        Feld("CT_E_Prim", "Sternpunktwandler primär", "A", G_ERDE,
+             vorgabe="kein Sternpunktwandler, keine Erdstufe IE>"),
+        Feld("CT_E_Sek", "Sternpunktwandler sekundär", "A", G_ERDE,
+             vorgabe="kein Sternpunktwandler, keine Erdstufe IE>"),
+        Feld("I_E", "IE> Ansprechwert", "A sek.", G_ERDE, vorgabe=_d(_KT, "I_E_def", "A sek.")),
+        Feld("t_I_E", "t IE>", "s", G_ERDE, min_inklusive=True, vorgabe=_d(_KT, "t_I_E_def", "s")),
+        Feld("I_E_HH", "IE>> Ansprechwert", "A sek.", G_ERDE, vorgabe=_d(_KT, "I_E_HH_def", "A sek.")),
+        Feld("t_I_E_HH", "t IE>>", "s", G_ERDE, min_inklusive=True,
+             vorgabe=_d(_KT, "t_I_E_HH_def", "s")),
     ),
     "leitung": (
         Feld("L_km", "Länge", "km", G_GRUND),
@@ -119,9 +132,35 @@ FELDER: dict = {
              vorgabe=_d(_KL, "t_iph_hh_def", "s")),
         Feld("R_Belag", "R′-Belag", "Ω/km", G_KS, min_inklusive=True,
              vorgabe="aus X′ und φ, sonst R′ = 0"),
-        Feld("theta_min_C", "Leitertemperatur für Ik min", "°C", G_KS, min_inklusive=True,
+        Feld("theta_min_C", "Leitertemperatur für Ik min (fest)", "°C", G_KS, min_inklusive=True,
              minimum=20.0, maximum=250.0,
-             vorgabe=f"Tool-Vorgabe {konstanten_netz.theta_Leiter_min_C:g} °C"),
+             vorgabe=f"berechnet: Erwärmung im Kurzschluss ab "
+                     f"{konstanten_netz.theta_Leiter_min_C:g} °C"),
+        Feld("Leitermaterial", "Leitermaterial", "", G_KS, art=WAHL,
+             optionen=tuple(konstanten_netz.LEITER),
+             vorgabe=f"Tool-Vorgabe {konstanten_netz.Leitermaterial_def}"),
+        Feld("A_mm2", "Leiterquerschnitt", "mm²", G_KS, vorgabe="aus R′ und ρ (Norm 6.4)"),
+        Feld("t_KS_s", "Kurzschlussdauer für Ik min", "s", G_KS,
+             vorgabe=f"Tool-Vorgabe {str(konstanten_netz.t_KS_Ikmin_s).replace('.', ',')} s"),
+        Feld("R0_Belag", "R0′-Belag (Nullsystem)", "Ω/km", G_KS, min_inklusive=True,
+             vorgabe="aus R′ und RE/RL"),
+        Feld("X0_Belag", "X0′-Belag (Nullsystem)", "Ω/km", G_KS, vorgabe="aus X′ und XE/XL"),
+        Feld("RE_RL", "Erdimpedanzfaktor RE/RL", "", G_KS, min_inklusive=True,
+             vorgabe=_d(_KL, "RE_RL_def")),
+        Feld("XE_XL", "Erdimpedanzfaktor XE/XL", "", G_KS, min_inklusive=True,
+             vorgabe=_d(_KL, "XE_XL_def")),
+        Feld("i_3I0HHH", "3I0>>> Ansprechwert", "× IN", G_ERDE, vorgabe=_d(_KL, "i_3I0HHH_def", "× IN")),
+        Feld("t_3I0HHH", "t 3I0>>>", "s", G_ERDE, min_inklusive=True, vorgabe=_d(_KL, "t_3I0HHH_def", "s")),
+        Feld("modus_3I0HHH", "Richtung 3I0>>>", "", G_ERDE, art=WAHL,
+             optionen=tuple(_KL.ZONE_MODUS_OPTIONEN), vorgabe=_d(_KL, "modus_3I0HHH_def")),
+        Feld("i_3I0HH", "3I0>> Ansprechwert", "× IN", G_ERDE, vorgabe=_d(_KL, "i_3I0HH_def", "× IN")),
+        Feld("t_3I0HH", "t 3I0>>", "s", G_ERDE, min_inklusive=True, vorgabe=_d(_KL, "t_3I0HH_def", "s")),
+        Feld("modus_3I0HH", "Richtung 3I0>>", "", G_ERDE, art=WAHL,
+             optionen=tuple(_KL.ZONE_MODUS_OPTIONEN), vorgabe=_d(_KL, "modus_3I0HH_def")),
+        Feld("i_3I0H", "3I0> Ansprechwert", "× IN", G_ERDE, vorgabe=_d(_KL, "i_3I0H_def", "× IN")),
+        Feld("t_3I0H", "t 3I0>", "s", G_ERDE, min_inklusive=True, vorgabe=_d(_KL, "t_3I0H_def", "s")),
+        Feld("modus_3I0H", "Richtung 3I0>", "", G_ERDE, art=WAHL,
+             optionen=tuple(_KL.ZONE_MODUS_OPTIONEN), vorgabe=_d(_KL, "modus_3I0H_def")),
     ),
     "motor": (
         Feld("Pn_kW", "Pn", "kW", G_GRUND),
@@ -142,6 +181,15 @@ FELDER: dict = {
         Feld("t_50_1", "t 50-1", "s", G_SCHUTZ, min_inklusive=True, vorgabe=_d(_KM, "t_50_1_def", "s")),
         Feld("f_50_2", "50-2 Ansprechwert", "× IN", G_SCHUTZ, vorgabe=_d(_KM, "f_50_2_def", "× IN")),
         Feld("t_50_2", "t 50-2", "s", G_SCHUTZ, min_inklusive=True, vorgabe=_d(_KM, "t_50_2_def", "s")),
+        Feld("f_51N", "51N Ansprechwert", "A sek.", G_ERDE, vorgabe=_d(_KM, "f_51N_def", "A sek.")),
+        Feld("T_51N", "51N Zeitfaktor", "s", G_ERDE, vorgabe=_d(_KM, "T_51N_def", "s")),
+        Feld("f_50N1", "50N-1 Ansprechwert", "A sek.", G_ERDE, vorgabe=_d(_KM, "f_50N1_def", "A sek.")),
+        Feld("t_50N1", "t 50N-1", "s", G_ERDE, min_inklusive=True, vorgabe=_d(_KM, "t_50N1_def", "s")),
+        Feld("f_50N2", "50N-2 Ansprechwert", "A sek.", G_ERDE, vorgabe=_d(_KM, "f_50N2_def", "A sek.")),
+        Feld("t_50N2", "t 50N-2", "s", G_ERDE, min_inklusive=True, vorgabe=_d(_KM, "t_50N2_def", "s")),
+        Feld("KS_Beitrag", "Beitrag zu Ik max", "", G_KS, art=WAHL,
+             optionen=tuple(konstanten_netz.KS_BEITRAG_OPTIONEN),
+             vorgabe="Ja (Norm 7.1.2 e)"),
         Feld("RX_M", "R/X des Motors", "", G_KS, min_inklusive=True,
              vorgabe=f"Tool-Vorgabe {str(konstanten_netz.RX_M_HS).replace('.', ',')} "
                      f"(über 1 kV), {str(konstanten_netz.RX_M_NS).replace('.', ',')} (bis 1 kV)"),

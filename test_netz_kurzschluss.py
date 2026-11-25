@@ -87,23 +87,31 @@ def _ik3(c, U, z):
     return c * U / W3 / abs(z)
 
 
+def _theta90(n):
+    """Feste Leitertemperatur 90 Grad C fuer Ik min (Stand vor dem 25.11.2026, Handwerte)."""
+    for eid, e in n.elemente.items():
+        if e.typ == "leitung":
+            _p(n, eid, theta_min_C=90.0)
+    return n
+
+
 # ── 1. Referenznetz gegen Handrechnung ───────────────────────────────────────
 def test_referenznetz_handrechnung():
-    n = _netz()
+    n = _theta90(_netz())
     with _ohne_KT():
         k = KS.berechne(n).knoten
     zq, zt = _z_netz(1.1, 3000), _z_T1()
-    assert _nah(k["K1"].Ik_max_kA, 3000 / (W3 * 110))                 # Ik = Sk / (sqrt3 UN)
-    assert _nah(k["K2"].Ik_max_kA, _ik3(1.1, 10, zq + zt))
-    assert _nah(k["K3"].Ik_max_kA, _ik3(1.1, 10, zq + zt + _z_ltg(0.5)))
-    assert _nah(k["K4"].Ik_max_kA, _ik3(1.1, 10, zq + zt + _z_ltg(1.2)))
+    assert _nah(k["K1"].Ik_max_ohne_Motor_kA, 3000 / (W3 * 110))                 # Ik = Sk / (sqrt3 UN)
+    assert _nah(k["K2"].Ik_max_ohne_Motor_kA, _ik3(1.1, 10, zq + zt))
+    assert _nah(k["K3"].Ik_max_ohne_Motor_kA, _ik3(1.1, 10, zq + zt + _z_ltg(0.5)))
+    assert _nah(k["K4"].Ik_max_ohne_Motor_kA, _ik3(1.1, 10, zq + zt + _z_ltg(1.2)))
     # K5: alles ueber (0,4/10)^2 auf 0,4 kV, dazu T2 (1,6 MVA, uk 6 %), c = 1,10
     z5 = (zq + zt + _z_ltg(1.2)) * (0.4 / 10) ** 2 + complex(0, 0.06 * 0.4 ** 2 / 1.6)
-    assert _nah(k["K5"].Ik_max_kA, _ik3(KN.c_max_NS, 0.4, z5))
+    assert _nah(k["K5"].Ik_max_ohne_Motor_kA, _ik3(KN.c_max_NS, 0.4, z5))
     # Zahlenwerte der Handrechnung (auf 2 Stellen) und Naehe zu den eingegebenen Werten
-    assert [round(k[x].Ik_max_kA, 2) for x in ("K1", "K2", "K3", "K4")] == [15.75, 9.98, 9.08, 7.86]
+    assert [round(k[x].Ik_max_ohne_Motor_kA, 2) for x in ("K1", "K2", "K3", "K4")] == [15.75, 9.98, 9.08, 7.86]
     for kid, kno in n.knoten.items():
-        assert abs(k[kid].Ik_max_kA - kno.Ik_max_kA) / kno.Ik_max_kA < 0.01, kid
+        assert abs(k[kid].Ik_max_ohne_Motor_kA - kno.Ik_max_kA) / kno.Ik_max_kA < 0.01, kid
         if kno.Ik_min_kA is not None:
             assert abs(k[kid].Ik_min_kA - kno.Ik_min_kA) / kno.Ik_min_kA < 0.01, kid
     print("Referenznetz OK: Reihensumme von Hand, eingegebene Werte auf unter 1 % getroffen.")
@@ -113,9 +121,9 @@ def test_korrekturfaktor_KT():
     kt = 0.95 * 1.1 / (1 + 0.6 * 0.12)                               # 0,9748
     assert _nah(KS.faktor_KT(0.12, 0.0, 10.0), kt) and round(kt, 4) == 0.9748
     k = KS.berechne(_netz()).knoten
-    assert _nah(k["K2"].Ik_max_kA, _ik3(1.1, 10, _z_netz(1.1, 3000) + _z_T1(kt)))
-    assert round(k["K2"].Ik_max_kA, 2) == 10.22
-    assert _nah(k["K1"].Ik_max_kA, 3000 / (W3 * 110))                 # vor dem Trafo ohne Einfluss
+    assert _nah(k["K2"].Ik_max_ohne_Motor_kA, _ik3(1.1, 10, _z_netz(1.1, 3000) + _z_T1(kt)))
+    assert round(k["K2"].Ik_max_ohne_Motor_kA, 2) == 10.22
+    assert _nah(k["K1"].Ik_max_ohne_Motor_kA, 3000 / (W3 * 110))                 # vor dem Trafo ohne Einfluss
     # mit Wirkanteil zaehlt nur die Reaktanz: x_T = sqrt(uk^2 - ukr^2)
     assert _nah(KS.faktor_KT(0.12, 0.01, 10.0), 0.95 * 1.1 / (1 + 0.6 * math.sqrt(0.12 ** 2 - 0.01 ** 2)))
     with _ohne_KT():
@@ -125,14 +133,15 @@ def test_korrekturfaktor_KT():
 
 # ── 2. Motorbeitrag ──────────────────────────────────────────────────────────
 def test_motorbeitrag():
+    """Ik max mit Motoren (DIN EN 60909-0:2016-12, 7.1.2 e), 7.1.3, Entscheidung 25.11.2026)."""
     n = _netz()
     with _ohne_KT():
         k = KS.berechne(n).knoten
         _p(n, "M1", Pn_kW=None, IN_direkt=None)                       # Motor ohne Leistung
         ohne = KS.berechne(n)
-    # Hauptwert ist der netzseitige Strom: mit und ohne Motor gleich
-    assert all(_nah(k[x].Ik_max_kA, ohne.knoten[x].Ik_max_kA) for x in k)
-    assert all(_nah(ohne.knoten[x].Ik_max_mit_Motor_kA, ohne.knoten[x].Ik_max_kA) for x in k)
+    # Ohne ermittelbaren Motor: Ik max = Netzanteil
+    assert all(_nah(ohne.knoten[x].Ik_max_kA, ohne.knoten[x].Ik_max_ohne_Motor_kA) for x in k)
+    assert all(_nah(k[x].Ik_max_ohne_Motor_kA, ohne.knoten[x].Ik_max_ohne_Motor_kA) for x in k)
     assert any("kein Motorbeitrag" in m.text and m.stufe == HINWEIS for m in ohne.meldungen)
     # Hand: IN = Pn/(sqrt3 UN cos eta), Z_M = UN/(sqrt3 * 5,5 IN), R/X = 0,1. Zeigersumme an K3.
     IN = 2000e3 / (W3 * 10e3 * 0.88 * 0.96)
@@ -141,19 +150,29 @@ def test_motorbeitrag():
     zm = complex(0.1 * x, x)
     z_netz = _z_netz(1.1, 3000) + _z_T1() + _z_ltg(0.5)
     summe = abs(1.1 * 10 / W3 / z_netz + 1.1 * 10 / W3 / zm)
-    assert _nah(k["K3"].Ik_max_mit_Motor_kA, summe, 2e-5)             # Rechenkern rundet IN auf 3 Stellen
+    assert _nah(k["K3"].Ik_max_kA, summe, 2e-5)                       # Rechenkern rundet IN auf 3 Stellen
+    assert k["K3"].Ik_max_mit_Motor_kA == k["K3"].Ik_max_kA           # alter Name, gleicher Wert
     assert 0.80 < k["K3"].Ik_Motor_kA < 0.84                          # rund 1,1 * 5,5 * 137 A
-    assert k["K5"].Ik_max_mit_Motor_kA > k["K5"].Ik_max_kA
-    print("Motor OK: Hauptwert ohne Motor, Wert mit Motor als Zeigersumme (K3 +0,83 kA).")
+    assert k["K5"].Ik_max_kA > k["K5"].Ik_max_ohne_Motor_kA
+    # Motor laeuft nicht gleichzeitig (Verriegelung): faellt heraus, mit Hinweis
+    n = _netz()
+    _p(n, "M1", KS_Beitrag=KN.KS_BEITRAG_OPTIONEN[1])
+    with _ohne_KT():
+        verr = KS.berechne(n)
+    assert all(_nah(verr.knoten[x].Ik_max_kA, k[x].Ik_max_ohne_Motor_kA) for x in k)
+    assert any("nicht gleichzeitig" in m.text and m.stufe == HINWEIS for m in verr.meldungen)
+    # Ik min immer ohne Motoren
+    assert all(_nah(verr.knoten[x].Ik_min_kA, k[x].Ik_min_kA) for x in k)
+    print("Motor OK: Ik max mit Motoren (K3 +0,83 kA), Verriegelung nimmt den Motor heraus.")
 
 
 # ── 3. Ik min ────────────────────────────────────────────────────────────────
 def test_ik_min():
-    n = _netz()
+    n = _theta90(_netz())
     with _ohne_KT():
         k = KS.berechne(n).knoten
         zq, zt = _z_netz(1.0, 1500), _z_T1()
-        warm = 1 + 0.004 * 70                                         # 90 Grad C (Voreinstellung)
+        warm = 1 + 0.004 * 70                                         # 90 Grad C (Handwert)
         assert _nah(k["K2"].Ik_min_kA, W3 / 2 * _ik3(1.0, 10, zq + zt))
         assert _nah(k["K4"].Ik_min_kA, W3 / 2 * _ik3(1.0, 10, zq + zt + _z_ltg(1.2, warm)))
         assert [round(k[x].Ik_min_kA, 2) for x in ("K2", "K3", "K4")] == [7.5, 6.81, 5.81]
@@ -164,12 +183,58 @@ def test_ik_min():
         # Niederspannung: c_min = 0,90 (Netze mit 10 % Spannungstoleranz)
         assert KN.c_min_NS == 0.90 and KN.c_max_NS == 1.10
         z5 = (zq + zt + _z_ltg(1.2)) * (0.4 / 10) ** 2 + complex(0, 0.06 * 0.4 ** 2 / 1.6)
+        _p(n, "L2", theta_min_C=20)
         assert _nah(KS.berechne(n).knoten["K5"].Ik_min_kA, W3 / 2 * _ik3(0.90, 0.4, z5))
     # Faktor zweipolig und Schaltgruppenfaktor der Umrechnung heben sich auf
     assert _nah(KN.f_2pol * KN.f_Sg_2pol_DY, 1.0)
     for x in k.values():
         assert x.Ik_min_kA < x.Ik_max_kA
     print("Ik min OK: zweipolig, Sk min, c min, warmer Leiter (K4 5,81 kA).")
+
+
+def test_ik_min_endtemperatur():
+    """
+    Endtemperatur am Ende des Kurzschlusses (DIN EN 60909-0:2016-12, Gl. (32)), adiabatisch nach
+    IEC 60949 mit dem Zweigstrom bei Fehler am Leitungsende (Entscheidung 25.11.2026).
+    """
+    n = _netz()
+    erg = KS.berechne(n)
+    # Querschnitt aus R' und rho(Al) = 1/34 (Norm 6.4): 0,2060 Ohm/km -> 142,8 mm^2
+    mat, A, herkunft = KS.leiterdaten(n.elemente["L1"])
+    assert mat == "Al" and herkunft == "aus R′" and _nah(A, 1000 / 34 / R_BELAG)
+    # Handrechnung L1: Strom im Zweig bei Fehler an K3 = Ik2 min an K3 (Strahl)
+    I = erg.knoten["K3"].Ik_min_kA * 1000
+    th = (90 + 228) * math.exp(I ** 2 * 1.0 / (148 ** 2 * A ** 2)) - 228
+    assert abs(erg.theta_e["L1"] - th) < 0.2 and round(erg.theta_e["L1"], 1) == 124.5
+    # Fixpunkt: Ik min passt zum Widerstand bei dieser Temperatur
+    zq, zt = _z_netz(1.0, 1500), _z_T1()
+    warm = 1 + 0.004 * (erg.theta_e["L1"] - 20)
+    with _ohne_KT():
+        k3 = KS.berechne(n).knoten["K3"].Ik_min_kA
+    assert _nah(k3, W3 / 2 * _ik3(1.0, 10, zq + zt + _z_ltg(0.5, warm)), 1e-6)
+    # laengere Kurzschlussdauer -> heisser -> kleinerer Strom
+    _p(n, "L1", t_KS_s=3.0)
+    lang = KS.berechne(n)
+    assert lang.theta_e["L1"] > erg.theta_e["L1"] and lang.knoten["K3"].Ik_min_kA < erg.knoten["K3"].Ik_min_kA
+    # Kupfer, eingegebener Querschnitt
+    _p(n, "L1", t_KS_s=None, Leitermaterial="Cu", A_mm2=95.0)
+    assert KS.leiterdaten(n.elemente["L1"]) == ("Cu", 95.0, "eingegeben")
+    # Handwert hat Vorrang
+    _p(n, "L1", theta_min_C=70.0)
+    assert KS.berechne(n).theta_e["L1"] == 70.0
+    # Grenze 250 Grad C: Warnung und Begrenzung
+    n = _netz()
+    _p(n, "L2", A_mm2=10.0, t_KS_s=5.0)
+    erg = KS.berechne(n)
+    assert erg.theta_e["L2"] <= KN.theta_KS_max_C + 1e-6
+    assert any(m.stufe == WARNUNG and "thermisch überlastet" in m.text for m in erg.meldungen)
+    # Ohne R' und ohne Querschnitt: Anfangstemperatur, Hinweis
+    n = _netz()
+    _p(n, "L2", phi_Ltg=None)
+    erg = KS.berechne(n)
+    assert erg.theta_e["L2"] == KN.theta_Leiter_min_C
+    assert any(m.stufe == HINWEIS and "Querschnitt" in m.text for m in erg.meldungen)
+    print("Endtemperatur OK: L1 124,5 °C adiabatisch, Fixpunkt, Grenzen und Vorrang.")
 
 
 # ── 4. Optionale Angaben ─────────────────────────────────────────────────────
@@ -179,14 +244,14 @@ def test_optionale_angaben():
         n = _netz()
         _p(n, "T1", ukr_pct=1.0)                                      # R_T = 0,05 Ohm, X = sqrt(12^2 - 1) %
         zt = complex(0.01, math.sqrt(0.12 ** 2 - 0.01 ** 2)) * 5.0
-        assert _nah(KS.berechne(n).knoten["K2"].Ik_max_kA, _ik3(1.1, 10, _z_netz(1.1, 3000) + zt))
+        assert _nah(KS.berechne(n).knoten["K2"].Ik_max_ohne_Motor_kA, _ik3(1.1, 10, _z_netz(1.1, 3000) + zt))
         n = _netz()
         _p(n, "L2", R_Belag=0.3)                                      # hat Vorrang vor phi_Ltg
         z = _z_netz(1.1, 3000) + _z_T1() + complex(0.3 * 1.2, 0.132)
-        assert _nah(KS.berechne(n).knoten["K4"].Ik_max_kA, _ik3(1.1, 10, z))
+        assert _nah(KS.berechne(n).knoten["K4"].Ik_max_ohne_Motor_kA, _ik3(1.1, 10, z))
         n = _netz()
         _p(n, "E1", RX_Q=0.0)                                         # rein induktives Netz
-        assert _nah(KS.berechne(n).knoten["K2"].Ik_max_kA, _ik3(1.1, 10, complex(0, 1.1 * 100 / 3000) + _z_T1()))
+        assert _nah(KS.berechne(n).knoten["K2"].Ik_max_ohne_Motor_kA, _ik3(1.1, 10, complex(0, 1.1 * 100 / 3000) + _z_T1()))
         n = _netz()
         _p(n, "M1", RX_M=0.42)
         assert KS.berechne(n).knoten["K3"].Ik_max_mit_Motor_kA < basis["K3"].Ik_max_mit_Motor_kA
@@ -214,9 +279,11 @@ def test_handwert_hat_vorrang():
     assert _nah(kopie.knoten["K5"].Ik_min_kA, erg.knoten["K5"].Ik_min_kA)
     # Vergleich: Abweichung mit Vorzeichen, wirksam ist der Handwert
     v = {(x.knoten, x.groesse): x for x in KS.vergleiche(n, erg)}
-    assert v[("K2", "max")].wirksam == "eingegeben" and 0.02 < v[("K2", "max")].abweichung < 0.03
+    # Ab 25.11.2026 Ik max mit Motoren: die Handwerte des Referenznetzes (ohne Motoren gerechnet)
+    # liegen an K2 und K3 gut 10 % darunter und werden markiert
+    assert v[("K2", "max")].wirksam == "eingegeben" and 0.10 < v[("K2", "max")].abweichung < 0.11
     assert v[("K5", "min")].wirksam == "berechnet" and v[("K5", "min")].abweichung is None
-    assert not any(x.auffaellig for x in v.values())
+    assert {k for k, x in v.items() if x.auffaellig} == {("K2", "max"), ("K3", "max")}
     # Netz ganz ohne Handwerte: alles wird ergaenzt
     for kid in n.knoten:
         n.knoten_aendern(kid, Ik_max_kA=None, Ik_min_kA=None)
@@ -255,27 +322,28 @@ def test_ring_je_lage():
     with _ohne_KT():
         strahl = KS.berechne(_netz()).knoten
     for kid in strahl:                                                # Ausgangslage = Strahlennetz
-        assert _nah(k34[kid].Ik_max_kA, strahl[kid].Ik_max_kA) and _nah(k34[kid].Ik_min_kA, strahl[kid].Ik_min_kA)
+        assert _nah(k34[kid].Ik_max_ohne_Motor_kA, strahl[kid].Ik_max_ohne_Motor_kA) and _nah(k34[kid].Ik_min_kA, strahl[kid].Ik_min_kA)
     zq, zt = _z_netz(1.1, 3000), _z_T1()
     # L1 offen: K3 haengt ueber L2 und die Kupplung (Z = 0) an K2, also wie K4
-    assert _nah(l1["K3"].Ik_max_kA, _ik3(1.1, 10, zq + zt + _z_ltg(1.2)))
-    assert _nah(l1["K3"].Ik_max_kA, l1["K4"].Ik_max_kA)
+    assert _nah(l1["K3"].Ik_max_ohne_Motor_kA, _ik3(1.1, 10, zq + zt + _z_ltg(1.2)))
+    assert _nah(l1["K3"].Ik_max_ohne_Motor_kA, l1["K4"].Ik_max_ohne_Motor_kA)
     # L2 offen: K4 haengt ueber L1 an K2
-    assert _nah(l2["K4"].Ik_max_kA, _ik3(1.1, 10, zq + zt + _z_ltg(0.5)))
+    assert _nah(l2["K4"].Ik_max_ohne_Motor_kA, _ik3(1.1, 10, zq + zt + _z_ltg(0.5)))
     assert _nah(l2["K4"].Ik_min_kA, l2["K3"].Ik_min_kA)
     # Ring geschlossen: L1 und L2 parallel
     par = _z_ltg(0.5) * _z_ltg(1.2) / (_z_ltg(0.5) + _z_ltg(1.2))
-    assert _nah(zu["K3"].Ik_max_kA, _ik3(1.1, 10, zq + zt + par))
-    assert zu["K4"].Ik_max_kA > max(k34["K4"].Ik_max_kA, l1["K4"].Ik_max_kA, l2["K4"].Ik_max_kA)
-    assert [round(x["K4"].Ik_max_kA, 2) for x in (k34, l1, l2, zu)] == [7.86, 7.86, 9.08, 9.34]
-    assert all(_nah(x["K2"].Ik_max_kA, k34["K2"].Ik_max_kA) for x in (l1, l2, zu))
-    # Der Handwert an K4 (7,9 kA) passt nicht zur Lage "L2 offen": +15 %, auffaellig
+    assert _nah(zu["K3"].Ik_max_ohne_Motor_kA, _ik3(1.1, 10, zq + zt + par))
+    assert zu["K4"].Ik_max_ohne_Motor_kA > max(k34["K4"].Ik_max_ohne_Motor_kA, l1["K4"].Ik_max_ohne_Motor_kA, l2["K4"].Ik_max_ohne_Motor_kA)
+    assert [round(x["K4"].Ik_max_ohne_Motor_kA, 2) for x in (k34, l1, l2, zu)] == [7.86, 7.86, 9.08, 9.34]
+    assert all(_nah(x["K2"].Ik_max_ohne_Motor_kA, k34["K2"].Ik_max_ohne_Motor_kA) for x in (l1, l2, zu))
+    # Der Handwert an K4 (7,9 kA) passt nicht zur Lage "L2 offen": +25 % (mit Motoren), auffaellig
+    # Vergleich mit den Handwerten: ab 25.11.2026 gegen Ik max mit Motoren
     v = {(x.knoten, x.groesse): x for x in KS.vergleiche(n, z[2])}
-    assert v[("K4", "max")].auffaellig and 0.14 < v[("K4", "max")].abweichung < 0.16
-    assert v[("K3", "max")].auffaellig is False
+    assert v[("K4", "max")].auffaellig and 0.24 < v[("K4", "max")].abweichung < 0.27   # mit Motoren
+    assert not v[("K3", "max")].auffaellig and 0.08 < v[("K3", "max")].abweichung < 0.09   # ohne K_T
     v = {(x.knoten, x.groesse): x for x in KS.vergleiche(n, z[1])}
-    assert v[("K3", "max")].auffaellig and v[("K3", "max")].abweichung < -0.13
-    print("Ring OK: je Lage und geschlossen gegen Handrechnung, K4 in Lage L2 offen +15 %.")
+    assert not v[("K3", "max")].auffaellig and -0.05 < v[("K3", "max")].abweichung < -0.04
+    print("Ring OK: je Lage und geschlossen gegen Handrechnung, K4 in Lage L2 offen +25 %.")
 
 
 # ── 7. Ring-Staffelung: Ergaenzung je Lage nur auf Wunsch ────────────────────
@@ -348,19 +416,21 @@ def test_fehlerfaelle():
 # ── 10. Gegenrechnung mit pandapower (IEC 60909) ─────────────────────────────
 # Werte aus werkzeuge/gegenrechnung_pandapower.py, pandapower 3.5.6, 17.11.2026. Eingefroren, damit
 # der Test ohne pandapower laeuft. Grundlage fuer die Entscheidung "K_T nur bei Ik max".
-PANDAPOWER = {   # Knoten: (Ik max, Ik min 2-pol., Ik max mit Motoren) in kA
+# 25.11.2026: Ik min mit den Endtemperaturen aus der adiabatischen Erwaermung (L1 124,5 Grad C,
+# L2 114,4 Grad C, in pandapower als endtemp_degree), neu gerechnet.
+PANDAPOWER = {   # Knoten: (Ik max nur Netz, Ik min 2-pol., Ik max mit Motoren) in kA
     "K1": (15.7459, 6.8182, 15.8153), "K2": (10.2205, 7.5034, 11.0362),
-    "K3": (9.2750, 6.8073, 10.1007), "K4": (7.9981, 5.8057, 8.4452),
-    "K5": (34.9495, 24.6722, 35.3043),
+    "K3": (9.2750, 6.7808, 10.1007), "K4": (7.9981, 5.7434, 8.4452),
+    "K5": (34.9495, 24.6626, 35.3043),
 }
 
 
 def test_gegenrechnung_pandapower():
     k = KS.berechne(_netz()).knoten
     for kid, (mx, mn, mot) in PANDAPOWER.items():
-        assert abs(k[kid].Ik_max_kA / mx - 1) < 1e-4, (kid, k[kid].Ik_max_kA, mx)
+        assert abs(k[kid].Ik_max_ohne_Motor_kA / mx - 1) < 1e-4, (kid, k[kid].Ik_max_ohne_Motor_kA, mx)
         assert abs(k[kid].Ik_min_kA / mn - 1) < 1e-4, (kid, k[kid].Ik_min_kA, mn)
-        assert abs(k[kid].Ik_max_mit_Motor_kA / mot - 1) < 1e-4, (kid, k[kid].Ik_max_mit_Motor_kA, mot)
+        assert abs(k[kid].Ik_max_kA / mot - 1) < 1e-4, (kid, k[kid].Ik_max_kA, mot)
     print("Gegenrechnung OK: alle Knoten auf 0,01 % gleich pandapower.")
 
 
@@ -383,7 +453,7 @@ def test_zufall_reihensumme():
             L, Xb, Rb = zufall.uniform(0.1, 8), zufall.uniform(0.08, 0.4), zufall.uniform(0.05, 0.6)
             n.knoten_hinzufuegen(f"K{i + 3}", "", 20.0, "isoliert")
             n.element_hinzufuegen(f"L{i}", "", "leitung", f"K{i + 2}", f"K{i + 3}",
-                                  {"L_km": L, "X_Belag": Xb, "R_Belag": Rb})
+                                  {"L_km": L, "X_Belag": Xb, "R_Belag": Rb, "theta_min_C": 90.0})
             z_max += complex(Rb * L, Xb * L)
             z_min += complex(Rb * L * 1.28, Xb * L)
         ende = KS.berechne(n).knoten[f"K{i + 3}"]
@@ -409,7 +479,7 @@ def test_ersetze_ik():
         assert abs(k.Ik_max_kA - erg.knoten[kid].Ik_max_kA) < 1e-12
         assert abs(k.Ik_min_kA - erg.knoten[kid].Ik_min_kA) < 1e-12
     assert len(ersetzt) == 10 and rueck == [] and meld == []
-    assert abs(kopie.knoten["K5"].Ik_max_kA - 34.949) < 1e-3              # Handwert 35,0 ersetzt
+    assert abs(kopie.knoten["K5"].Ik_max_kA - 35.304) < 1e-3              # Handwert 35,0 ersetzt (mit Motoren)
     # Rueckfall: ohne Sk der Einspeisung ist nichts berechenbar, es gelten alle eingegebenen Werte
     p = dict(n.elemente["E1"].p)
     p.pop("Sk_max_MVA"), p.pop("Sk_min_MVA")
